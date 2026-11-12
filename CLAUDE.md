@@ -1,0 +1,232 @@
+## Guiding Principles (MUST FOLLOW)
+
+### Mindset
+
+How to approach any coding task in this repo.
+
+#### Think Before Coding
+
+- State assumptions explicitly. If uncertain, ask before implementing.
+- When multiple interpretations exist, surface them — do not pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what is confusing. Ask.
+
+#### Simplicity First
+
+- Write the minimum code that solves the problem. Nothing speculative.
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that was not requested.
+- No error handling for impossible scenarios.
+- If you wrote 200 lines and it could be 50, rewrite it.
+- Use comments to explain constraints or decisions the code alone cannot convey.
+
+#### Surgical Changes
+
+- Touch only what the task requires. Do not "improve" adjacent code, comments, or formatting.
+- Do not refactor things that are not broken.
+- Match existing style even if you would do it differently.
+- If you notice unrelated dead code, mention it — do not delete it.
+- Remove imports / variables / functions that **your** changes orphaned. Leave pre-existing dead code alone unless asked.
+- Every changed line must trace directly to the user's request.
+
+#### Goal-Driven Execution
+
+- Convert tasks into verifiable goals before coding:
+  - "Add validation" → "Write tests for invalid inputs, then make them pass."
+  - "Fix the bug" → "Write a test that reproduces it, then make it pass."
+  - "Refactor X" → "Ensure tests pass before and after."
+- For multi-step tasks, state a brief plan with explicit verification per step:
+
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+```
+
+### Operational Rules
+
+Project-specific tools, paths, and conventions.
+
+- **Keep it clear**: Write code that is easy to read, maintain, and explain.
+- **Read local READMEs first**: Before editing code in a directory, check for a `README.md` in that directory (and its parents) and read it — these files capture local conventions, invariants, and entry points that aren't obvious from the code alone.
+- **Fix the root cause**: Make the appropriate fix in TinyCherry. Discuss contributing it upstream when useful.
+- **Library-first, custom-last**: Before writing custom code, check library/framework docs for built-in options or existing solutions. Write custom code only when no adequate alternative exists.
+- **Build with Tailwind CSS & Shadcn UI**: Use components from `@cherrystudio/ui` (located in `packages/ui`, Shadcn UI + Tailwind CSS) for every new UI component.
+- **Log centrally**: Route all logging through `loggerService` with the right context—no `console.log`.
+- **Access paths centrally**: Use `application.getPath('namespace.key', filename?)` for all main-process filesystem paths—never call `app.getPath()`, `os.homedir()`, or construct paths ad-hoc. Import the singleton via `import { application } from '@application'`.
+- **Validate the change**: Check changed assets directly. For docs and rules, check the affected text, links, and formatting. For code, run focused checks and tests for affected behavior. Build when packaging or packaged runtime behavior needs verification. Report checks actually run and any gaps.
+- **Inspect the actual diff**: Use `git diff` for small changes. For PRs or changes spanning commits, compare against a verified base and use `pnpm change:scope --base <verified-ref>` when a scope report helps.
+- **Record decisions when useful**: Major changes may benefit from a short design or decision record in an issue, PR, relevant doc, or optional [Agent Note](.agents/notes/README.md).
+- **Keep docs and code aligned**: Check affected documentation when documented behavior or contracts change. Use `pnpm docs:affected --base <verified-ref>` when the impact is unclear. Update both languages and the sidecar for in-scope pairs under [the pairing contract](docs/dev/i18n/README.md).
+- **Write conventional commits**: Commit small, focused changes using Conventional Commit messages (e.g., `feat(data-api):`, `fix(lifecycle):`, `refactor(quick-assistant):`, `docs(testing):`, `chore(deps):`, `test(window-manager):`). Scope must be a specific kebab-case module, never generic like `main` — when `git log` conflicts with this rule, this rule wins.
+- **Target the right branch**: `main` is the default branch for all active development — submit features, refactors, optimizations, and fixes here.
+
+## Development
+
+### Commands
+
+Run `pnpm install` when a build or selected check needs workspace dependencies. Use the Node and pnpm versions specified in `package.json` and read the relevant script there before running it.
+
+- `pnpm check` — affected checks and whole-project tests, with full-gate fallback; use `--plan` to inspect selection, not as the default local PR validation command
+- `pnpm lint` — read-only Oxlint + ESLint; `pnpm lint:fix` explicitly applies lint fixes
+- `pnpm typecheck` — all typecheck projects, run serially to limit local memory usage
+- `pnpm test` — run all Vitest tests; not for local PR validation unless the user explicitly requests a full run
+- `pnpm format` — Oxfmt format (write mode)
+- `pnpm docs:check` — links + structure/frontmatter + Agent Note format + bilingual pairing + terminology/index freshness. Use it when edits affect these checks. Reference docs carry `description`/`sources`; contrib/governance docs carry `description`. `docs/dev/README.md`, `docs/dev/sources-index.json`, and `docs/dev/i18n/terminology.md` are generated — edit their owners and run the matching generator.
+- `pnpm change:scope --base <ref>` — versioned committed/staged/unstaged/untracked path report against an explicit merge base.
+- `pnpm docs:affected --base <ref>` — candidate docs whose `sources` prefixes intersect that change scope; candidates require semantic inspection, not automatic edits.
+- `pnpm check:all` / `pnpm build:check` — full checks and tests; leave these to CI unless the user explicitly requests a full local run. Format changed files with `pnpm exec oxfmt --write <files>`; sync and translate locale keys with `pnpm i18n:sync`.
+- `pnpm test:lint` — the CI-equivalent lint gate: Oxlint errors and warnings block CI (`--deny-warnings`); ESLint errors block CI while its warnings remain non-blocking.
+
+### Testing
+
+- **Focused tests**: When code behavior changes, run tests for affected behavior and consumers using explicit file paths, such as `pnpm test:main <test-file>`, `pnpm test:renderer <test-file>`, or `pnpm exec vitest run <test-file>`. Report missing coverage and any CI checks actually observed on the revision under review.
+- Tests run with Vitest 5 (see `vitest.config.*` for project setup).
+- **Test the contract**: Use realistic inputs and assert observable behavior, including relevant failure and edge cases. Change existing tests when needed for the work in scope.
+- **Frontend Tests — MUST READ**: [Frontend Testing Guidelines](docs/dev/references/testing/frontend-testing.md).
+- **Test Mocking**: Use the unified mock system — do NOT create ad-hoc mocks for `application`, services, or data layers. See [tests/__mocks__/README.md](tests/__mocks__/README.md) for available mocks, usage patterns, and best practices.
+- **Database Tests**: For any service/handler/seeder that reads or writes SQLite, use `setupTestDatabase()` from `@test-helpers/db` — it provides a real file-backed DB with production migrations. Do NOT hand-write `CREATE TABLE` SQL, override `@application`, or stub Drizzle chains. See [docs/dev/references/testing/database-testing.md](docs/dev/references/testing/database-testing.md).
+
+### Patched Dependencies
+
+Before upgrading any dependency, check `patches/` for custom patches.
+
+## GitHub
+
+### Pull Requests
+
+For TinyCherry PRs, describe the change and the verification actually run. Use the [PR skill](.agents/skills/gh-create-pr/SKILL.md), template, or stacked branches when helpful. Follow the destination repository's contribution rules for upstream PRs.
+
+### Code Review
+
+Check which CI results exist for the revision under review. Use those results where they cover the change, and run focused local checks when they can fill a meaningful gap.
+
+### Issues
+
+Describe the problem or proposal and include the details needed to act on it. Use the [issue skill](.agents/skills/gh-create-issue/SKILL.md) or a template when helpful.
+
+## Conventions
+
+### TypeScript
+
+- Cross-process types belong in `src/shared/`; renderer-only shared types in `src/renderer/types/` (see [Shared Layer Architecture](docs/dev/references/architecture/shared-layer.md)).
+
+### Naming Conventions
+
+**MUST READ**: [docs/dev/references/architecture/naming-conventions.md](docs/dev/references/architecture/naming-conventions.md) — files, directories, identifiers, and singular/plural rules.
+
+### Logging
+
+```typescript
+import { loggerService } from "@logger";
+const logger = loggerService.withContext("moduleName");
+// Renderer only: loggerService.initWindowSource('windowName') first
+logger.info("message", CONTEXT);
+logger.warn("message");
+logger.error("message", error);
+```
+
+### Paths
+
+**MUST READ**: [src/main/core/paths/README.md](src/main/core/paths/README.md) — namespaces, naming, adding new keys, testing patterns. (Rule stated in Guiding Principle "Access paths centrally".)
+
+### i18n
+
+- All user-visible strings must use `i18next` — never hardcode UI strings
+- Locale catalogs live in `src/renderer/i18n/locales/` and `src/main/i18n/locales/`; both use `en-us.json` as the source of truth
+- Only when you add or change a key: edit `en-us.json`, run `pnpm i18n:sync` (fills the other locales with `[to be translated]:` placeholders), then translate every one. `pnpm check` selects `i18n:check` for source changes; it rejects leftover placeholders as well as empty values, interpolation/tag mismatches, and unsorted keys.
+
+### UI Design
+
+For any UI component or page style work, read [DESIGN.md](./DESIGN.md) first and follow its colors, fonts, spacing, and component specs strictly.
+
+## Architecture
+
+### Code Organization
+
+Where each file and directory belongs — read the doc for the process you're touching before adding code or opening a directory. Each process root's top level is a **closed set**: route new code into an existing category, never a new top-level directory ([Naming Conventions §4.8](docs/dev/references/architecture/naming-conventions.md)).
+
+A directory's `index.ts` is a **barrel** — an enforced encapsulation boundary re-exporting one cohesive public API (internals private, outsiders import through it): re-export only (no logic / `export *`), no nesting, and it exists only if lint can seal off deep imports — else no barrel. `index.tsx` is always banned ([Naming Conventions §6.4](docs/dev/references/architecture/naming-conventions.md)).
+
+- [Main Process Architecture](docs/dev/references/architecture/main-process.md) — `src/main/` directories (`core`/`ipc`/`data`/`ai`/`features`/`services`/`utils`/`i18n`) and dependency direction.
+- [Renderer Architecture](docs/dev/references/architecture/renderer.md) — `src/renderer/` two-axis (type × domain) layout and downward-only layering.
+- [Shared Layer Architecture](docs/dev/references/architecture/shared-layer.md) — what belongs in `@shared` (cross-process + no mutable runtime state) and its closed top-level set.
+
+### Data
+
+**MUST READ**: [docs/dev/references/data/README.md](docs/dev/references/data/README.md) for system selection, architecture, and patterns.
+
+| System                                                     | Use Case                            | APIs                                                       |
+| ---------------------------------------------------------- | ----------------------------------- | ---------------------------------------------------------- |
+| [BootConfig](docs/dev/references/data/boot-config-overview.md) | Early boot settings (pre-lifecycle) | `bootConfigService.get()`, `usePreference('BootConfig.*')` |
+| [Cache](docs/dev/references/data/cache-overview.md)            | Temp data (can lose)                | `useCache`, `useSharedCache`, `useSharedCacheValue`, `usePersistCache` |
+| [Preference](docs/dev/references/data/preference-overview.md)  | User settings                       | `usePreference`                                            |
+| [DataApi](docs/dev/references/data/data-api-overview.md)       | Business data (**critical**)        | `useQuery`, `useMutation`                                  |
+
+Scope:
+
+- **BootConfig**: sync file-based; direct in main (pre-lifecycle), via `usePreference('BootConfig.*')` otherwise
+- **Cache**: memory / shared (cross-window) / persist tiers; memory + shared on both main and renderer; persist on both too but as **independent** stores (renderer = localStorage, main = JSON file at `{userData}/cache.json`), never shared — main additionally relays renderer persist sync between windows
+- **Preference**: cross-process (main + renderer); auto-syncs across windows
+- **DataApi**: SQLite-backed; no auto-sync, fetch on demand from renderer
+
+Database: SQLite via **better-sqlite3** + Drizzle ORM — the driver is **synchronous** (queries and transactions run inline with no `await`, unlike the app's otherwise-async data layers), so `getDb()` queries and `withWriteTx(fn)` callbacks must be written synchronously. Schemas in `src/main/data/db/schemas/`, migrations via `pnpm db:migrations:generate`
+
+**Write atomicity**: use `application.get('DbService').withWriteTx(fn)` to commit multiple writes (or a read-then-write) all-or-nothing in one synchronous `BEGIN IMMEDIATE` transaction; `fn` must be synchronous. A single write doesn't need it — better-sqlite3 runs each statement atomically on its one connection. See [Database Patterns — Write Serialization](docs/dev/references/data/database-patterns.md#write-serialization-dbservicewithwritetx).
+
+**DataApi boundary rule**: DataApi is for SQLite-backed business data only. No database table → no DataApi endpoint; use IPC instead. See [Scope & Boundaries](docs/dev/references/data/api-design-guidelines.md#dataapi-scope--boundaries).
+
+### IPC (IpcApi)
+
+**MUST READ**: [docs/dev/references/ipc/README.md](docs/dev/references/ipc/README.md) — paradigm boundary (RPC vs REST), schema/router/preload/facade layering, `IpcContext`, error model, security.
+
+Non-data command IPC (window/system/shell/notification/external/file) goes through **IpcApi** — the fifth subsystem alongside BootConfig/Cache/Preference/DataApi, RPC-over-IPC with single-point schemas (`schema + handler` to add a route; `ipcApi.request('namespace.action', input)` to call; `IpcApiService.broadcast`/`send` + `useIpcOn` for events). Legacy command IPC still coexists, so you'll encounter both. Decision: SQLite data → DataApi; user setting → Preference; losable/shared → Cache; everything else imperative → IpcApi.
+
+### Window Manager
+
+**MUST READ**: [docs/dev/references/window-manager/README.md](docs/dev/references/window-manager/README.md) — lifecycle modes, pool mechanics, API reference.
+
+All `BrowserWindow` goes through `WindowManager` with one of three modes (`default` / `singleton` / `pooled`), declared per type in `src/main/core/window/windowRegistry.ts`.
+
+- **Consumer API**: use only `open()` / `close()` — never `create()` / `destroy()` in business code.
+- **Attach listeners in `onWindowCreated`**, not after `open()` — reused windows skip the latter.
+- **Renderer reads init data via `useWindowInitData`**.
+
+### Main Process Services (Lifecycle)
+
+**MUST READ**: [docs/dev/references/lifecycle/README.md](docs/dev/references/lifecycle/README.md) — architecture, decision guides, usage patterns, and migration steps.
+
+All main-process services that own long-lived resources or register persistent side effects **must** use the lifecycle system:
+
+- **Extend `BaseService`**, apply `@Injectable`, `@ServicePhase`, `@DependsOn` decorators
+- **Register in `serviceRegistry.ts`** (`src/main/core/application/serviceRegistry.ts`) — one line per service
+- **Use `@DependsOn` for same-phase dependencies only** — do NOT declare dependencies on BeforeReady services (`PreferenceService`, `DbService`, `CacheService`, `DataApiService`) from WhenReady services; phase ordering is auto-enforced by the container
+- **Access via `application.get('Name')`** (or `getOptional()` for `@Conditional` services)
+- **Use `this.ipcHandle()` / `this.ipcOn()`** for IPC — auto-cleaned on stop/destroy, returns `Disposable`
+- **Use `this.registerInterval()`** for recurring timers — auto-unref'd, exception-isolated, auto-cleaned on stop/destroy, returns `Disposable`
+- **Use `this.registerDisposable()`** for cleanup tracking — accepts `Disposable` objects or `() => void` cleanup functions
+- **Use `Emitter<T>` / `Event<T>`** for inter-service events, **`Signal<T>`** for one-shot completion
+- **Implement `Activatable`** for services with heavy on-demand resources (IPC stays registered, resources load/release via `onActivate()`/`onDeactivate()`)
+- **Do NOT** use `new` or manual singleton patterns — the container manages instantiation, ordering, and shutdown
+
+For detailed code examples, see [Usage Guide](docs/dev/references/lifecycle/lifecycle-usage.md). For migrating legacy services, see [Migration Guide](docs/dev/references/lifecycle/lifecycle-migration-guide.md).
+
+### Non-Lifecycle Services (Direct-Import Singleton)
+
+Services without long-lived resources or persistent side effects: use **named export singleton** (`export const x = new X()`). No `getInstance()` patterns. See [Decision Guide](docs/dev/references/lifecycle/lifecycle-decision-guide.md) for criteria.
+
+## Schema & Migration Rules
+
+The v2 refactor has landed. v1 data reaches v2 only through the migrators in `src/main/data/migration/v2/` — never add fallbacks, dual-writes, or guards for v1 save / read / loss.
+
+**The migration chain is no longer throwaway.** It was consolidated into a single clean initial migration and shipped with `v2.0.0-rc.1`, so `migrations/sqlite-drizzle/` now runs against databases holding real user rows. Never wipe or rewrite an already-shipped migration, and never tell a user to delete their database: schema changes go in as new appended migrations generated by `pnpm db:migrations:generate`. `src/main/data/db/schemas/` still changes freely — but every change must survive a migrate-forward on a populated database.
+
+**Resolving migration merge conflicts: regenerate, never rename.** When an upstream migration conflicts with your local one, delete your local `.sql` + its `meta/*_snapshot.json` and re-run `pnpm db:migrations:generate`. Renaming/renumbering instead silently reuses the snapshot's random `id`, forking the chain for everyone — and `drizzle-kit generate` still exits `0`; only `pnpm db:migrations:check` catches it. CI enforces both the chain check and a schema↔migration generate-and-diff step.
+
+### Data Classification Toolchain
+
+`scripts/data-classify/` is the code generation pipeline for the v2 data layer; `classification.json` is the single source of truth (see its README). Four files are **auto-generated — NEVER edit them by hand**: `src/shared/data/preference/preferenceSchemas.ts`, `src/shared/data/bootConfig/bootConfigSchemas.ts`, and `PreferencesMappings.ts` + `BootConfigMappings.ts` in `src/main/data/migration/v2/migrators/mappings/`. To change them, edit `classification.json` or `target-key-definitions.json` (both in `data/`), then run `cd scripts/data-classify && npm run generate`.
+
+## Local Instructions
+
+If `CLAUDE.local.md` exists in the repository root (gitignored, may be absent), read it in full before acting on anything in this file — it holds the developer's private instructions and **OVERRIDES this file wherever they conflict**. Tools that auto-load it (e.g. Claude Code) need not re-read it.

@@ -1,0 +1,69 @@
+name: EvoStack Windows Portable
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [evostack]
+    paths:
+      - "native/evostack/**"
+      - "src/renderer/**"
+      - "src/shared/**"
+      - "src/preload/**"
+      - "packages/**"
+      - "build/renderer.config.ts"
+      - "scripts/uiContract/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - ".node-version"
+      - "electron-builder.yml"
+      - "resources/cherry-studio/release-history.json"
+      - "resources/skills/**"
+      - "resources/code-cli-skills/**"
+      - "src/main/ai/tools/computerUse.ts"
+      - "src/main/data/retiredProviders.ts"
+      - ".github/workflows/evostack-windows.yml"
+  pull_request:
+    branches: [evostack]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evostack-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  portable:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: native/evostack/backend/go.mod
+          cache: false
+      - name: Install workspace dependencies
+        run: |
+          . ./native/evostack/prepare-env.ps1
+          pnpm install --frozen-lockfile --store-dir native/evostack/.cache/pnpm-store
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Repeated Go race checks
+        run: ./native/evostack/test-race.ps1
+      - name: Build, validate contracts, and smoke test Portable
+        run: |
+          if (Test-Path -LiteralPath native/evostack/dist) { throw 'Clean-build gate expected no existing dist directory' }
+          ./native/evostack/build.ps1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: TinyCherry-EvoStack-win-x64-${{ github.sha }}
+          path: native/evostack/dist/TinyCherry-EvoStack-win-x64-portable.zip
+          if-no-files-found: error
+          retention-days: 7

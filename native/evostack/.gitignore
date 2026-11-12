@@ -1,0 +1,6 @@
+.cache/
+dist/
+target/
+binaries/
+backend/generated/
+src-tauri/gen/
