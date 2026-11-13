@@ -15,6 +15,7 @@ import {
 import type { SiteMiniApp } from '@shared/data/types/miniApp'
 
 const mocks = vi.hoisted(() => ({
+  isEvoStack: false,
   navigate: vi.fn(),
   pinnedMiniApps: [] as any[],
   openedMiniApps: [] as any[],
@@ -25,6 +26,12 @@ const mocks = vi.hoisted(() => ({
   appOrder: [] as SidebarAppId[],
   sortableCalls: [] as any[],
   toastError: vi.fn()
+}))
+
+vi.mock('@renderer/utils/platform', () => ({
+  get isEvoStack() {
+    return mocks.isEvoStack
+  }
 }))
 
 vi.mock('@cherrystudio/ui', () => ({
@@ -190,6 +197,7 @@ afterEach(() => {
 
 describe('LaunchpadPage', () => {
   beforeEach(() => {
+    mocks.isEvoStack = false
     mocks.pinnedMiniApps = []
     mocks.openedMiniApps = []
     mocks.sidebarFavorites = [appFavorite('assistants')]
@@ -198,6 +206,17 @@ describe('LaunchpadPage', () => {
     mocks.setSidebarFavorites.mockResolvedValue(undefined)
     mocks.setAppOrder.mockResolvedValue(undefined)
     mocks.reorderMiniAppsByStatus.mockResolvedValue(undefined)
+  })
+
+  it.each([false, true])('only exposes the marketplace tile on a supported runtime (native=%s)', (native) => {
+    mocks.isEvoStack = native
+    mocks.appOrder = ['marketplace', 'assistants']
+
+    render(<LaunchpadPage />)
+
+    expect(screen.queryByRole('button', { name: 'Marketplace' }) !== null).toBe(!native)
+    expect(screen.getByRole('button', { name: 'Chat' })).toBeVisible()
+    expect(mocks.setAppOrder).not.toHaveBeenCalled()
   })
 
   it('keeps compact app tiles with native knowledge and omits standalone translation', () => {

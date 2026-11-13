@@ -1,4 +1,5 @@
 import { parseAppRouteUrl } from '@renderer/utils/appRouteUrl'
+import { isEvoStack } from '@renderer/utils/platform'
 import {
   createSidebarShortcutId,
   type SidebarFavorite,
@@ -148,6 +149,10 @@ export function isSidebarAppId(value: string): value is SidebarAppId {
   return sidebarFavoriteSet.has(value as SidebarAppId)
 }
 
+function isSidebarAppAvailable(id: string): boolean {
+  return !isEvoStack || id !== 'marketplace'
+}
+
 export const SIDEBAR_SHORTCUT_PROVIDER_IDS = {
   APP: 'core.app',
   MINI_APP: 'core.mini-app',
@@ -274,7 +279,13 @@ export function normalizeSidebarShortcutItems(values: readonly unknown[] | undef
 }
 
 export function getVisibleSidebarShortcutItems(values: readonly unknown[] | undefined): SidebarShortcutItem[] {
-  return normalizeSidebarShortcutItems(values).filter(isSidebarShortcutItem)
+  return normalizeSidebarShortcutItems(values)
+    .filter(isSidebarShortcutItem)
+    .filter(
+      (item) =>
+        item.target.locator.providerId !== SIDEBAR_SHORTCUT_PROVIDER_IDS.APP ||
+        isSidebarAppAvailable(item.target.locator.resourceId)
+    )
 }
 
 function isBuiltInAppShortcutTarget(target: SidebarShortcutTarget): target is SidebarShortcutTarget & {
@@ -396,7 +407,7 @@ export function isSidebarShortcutPinned(
  * The ordered launchpad app ids. Stored order is filtered to valid app ids and
  * deduped; any app missing from storage (e.g. an empty default or a newly added
  * app) is appended in canonical order, so a partial or empty store still yields
- * every app exactly once.
+ * every available app exactly once.
  */
 export function getOrderedLaunchpadApps(stored: readonly string[] | undefined): SidebarAppId[] {
   const seen = new Set<SidebarAppId>()
@@ -419,7 +430,7 @@ export function getOrderedLaunchpadApps(stored: readonly string[] | undefined): 
     }
   }
 
-  return ordered
+  return ordered.filter(isSidebarAppAvailable)
 }
 
 /**
