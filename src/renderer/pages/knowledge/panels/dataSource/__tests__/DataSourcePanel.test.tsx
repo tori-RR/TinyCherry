@@ -151,7 +151,7 @@ vi.mock('@cherrystudio/ui', async (importOriginal) => {
         </span>
       )
     },
-    Scrollbar: ({ children }: { children: ReactNode }) => <div>{children}</div>
+    ScrollArea: ({ children }: { children: ReactNode }) => <div>{children}</div>
   }
 })
 

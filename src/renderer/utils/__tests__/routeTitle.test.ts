@@ -10,6 +10,8 @@ vi.mock('@renderer/i18n/resolver', () => ({
         'agent.sidebar_title': '任务',
         'title.work': '工作',
         'title.paintings': '绘画',
+        'title.marketplace': '广场',
+        'settings.scheduledTasks.title': '定时任务',
         'title.translate': '翻译',
         'title.apps': '小程序',
         'title.knowledge': '知识库',
@@ -24,13 +26,7 @@ vi.mock('@renderer/i18n/resolver', () => ({
   }
 }))
 
-import {
-  getDefaultRouteTitle,
-  getRouteTitleKey,
-  isPageTitledRoute,
-  isTopLevelRoute,
-  shouldAutoLocalizeRouteTitle
-} from '../routeTitle'
+import { getDefaultRouteTitle, getRouteTitleKey, isTopLevelRoute } from '../routeTitle'
 
 describe('routeTitle', () => {
   beforeEach(() => {
@@ -43,6 +39,8 @@ describe('routeTitle', () => {
         ['/app/chat', '对话'],
         ['/app/agents', '工作'],
         ['/app/paintings', '绘画'],
+        ['/app/marketplace', '广场'],
+        ['/app/scheduled-tasks', '定时任务'],
         ['/app/mini-app', '小程序'],
         ['/app/files', '文件'],
         ['/app/code', 'Code'],
@@ -92,45 +90,16 @@ describe('routeTitle', () => {
     })
 
     describe('edge cases', () => {
-      it('should handle trailing slashes', () => {
-        expect(getDefaultRouteTitle('/app/chat/')).toBe('对话')
-        expect(getDefaultRouteTitle('/settings/')).toBe('设置')
-      })
-
-      it('should handle double slashes (protocol-relative URL)', () => {
-        // '//chat' is a protocol-relative URL, so 'chat' becomes the hostname
-        // This is expected behavior per URL standard
-        expect(getDefaultRouteTitle('//chat')).toBe('/')
-      })
-
-      it('should handle relative-like paths', () => {
-        // URL constructor with base will normalize these
-        expect(getDefaultRouteTitle('app/chat')).toBe('对话')
-        expect(getDefaultRouteTitle('./app/chat')).toBe('对话')
+      it('should reject double slashes (protocol-relative URL)', () => {
+        // '//chat' is a protocol-relative URL, so 'chat' parses as the host,
+        // not an app-route path. parseAppRouteUrl rejects it and the title
+        // falls back to the empty string.
+        expect(getDefaultRouteTitle('//chat')).toBe('')
       })
     })
   })
 
   describe('getRouteTitleKey', () => {
-    describe('exact matches', () => {
-      it.each([
-        ['/app/chat', 'agent.session.group.conversation'],
-        ['/app/agents', 'title.work'],
-        ['/app/release-notes', 'settings.about.releases.title'],
-        ['/settings', 'title.settings']
-      ])('should return i18n key for %s', (url, expectedKey) => {
-        expect(getRouteTitleKey(url)).toBe(expectedKey)
-      })
-    })
-
-    describe('base path matches', () => {
-      it('should return base path key for nested routes', () => {
-        expect(getRouteTitleKey('/app/chat/topic-123')).toBe('agent.session.group.conversation')
-        expect(getRouteTitleKey('/app/agents/session-123')).toBe('title.work')
-        expect(getRouteTitleKey('/settings/provider')).toBe('title.settings')
-      })
-    })
-
     describe('unknown routes', () => {
       it('should return undefined for unknown routes', () => {
         expect(getRouteTitleKey('/unknown')).toBeUndefined()
@@ -148,42 +117,6 @@ describe('routeTitle', () => {
       expect(isTopLevelRoute('/app/chat?topicId=123')).toBe(false)
       expect(isTopLevelRoute('/app/agents#session')).toBe(false)
       expect(isTopLevelRoute('/app/chat/topic-123')).toBe(false)
-    })
-  })
-
-  describe('isPageTitledRoute', () => {
-    it('treats chat/agent routes as page-titled regardless of query/sub-path', () => {
-      expect(isPageTitledRoute('/app/chat')).toBe(true)
-      expect(isPageTitledRoute('/app/chat?topicId=123')).toBe(true)
-      expect(isPageTitledRoute('/app/agents')).toBe(true)
-      expect(isPageTitledRoute('/app/agents?sessionId=abc')).toBe(true)
-    })
-
-    it('treats route-titled apps as not page-titled', () => {
-      expect(isPageTitledRoute('/app/files')).toBe(false)
-      expect(isPageTitledRoute('/app/paintings/zhipu')).toBe(false)
-      expect(isPageTitledRoute('/settings')).toBe(false)
-    })
-  })
-
-  describe('shouldAutoLocalizeRouteTitle', () => {
-    it.each([
-      // Top-level routes always re-localize.
-      ['/app/chat', true],
-      ['/settings', true],
-      ['/app/paintings', true],
-      ['/app/release-notes', true],
-      // Paintings sub-routes inherit the section title (splat route, no per-entity title).
-      ['/app/paintings/zhipu', true],
-      // Any /settings sub-route re-localizes.
-      ['/settings/provider/openai', true],
-      // mini-app and chat sub-routes preserve caller-supplied per-entity titles.
-      ['/app/mini-app/weather', false],
-      ['/app/chat/123', false],
-      // Unknown routes are not auto-localized.
-      ['/unknown', false]
-    ])('should return %s -> %s', (url, expected) => {
-      expect(shouldAutoLocalizeRouteTitle(url)).toBe(expected)
     })
   })
 })

@@ -420,7 +420,7 @@ vi.mock('@cherrystudio/ui', () => {
         {children}
       </button>
     ),
-    Scrollbar: ({ children, ...props }: { children: ReactNode; [key: string]: unknown }) => (
+    ScrollArea: ({ children, ...props }: { children: ReactNode; [key: string]: unknown }) => (
       <div {...props}>{children}</div>
     ),
     SearchInput: ({

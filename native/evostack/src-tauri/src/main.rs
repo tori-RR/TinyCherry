@@ -101,6 +101,13 @@ impl Backend {
         let pending_reader = pending.clone();
         let events: Arc<Mutex<Option<Channel<Value>>>> = Arc::new(Mutex::new(None));
         let event_reader = events.clone();
+        let control_events = events.clone();
+        controls.set_control_events(Arc::new(move |controls| {
+            let channel = control_events.lock().unwrap().clone();
+            if let Some(channel) = channel {
+                let _ = channel.send(json!({"channel":"ipc-api:event","args":["computer_use.controls_changed",controls]}));
+            }
+        }));
         let alive = Arc::new(AtomicBool::new(true));
         let reader_alive = alive.clone();
         let shutting_down = Arc::new(AtomicBool::new(false));
@@ -596,12 +603,7 @@ async fn ipc_request(
             .first()
             .and_then(Value::as_str)
             .ok_or("Missing route")?;
-        if matches!(
-            route,
-            "computer_use.get_permission_status"
-                | "computer_use.request_permissions"
-                | "skill.folder.open"
-        ) {
+        if route.starts_with("computer_use.") || route == "skill.folder.open" {
             let window = window.clone();
             let backend = backend.inner().clone();
             let route = route.to_owned();

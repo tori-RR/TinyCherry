@@ -6,6 +6,7 @@ import { useAppUpdateState } from '@renderer/hooks/useAppUpdateState'
 import { ipcApi, useIpcOn } from '@renderer/ipc'
 import { popup } from '@renderer/services/popup'
 import { toast } from '@renderer/services/toast'
+import type { CacheAppUpdateState } from '@shared/data/cache/cacheValueTypes'
 
 const logger = loggerService.withContext('useAppUpdateHandler')
 
@@ -14,7 +15,9 @@ const logger = loggerService.withContext('useAppUpdateHandler')
 const GITHUB_RELEASES_URL = 'https://github.com/CherryHQ/cherry-studio/releases'
 
 /** Map updater failures to i18n keys. Never surface the raw HTTP body. */
-export function getManualUpdateErrorMessageKey(error: { message?: string } | null | undefined): string {
+export function getManualUpdateErrorMessageKey(
+  error: { message?: string } | null | undefined
+): NonNullable<CacheAppUpdateState['lastErrorKey']> {
   const message = error?.message ?? ''
   if (isUnpublishedReleaseError(message)) {
     return 'settings.about.updateNotPublished'
@@ -47,7 +50,7 @@ export function useAppUpdateHandler() {
   }, [appUpdateState.manualCheck])
 
   useIpcOn('app.updater.not_available', (payload) => {
-    updateAppUpdateState({ checking: false, manualCheck: false })
+    updateAppUpdateState({ checking: false, manualCheck: false, lastErrorKey: null })
     // Only surface the result for a user-initiated check.
     if (!manualCheckRef.current) return
     // A withheld feed (withdrawn, staged, or stale target) is not "up to date":
@@ -78,7 +81,8 @@ export function useAppUpdateHandler() {
       checking: false,
       downloading: true,
       info: releaseInfo,
-      available: true
+      available: true,
+      lastErrorKey: null
     })
   })
 
@@ -93,7 +97,8 @@ export function useAppUpdateHandler() {
     updateAppUpdateState({
       downloading: false,
       info: releaseInfo,
-      downloaded: true
+      downloaded: true,
+      lastErrorKey: null
     })
     // Auto show update dialog when download completes (only if user manually triggered the check).
     // Dynamic import (S6c): the dialog drags the streamdown/remark markdown stack
@@ -114,7 +119,8 @@ export function useAppUpdateHandler() {
       checking: false,
       downloading: false,
       downloadProgress: 0,
-      manualCheck: false
+      manualCheck: false,
+      lastErrorKey: getManualUpdateErrorMessageKey(error)
     })
     // AppUpdaterService swallows updater failures after broadcasting UpdateError, so
     // AboutSettings.onCheckUpdate never sees them — surface it here for manual checks.

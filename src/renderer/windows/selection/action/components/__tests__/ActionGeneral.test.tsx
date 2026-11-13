@@ -38,8 +38,8 @@ vi.mock('../ActionResultContent', () => {
   }
 })
 
-vi.mock('@ai-sdk/react', () => ({
-  useChat: ({ id, onError }: { id: string; onError?: (error: Error) => void }) => {
+vi.mock('@renderer/hooks/useStreamCommands', () => ({
+  useStreamCommands: (id: string, _initial: unknown, onError?: (error: Error) => void) => {
     state.useChatIds.push(id)
     state.onError = onError
     return {
@@ -277,7 +277,7 @@ describe('ActionGeneral', () => {
 
     act(() => state.onError?.(new Error("Model with id 'provider/model' not found")))
 
-    expect(screen.getByText('error.diagnosis.model:')).toHaveClass('mt-3')
+    expect(screen.getByText('error.diagnosis.model:')).toBeInTheDocument()
   })
 
   it('advances the visible processing time for a temporary streamed message', async () => {

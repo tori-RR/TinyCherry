@@ -12,6 +12,7 @@ interface NavigateToolInput {
 const ROUTE_LABELS: Record<string, { icon: string; labelKey: string }> = {
   // Top-level pages
   '/app/chat': { icon: '💬', labelKey: 'agent.session.group.conversation' },
+  '/app/scheduled-tasks': { icon: '⏰', labelKey: 'settings.scheduledTasks.title' },
   '/app/paintings': { icon: '🎨', labelKey: 'title.paintings' },
   '/app/files': { icon: '📁', labelKey: 'title.files' },
   '/app/notes': { icon: '📝', labelKey: 'title.notes' },
@@ -34,7 +35,6 @@ const ROUTE_LABELS: Record<string, { icon: string; labelKey: string }> = {
   '/settings/about': { icon: 'ℹ️', labelKey: 'settings.about.label' },
   '/settings/code-execution': { icon: '⚙️', labelKey: 'chat.settings.code_execution.title' },
   '/settings/dependencies': { icon: '🛠️', labelKey: 'settings.dependencies.title' },
-  '/settings/scheduled-tasks': { icon: '⏰', labelKey: 'settings.scheduledTasks.title' },
   '/settings/skills': { icon: '🧰', labelKey: 'settings.skills.title' },
   '/settings/usage': { icon: '📊', labelKey: 'settings.usage.title' },
 

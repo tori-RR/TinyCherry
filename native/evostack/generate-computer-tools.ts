@@ -11,7 +11,7 @@ writeFileSync(
   `${directory}/computer-tools.json`,
   JSON.stringify(
     computerUseToolDefinitions
-      // The pinned helper cannot reliably route background keys to the focused child control.
+      // Keep background key dispatch disabled until its focused-control effect is verified.
       .filter(({ name }) => name !== 'press_key')
       .map(({ name, description, inputSchema }) => ({
         type: 'function',

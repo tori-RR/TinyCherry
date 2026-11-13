@@ -12,7 +12,6 @@ vi.mock('@renderer/components/CodeStyleProvider', () => ({
   CodeStyleProvider: ({ children }: { children: React.ReactNode }) => children
 }))
 vi.mock('@renderer/components/ToastHost', () => ({ default: () => null }))
-vi.mock('@renderer/components/VoicePlaybackHost', () => ({ VoicePlaybackHost: () => null }))
 
 // Cut the heavy content import graph (ActionWindow drags the chat render chain);
 // the wiring under test is the boundary around the providers.

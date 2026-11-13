@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 
+import { applyMessageProjectionUpdate } from '../../src/shared/ai/messageProjection'
 import { InstalledSkillSchema } from '../../src/shared/data/api/schemas/skills'
 import { AssistantSchema } from '../../src/shared/data/types/assistant'
 import {
@@ -15,6 +17,7 @@ import {
 } from '../../src/shared/data/types/knowledge'
 import { MessageSchema } from '../../src/shared/data/types/message'
 import { ModelSchema } from '../../src/shared/data/types/model'
+import { NotificationRecordSchema } from '../../src/shared/data/types/notification'
 import {
   PromptBindingRelationSchema,
   PromptBindingTargetSchema,
@@ -22,7 +25,10 @@ import {
 } from '../../src/shared/data/types/prompt'
 import { ProviderSchema } from '../../src/shared/data/types/provider'
 import { TopicSchema } from '../../src/shared/data/types/topic'
+import { aiRequestSchemas } from '../../src/shared/ipc/schemas/ai'
+import { assistantRequestSchemas } from '../../src/shared/ipc/schemas/assistant'
 import { fileRequestSchemas } from '../../src/shared/ipc/schemas/file'
+import { notificationRequestSchemas } from '../../src/shared/ipc/schemas/notification'
 import { skillRequestSchemas } from '../../src/shared/ipc/schemas/skill'
 
 async function main(): Promise<void> {
@@ -31,16 +37,54 @@ async function main(): Promise<void> {
   mkdirSync(evidence, { recursive: true })
   const syntheticKey = 'evostack-local-contract-test-only'
   let providerCalls = 0
+  let invalidProbe = false
+  const requests: any[] = []
   const service = createServer((request, response) => {
     assert.equal(request.headers.authorization, `Bearer ${syntheticKey}`)
     providerCalls++
+    let body = ''
+    request.on('data', (chunk) => (body += chunk))
+    request.on('end', () => {
+      const payload = JSON.parse(body)
+      requests.push(payload)
+      if (payload.stream === false) {
+        response.writeHead(200, { 'Content-Type': 'application/json' })
+        response.end(
+          JSON.stringify(
+            invalidProbe
+              ? { error: { message: 'synthetic error despite HTTP 200' } }
+              : {
+                  id: 'contract',
+                  object: 'chat.completion',
+                  created: 1,
+                  model: payload.model,
+                  choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }]
+                }
+          )
+        )
+        return
+      }
+      response.writeHead(200, { 'Content-Type': 'text/event-stream' })
+      response.write('data: {"choices":[{"delta":{"content":"EvoStack 真实协议通过"}}]}\n\n')
+      if (payload.messages.some((message: any) => message.content === '停止契约测试')) response.flushHeaders()
+      else response.end('data: [DONE]\n\n')
+    })
+  })
+  const proxyRequests: { url: string; header: string | undefined }[] = []
+  const proxy = createServer((request, response) => {
+    proxyRequests.push({ url: request.url ?? '', header: request.headers['x-evostack-contract'] as string | undefined })
+    assert.equal(request.url, 'http://audit.invalid/v1/chat/completions')
+    assert.equal(request.headers.authorization, `Bearer ${syntheticKey}`)
     response.writeHead(200, { 'Content-Type': 'text/event-stream' })
-    response.end('data: {"choices":[{"delta":{"content":"EvoStack 真实协议通过"}}]}\n\ndata: [DONE]\n\n')
+    response.end('data: {"choices":[{"delta":{"content":"proxy loopback only"}}]}\n\ndata: [DONE]\n\n')
   })
   await new Promise<void>((resolve) => service.listen(0, '127.0.0.1', resolve))
   const address = service.address()
   assert(address && typeof address === 'object')
   const baseUrl = `http://127.0.0.1:${address.port}/v1`
+  await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve))
+  const proxyAddress = proxy.address()
+  assert(proxyAddress && typeof proxyAddress === 'object')
   const child = spawn(
     process.env.EVOSTACK_BACKEND_EXECUTABLE ?? resolve(root, 'dist/portable/tinycherry-evostack-backend.exe'),
     ['--data-dir', evidence],
@@ -88,8 +132,8 @@ async function main(): Promise<void> {
     })
   }
   const invoke = (channel: string, ...args: unknown[]) => rpc('ipc.invoke', { channel, args })
-  const data = async (method: string, path: string, body?: unknown) => {
-    const response = await invoke('data-api:request', { id: `test-${nextId}`, method, path, body })
+  const data = async (method: string, path: string, body?: unknown, params?: unknown) => {
+    const response = await invoke('data-api:request', { id: `test-${nextId}`, method, path, body, params })
     assert(!response.error, response.error?.message)
     return response.data
   }
@@ -98,6 +142,17 @@ async function main(): Promise<void> {
     assert.equal(response.ok, true, response.error?.message)
     return response.data
   }
+  const waitFor = async (predicate: () => boolean) => {
+    const deadline = Date.now() + 10_000
+    while (!predicate()) {
+      if (Date.now() > deadline) throw new Error('contract observation timed out')
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+  }
+  const waitDone = (topicId: string, from: number) =>
+    waitFor(() =>
+      events.slice(from).some((event) => event.args[0] === 'ai.stream.done' && event.args[1].topicId === topicId)
+    )
   const preview = async (file: string, expectedText: string) => {
     // Exercise the original preview adapter's strict metadata/read version comparison,
     // including files whose filesystem timestamp has a fractional millisecond.
@@ -116,6 +171,7 @@ async function main(): Promise<void> {
   }
   try {
     assert.equal((await rpc('backend.info', null)).backend, 'go')
+    await invoke('preference:set', 'app.proxy.mode', 'none')
     const provider = ProviderSchema.parse(
       await data('POST', '/providers', {
         providerId: 'evostack-contract',
@@ -124,11 +180,25 @@ async function main(): Promise<void> {
       })
     )
     await data('POST', `/providers/${provider.id}/api-keys`, { key: syntheticKey })
-    const [model] = await data('POST', '/models', [{ providerId: provider.id, modelId: 'local-test' }])
+    const [model] = await data('POST', '/models', [{ providerId: provider.id, modelId: 'vendor/local-test' }])
     ModelSchema.parse(model)
+    assert.equal(ModelSchema.parse(await data('GET', `/models/${model.id}`)).id, model.id)
     const assistant = AssistantSchema.parse(
       await data('POST', '/assistants', { name: '原界面助手', modelId: model.id })
     )
+    const imageBytes = Uint8Array.from(Buffer.from('UklGRiIAAABXRUJQVlA4TBUAAAAvAAAAAAfQ//73v/+BiOh/AAA=', 'base64'))
+    const avatarInput = assistantRequestSchemas['assistant.set_avatar'].input.parse({
+      assistantId: assistant.id,
+      avatar: { kind: 'image', data: imageBytes }
+    })
+    assistantRequestSchemas['assistant.set_avatar'].output.parse(
+      await command('assistant.set_avatar', {
+        ...avatarInput,
+        avatar: { ...avatarInput.avatar, data: [...imageBytes] }
+      })
+    )
+    const withAvatar = AssistantSchema.parse(await data('GET', `/assistants/${assistant.id}`))
+    assert(withAvatar.avatarFileId && withAvatar.avatarSrc?.startsWith('data:image/webp;base64,'))
     const prompt = PromptSchema.parse(
       await data('POST', '/prompts', {
         title: '契约提示词',
@@ -193,6 +263,13 @@ async function main(): Promise<void> {
     await preview(await command('knowledge.get_file_path', { itemId: knowledgeItem.id }), 'EvoStackContractFixture')
 
     const topic = TopicSchema.parse(await data('POST', '/topics', { assistantId: assistant.id }))
+    const subscriptionId = randomUUID()
+    const projectionInput = { target: { kind: 'topic' as const, topicId: topic.id }, subscriptionId }
+    let projection = aiRequestSchemas['ai.projection.attach'].output.parse(
+      await command('ai.projection.attach', aiRequestSchemas['ai.projection.attach'].input.parse(projectionInput))
+    )
+    assert(projection?.kind === 'topic' && projection.messages.length === 0)
+    const streamStart = events.length
     const open = await invoke('ipc-api:request', 'ai.stream.open', {
       topicId: topic.id,
       trigger: 'submit-message',
@@ -200,11 +277,23 @@ async function main(): Promise<void> {
     })
     assert.equal(open.ok, true, open.error?.message)
     assert.equal(open.data.mode, 'started')
-    const deadline = Date.now() + 10_000
-    while (!events.some((event) => event.args[0] === 'ai.stream.done')) {
-      if (Date.now() > deadline) throw new Error('stream did not complete')
-      await new Promise((resolve) => setTimeout(resolve, 20))
+    await waitDone(topic.id, streamStart)
+    for (const event of events.slice(streamStart)) {
+      if (event.args[0] !== 'ai.projection.changed' || event.args[1].subscriptionId !== subscriptionId) continue
+      const next = applyMessageProjectionUpdate(projection, event.args[1].update)
+      assert(next, 'original shared projection consumer rejected Go revision or patch')
+      projection = next
     }
+    assert(projection?.kind === 'topic')
+    assert.equal(projection.executions[0]?.status, 'done')
+    assert.equal(
+      projection.messages[0].parts
+        .filter((part) => part.type === 'text')
+        .map((part) => part.text)
+        .join(''),
+      'EvoStack 真实协议通过'
+    )
+    aiRequestSchemas['ai.projection.detach'].output.parse(await command('ai.projection.detach', projectionInput))
     const branch = await data('GET', `/topics/${topic.id}/messages`)
     assert.equal(branch.items.length, 2)
     for (const { message } of branch.items) MessageSchema.parse(message)
@@ -215,7 +304,129 @@ async function main(): Promise<void> {
       'EvoStack 真实协议通过'
     )
     assert.equal(branch.items[1].message.status, 'success')
+    assert.equal(branch.items[1].message.messageSnapshot.avatarFileId, withAvatar.avatarFileId)
     assert.equal(providerCalls, 1)
+
+    assistantRequestSchemas['assistant.set_avatar'].output.parse(
+      await command('assistant.set_avatar', { assistantId: assistant.id, avatar: { kind: 'default' } })
+    )
+    const resetAvatar = AssistantSchema.parse(await data('GET', `/assistants/${assistant.id}`))
+    assert.equal(resetAvatar.avatarFileId, undefined)
+    assert.equal(resetAvatar.emoji, withAvatar.emoji)
+    const avatarRead = await command('file.read', {
+      handle: { kind: 'entry', entryId: withAvatar.avatarFileId },
+      options: { mode: 'full', encoding: 'binary' }
+    })
+    const historicalAvatar = fileRequestSchemas['file.read'].output.parse({
+      ...avatarRead,
+      content: Uint8Array.from(avatarRead.content)
+    })
+    assert.deepEqual(historicalAvatar.content, imageBytes)
+    assert.equal(historicalAvatar.mime, 'image/webp')
+
+    const notificationPage = await data('GET', '/notifications', undefined, { limit: 1 })
+    const [notification] = NotificationRecordSchema.array().parse(notificationPage.items)
+    assert(notification?.target?.kind === 'conversation')
+    assert.equal(notification.target.conversationId, topic.id)
+    assert.equal(notification.target.result?.status, 'succeeded')
+    assert.equal(notificationPage.nextCursor, undefined)
+    assert.deepEqual(await data('GET', '/notifications/unread-count'), { count: 1 })
+    const presented = events.find(
+      (event) => event.args[0] === 'notification.present' && event.args[1].id === notification.id
+    )
+    NotificationRecordSchema.parse(presented?.args[1])
+    const navigationStart = events.length
+    notificationRequestSchemas['notification.activate'].output.parse(
+      await command('notification.activate', { id: notification.id })
+    )
+    const navigation = events
+      .slice(navigationStart)
+      .find((event) => event.args[0] === 'navigation.conversation_focus_or_open_requested')
+    assert.deepEqual(navigation?.args[1].target, { conversationType: 'assistant', conversationId: topic.id })
+    assert.deepEqual(await data('GET', '/notifications/unread-count'), { count: 0 })
+    assert.equal(await data('DELETE', `/notifications/${notification.id}`), undefined)
+    assert.deepEqual((await data('GET', '/notifications')).items, [])
+
+    const temporary = aiRequestSchemas['ai.temporary_topic.create'].output.parse(
+      await command('ai.temporary_topic.create', { assistantId: assistant.id })
+    )
+    const temporaryStart = events.length
+    await command('ai.stream.open', {
+      topicId: temporary.id,
+      trigger: 'submit-message',
+      userMessageParts: [{ type: 'text', text: '临时会话契约测试' }]
+    })
+    await waitDone(temporary.id, temporaryStart)
+    assert(!(await data('GET', '/topics')).items.some((item: { id: string }) => item.id === temporary.id))
+    assert.deepEqual((await data('GET', '/notifications')).items, [])
+    const temporaryBranch = await data('GET', `/topics/${temporary.id}/messages`)
+    for (const { message } of temporaryBranch.items) MessageSchema.parse(message)
+    aiRequestSchemas['ai.temporary_topic.persist'].output.parse(
+      await command('ai.temporary_topic.persist', { id: temporary.id })
+    )
+    const persisted = TopicSchema.parse(await data('GET', `/topics/${temporary.id}`))
+    assert.equal(persisted.activeNodeId, temporaryBranch.activeNodeId)
+    assert.equal(persisted.createdAt, temporary.createdAt)
+    assert.deepEqual((await data('GET', `/topics/${temporary.id}/messages`)).items, temporaryBranch.items)
+    const discarded = TopicSchema.parse(await command('ai.temporary_topic.create', {}))
+    aiRequestSchemas['ai.temporary_topic.delete'].output.parse(
+      await command('ai.temporary_topic.delete', { id: discarded.id })
+    )
+
+    const stopping = TopicSchema.parse(await data('POST', '/topics', { assistantId: assistant.id }))
+    const stopStart = events.length
+    await command('ai.stream.open', {
+      topicId: stopping.id,
+      trigger: 'submit-message',
+      userMessageParts: [{ type: 'text', text: '停止契约测试' }]
+    })
+    await waitFor(() =>
+      events
+        .slice(stopStart)
+        .some(
+          (event) =>
+            event.args[0] === 'ai.stream.chunk' &&
+            event.args[1].topicId === stopping.id &&
+            event.args[1].chunk.type === 'text-delta'
+        )
+    )
+    aiRequestSchemas['ai.stream.abort'].output.parse(await command('ai.stream.abort', { topicId: stopping.id }))
+    await waitDone(stopping.id, stopStart)
+    const stopped = await data('GET', `/topics/${stopping.id}/messages`)
+    const stoppedReply = MessageSchema.parse(stopped.items[1].message)
+    assert.equal(stoppedReply.status, 'paused')
+    assert(stoppedReply.data.parts?.some((part) => part.type === 'text' && part.text.length > 0))
+    const stoppedResult = NotificationRecordSchema.array().parse((await data('GET', '/notifications')).items)
+    assert(stoppedResult.some((record) => record.target?.result?.status === 'cancelled' && record.readAt !== null))
+
+    aiRequestSchemas['ai.provider.model.check'].output.parse(
+      await command('ai.provider.model.check', { uniqueModelId: model.id })
+    )
+    invalidProbe = true
+    const invalidHealth = await invoke('ipc-api:request', 'ai.provider.model.check', { uniqueModelId: model.id })
+    assert.equal(invalidHealth.ok, false, 'HTTP 200 error body was accepted as a model completion')
+    invalidProbe = false
+
+    await invoke('preference:set', 'app.proxy.mode', 'custom')
+    await invoke('preference:set', 'app.proxy.url', `http://127.0.0.1:${proxyAddress.port}`)
+    await data('PATCH', `/providers/${provider.id}`, {
+      endpointConfigs: { 'openai-chat-completions': { baseUrl: 'http://audit.invalid/v1' } },
+      providerSettings: { extraHeaders: { 'X-EvoStack-Contract': 'local-only' } }
+    })
+    const proxied = TopicSchema.parse(await data('POST', '/topics', { assistantId: assistant.id }))
+    const proxyStart = events.length
+    await command('ai.stream.open', {
+      topicId: proxied.id,
+      trigger: 'submit-message',
+      userMessageParts: [{ type: 'text', text: '本地代理契约测试' }]
+    })
+    await waitDone(proxied.id, proxyStart)
+    assert.deepEqual(proxyRequests, [{ url: 'http://audit.invalid/v1/chat/completions', header: 'local-only' }])
+    assert.equal(
+      (await data('GET', `/topics/${proxied.id}/messages`)).items[1].message.searchableText,
+      'proxy loopback only'
+    )
+    assert(requests.every((request) => request.model === 'vendor/local-test'))
     const unsupported = await invoke('ipc-api:request', 'ai.agent.create', { name: 'unsupported' })
     assert.equal(unsupported.ok, false)
     assert.match(unsupported.error.message, /NOT_MIGRATED/)
@@ -245,9 +456,20 @@ async function main(): Promise<void> {
             'knowledge-base',
             'knowledge-item',
             'knowledge-chunk',
-            'knowledge-search'
+            'knowledge-search',
+            'assistant-avatar-webp',
+            'historical-avatar-file-read',
+            'message-projection-consumer',
+            'notification-record',
+            'notification-read-dismiss-activate',
+            'temporary-chat-persist-discard',
+            'stream-stop-partial',
+            'model-health-200-error',
+            'custom-proxy-loopback-and-headers',
+            'model-greedy-id'
           ],
           providerCalls,
+          proxyCalls: proxyRequests.length,
           events: events.length
         },
         null,
@@ -259,10 +481,11 @@ async function main(): Promise<void> {
   } finally {
     child.stdin.end()
     await new Promise<void>((resolve) => service.close(() => resolve()))
+    await new Promise<void>((resolve) => proxy.close(() => resolve()))
   }
 }
 
 void main().catch((error) => {
-  process.stderr.write(`${String(error)}\n`)
+  process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`)
   process.exitCode = 1
 })

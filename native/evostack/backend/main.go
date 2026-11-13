@@ -67,18 +67,21 @@ type server struct {
 
 // Transaction views share process state while keeping their repository executor local.
 type serverState struct {
-	computerHost      computerHost
-	computerEpoch     uint64
-	skills            *skillRuntime
-	mu                sync.Mutex
-	interrupts        sync.Map
-	networkTransports *transportPool
-	writer            *wireWriter
-	active            map[string]*generation
-	shared            object
-	attempt           int64
-	context           context.Context
-	cancel            context.CancelFunc
+	computerHost            computerHost
+	computerEpoch           uint64
+	skills                  *skillRuntime
+	mu                      sync.Mutex
+	interrupts              sync.Map
+	networkTransports       *transportPool
+	writer                  *wireWriter
+	active                  map[string]*generation
+	shared                  object
+	attempt                 int64
+	projections             map[string]*topicProjection
+	projectionSubscriptions map[string]string
+	projectionClock         uint64
+	context                 context.Context
+	cancel                  context.CancelFunc
 }
 
 func (s *server) registerGenerationCancel(topicID string, cancel context.CancelFunc) {
@@ -124,7 +127,7 @@ func (s *server) changed(endpoints ...string) {
 	for _, endpoint := range endpoints {
 		effect := object{"endpoint": endpoint}
 		switch endpoint {
-		case "/providers", "/models", "/assistants", "/topics", "/topics/:topicId/messages", "/groups", "/pins", "/tags", "/prompts", "/prompt-bindings", "/prompts/:id/bindings", "/prompt-bindings/:targetType/:targetId", "/skills", "/knowledge-bases", "/knowledge-bases/:id/items", "/archives":
+		case "/providers", "/models", "/assistants", "/topics", "/topics/:topicId/messages", "/groups", "/pins", "/tags", "/prompts", "/prompt-bindings", "/prompts/:id/bindings", "/prompt-bindings/:targetType/:targetId", "/skills", "/knowledge-bases", "/knowledge-bases/:id/items", "/archives", "/notifications":
 			effect["kind"] = "membership"
 		}
 		effects = append(effects, effect)

@@ -101,7 +101,7 @@ vi.mock('@cherrystudio/ui', async () => {
     Label: ({ children, ...props }: { children: ReactNode; [key: string]: unknown }) => (
       <label {...props}>{children}</label>
     ),
-    Scrollbar: ({ children, ...props }: { children: ReactNode; [key: string]: unknown }) => (
+    ScrollArea: ({ children, ...props }: { children: ReactNode; [key: string]: unknown }) => (
       <div {...props}>{children}</div>
     ),
     Input: (props: Record<string, unknown>) => <input {...props} />,

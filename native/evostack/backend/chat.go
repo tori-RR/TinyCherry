@@ -34,6 +34,7 @@ type generation struct {
 	computerLabel         string
 	computerVisionEnabled bool
 	streamingStatusSent   bool
+	projectionErr         error
 }
 
 func (g *generation) appendAnswer(kind, value string) {
@@ -98,8 +99,14 @@ func (s *server) openGeneration(input object) (any, error, func()) {
 	if topicID == "" {
 		return nil, errors.New("topicId required"), nil
 	}
+	if s.store.temporary.isDeleting(topicID) {
+		return nil, errors.New("temporary topic is being discarded"), nil
+	}
 	if s.context.Err() != nil {
 		return nil, errors.New("backend is closing"), nil
+	}
+	if s.store.temporary.has(topicID) && (input["trigger"] == "regenerate-message" || input["trigger"] == "continue-conversation" || input["trigger"] == "steer-continuation") {
+		return nil, notMigrated("temporary chat branching"), nil
 	}
 	if s.active[topicID] != nil {
 		return nil, errors.New("TOPIC_BUSY: stop the current reply before sending again"), nil
@@ -213,6 +220,9 @@ func (s *server) openGeneration(input object) (any, error, func()) {
 			user = existing
 		}
 		snapshot := object{"id": assistant["id"], "name": assistant["name"], "emoji": assistant["emoji"], "model": object{"id": model["id"], "name": model["name"], "provider": provider["id"]}}
+		if id := text(assistant["avatarFileId"]); id != "" {
+			snapshot["avatarFileId"] = id
+		}
 		reply, err = s.createMessage(topic, object{"role": "assistant", "parentId": user["id"], "data": object{"parts": []any{}}, "modelId": modelID, "messageSnapshot": snapshot})
 		return err
 	})
@@ -249,6 +259,7 @@ func (s *server) openGeneration(input object) (any, error, func()) {
 	g := &generation{topicID: topicID, executionID: modelID, attempt: s.attempt, row: reply, user: user, frames: []object{}, parts: []any{}, cancel: cancel, done: make(chan struct{}), computerTaskID: newID(), computerEnabled: computerEnabled, computerLabel: text(assistant["name"]), computerVisionEnabled: computerModelImages(model)}
 	s.active[topicID] = g
 	s.registerGenerationCancel(topicID, cancel)
+	s.updateProjection(g, "active", nil, true)
 	s.cache("topic.stream.statuses."+topicID, object{"status": "pending", "turnId": newID(), "activeExecutions": []object{g.execution()}, "awaitingApprovalAnchors": []any{}})
 	s.changed("/topics", "/topics/:topicId/messages", "/topics/:topicId/tree")
 	modelName := text(model["apiModelId"])
@@ -311,11 +322,22 @@ func (s *server) generate(ctx context.Context, g *generation, config providerReq
 			topicStatus = "error"
 			generationErr = errors.New("generation deadline exceeded")
 		}
+		if g.projectionErr != nil {
+			status, topicStatus, generationErr = "error", "error", g.projectionErr
+		}
+		projectionStatus := "done"
+		if status == "paused" {
+			projectionStatus = "paused"
+		} else if status == "error" {
+			projectionStatus = "error"
+		}
 		if err := s.persistGeneration(g, status); err != nil {
 			status = "error"
 			topicStatus = "error"
 			generationErr = errors.New("failed to persist generated answer")
+			projectionStatus = "unresolved"
 		}
+		s.updateProjection(g, projectionStatus, generationErr, true)
 		if generationErr != nil && status == "error" {
 			event := g.execution()
 			event["topicId"] = g.topicID
@@ -336,6 +358,7 @@ func (s *server) generate(ctx context.Context, g *generation, config providerReq
 			s.event("ai.stream.done", event)
 		}
 		delete(s.active, g.topicID)
+		s.pruneProjections()
 		s.unregisterGenerationCancel(g.topicID)
 		s.cache("topic.stream.statuses."+g.topicID, object{"status": topicStatus, "activeExecutions": []any{}, "awaitingApprovalAnchors": []any{}, "lastCompletedAt": time.Now().UnixMilli()})
 		s.changed("/topics", "/topics/:topicId/messages", "/topics/:topicId/tree")
@@ -358,7 +381,32 @@ func (s *server) persistGeneration(g *generation, status string) error {
 	g.row["searchableText"] = g.answer
 	g.row["status"] = status
 	g.row["updatedAt"] = timestamp()
-	return s.store.put("messages", g.row)
+	if status == "pending" {
+		err := s.store.put("messages", g.row)
+		if err == nil {
+			s.updateProjection(g, "active", nil, false)
+		}
+		return err
+	}
+	err := s.transaction(func(tx *server) error {
+		if err := tx.store.put("messages", g.row); err != nil {
+			return err
+		}
+		record, err := tx.store.generationNotification(g.row, status, time.Now().UnixMilli())
+		if err != nil {
+			return err
+		}
+		if record != nil {
+			tx.store.onCommit(func() {
+				s.notificationEffects()
+				if status != "paused" {
+					s.event("notification.present", record)
+				}
+			})
+		}
+		return nil
+	})
+	return err
 }
 
 func (s *server) modelOperation(route string, input object) (any, error) {

@@ -24,7 +24,7 @@ const sdkEntry = require.resolve('@cherrystudio/computer-use');
 const sdk = JSON.parse(readFileSync(resolve(dirname(sdkEntry), '../package.json'), 'utf8'));
 const packageFile = createRequire(sdkEntry).resolve('@cherrystudio/computer-use-win32-x64/package.json');
 const runtime = JSON.parse(readFileSync(packageFile, 'utf8'));
-if (sdk.version !== '0.1.9' || runtime.version !== sdk.version || runtime.name !== '@cherrystudio/computer-use-win32-x64' || !runtime.os.includes('win32') || !runtime.cpu.includes('x64')) throw new Error('Expected the pinned Windows x64 computer-use 0.1.9 package matching the SDK');
+if (sdk.version !== '0.1.11' || runtime.version !== sdk.version || runtime.name !== '@cherrystudio/computer-use-win32-x64' || !runtime.os.includes('win32') || !runtime.cpu.includes('x64')) throw new Error('Expected the pinned Windows x64 computer-use 0.1.11 package matching the SDK');
 process.stdout.write(JSON.stringify({ directory: dirname(packageFile), version: runtime.version }));
 '@
   if ($LASTEXITCODE -ne 0) { throw 'Computer-use runtime dependency is missing or incompatible' }

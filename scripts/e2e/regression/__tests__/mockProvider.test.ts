@@ -33,7 +33,7 @@ beforeEach(() => {
       platform: process.platform === 'win32' ? 'windows' : 'macos',
       ref: 'test',
       runner: 'local',
-      task: 'notes-smoke',
+      task: 'custom-provider-chat',
       providerMode: 'mock'
     })
   )

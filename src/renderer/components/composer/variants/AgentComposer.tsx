@@ -68,6 +68,7 @@ import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import { toast } from '@renderer/services/toast'
 import type { ThinkingOption } from '@renderer/types/reasoning'
 import { TopicType } from '@renderer/types/topic'
+import { getPermissionModeCards } from '@renderer/utils/agent'
 import { buildAgentFileWorkspaceKey, buildAgentSessionTopicId } from '@renderer/utils/agentSession'
 import {
   getComposerShortcutLabel,
@@ -455,7 +456,7 @@ interface InnerProps {
 
 function AgentComposerContextUsage({ model, sessionId }: { model?: Model; sessionId: string }) {
   const { t } = useTranslation()
-  const { percentage, usage, maxTokens } = useAgentSessionContextUsage(sessionId, model)
+  const { percentage, usage } = useAgentSessionContextUsage(sessionId, model)
   const compaction = useAgentSessionCompaction(sessionId)
   if (percentage === null || !usage) return null
 
@@ -476,7 +477,6 @@ function AgentComposerContextUsage({ model, sessionId }: { model?: Model; sessio
         <AgentContextUsageSummary
           usage={usage}
           percentage={percentage}
-          maxTokens={maxTokens}
           isCompacting={isCompacting}
           modelName={model?.name}
           showCategories={false}
@@ -543,6 +543,7 @@ const AgentComposerInner = ({
   const toolLaunchersVersion = useComposerToolLauncherVersion()
   const [enableSpellCheck] = usePreference('app.spell_check.enabled')
   const [fontSize] = usePreference('chat.message.font_size')
+  const [renderInputMessageAsMarkdown] = usePreference('chat.message.render_as_markdown')
   const [narrowMode] = usePreference('chat.narrow_mode')
   // Yield the same rail gutter as the message column so the composer stays aligned.
   const { railGutterPx, sidePaddingPx } = useChatLayoutMode()
@@ -621,6 +622,7 @@ const AgentComposerInner = ({
   const [shouldValidateSkills, setShouldValidateSkills] = useState(initialDraft.shouldValidateSkills)
   const [text, setTextState] = useState(() => initialDraft.text)
   const [draftTokens, setDraftTokens] = useState<ComposerSerializedToken[]>(() => initialDraft.tokens)
+  const supportsPlan = !!agent && getPermissionModeCards(agent.type).some((card) => card.mode === 'plan')
   const [isDirectSending, setIsDirectSending] = useState(false)
   const directSendInFlightRef = useRef(false)
   const releaseFollowupEditRef = useRef<() => void>(() => {})
@@ -633,6 +635,10 @@ const AgentComposerInner = ({
   const workspaceWarning = resolvedWorkspaceWarning ?? undefined
   const compaction = useAgentSessionCompaction(sessionId)
   const quickPanel = useOptionalQuickPanel()
+  const togglePlanMode = useCallback(() => {
+    const launcher = getLaunchers('root-panel').find((entry) => entry.id === 'plan-mode')
+    if (launcher && quickPanel) dispatchLauncher(launcher, { quickPanel, source: 'root-panel' })
+  }, [dispatchLauncher, getLaunchers, quickPanel])
   const rootPanelVisible =
     layerActive && Boolean(quickPanel?.isVisible && quickPanel.symbol === ComposerPanelSymbol.Root)
   const skillsPanelVisible =
@@ -834,7 +840,6 @@ const AgentComposerInner = ({
       shouldValidateSkills
     })
   })
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- `useEffectEvent` reads the latest draft; cleanup is keyed only by persistence/session/workspace.
   useEffect(() => () => persistFinalDraft(), [draftCacheKey, draftPersistenceEnabled, workspaceKey])
 
   const tokens = useMemo(
@@ -1568,6 +1573,7 @@ const AgentComposerInner = ({
       <ResourceEditDialogEventHost />
       <ComposerPinnedToolsProvider value={pinnedLauncherIds}>
         <ComposerSurface
+          markdownLivePreview={renderInputMessageAsMarkdown}
           showAiDisclaimer
           text={text}
           onTextChange={handleTextChange}
@@ -1602,6 +1608,7 @@ const AgentComposerInner = ({
             launchOptions?.editing ? { ...launchOptions.editing, cancelDisabled: isDirectSending } : undefined
           }
           onPause={abortAgentSession}
+          onShiftTab={supportsPlan ? togglePlanMode : undefined}
           queueContent={
             <>
               {compaction.status === 'failed' && (

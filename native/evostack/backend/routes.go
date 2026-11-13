@@ -33,6 +33,10 @@ func (s *server) invoke(channel string, args []any) (any, error, func()) {
 			result, err := s.testProxyConnection(input)
 			return ipcResult(result, err), nil, nil
 		}
+		if strings.HasPrefix(route, "ai.temporary_topic.") {
+			result, err := s.temporaryCommand(route, input)
+			return ipcResult(result, err), nil, nil
+		}
 		if route == "ai.stream.abort" {
 			err := s.abort(text(input["topicId"]))
 			return ipcResult(nil, err), nil, nil
@@ -93,7 +97,10 @@ func (s *server) invoke(channel string, args []any) (any, error, func()) {
 			})
 		}
 		status := 200
-		response := object{"id": request["id"], "status": status, "data": result}
+		response := object{"id": request["id"], "status": status}
+		if result != nil {
+			response["data"] = result
+		}
 		if err != nil {
 			code := "INVALID_OPERATION"
 			status = 400
@@ -182,6 +189,15 @@ func ipcResult(result any, err error) object {
 
 func (s *server) command(route string, value any) (any, error, func()) {
 	input := obj(value)
+	if route == "assistant.set_avatar" {
+		return nil, s.setAssistantAvatar(input), nil
+	}
+	if route == "notification.activate" {
+		return nil, s.activateNotification(input), nil
+	}
+	if result, err, handled := s.avatarFileCommand(route, input); handled {
+		return result, err, nil
+	}
 	if result, err, handled := s.trashCommand(route, input); handled {
 		return result, err, nil
 	}
@@ -192,6 +208,9 @@ func (s *server) command(route string, value any) (any, error, func()) {
 		return result, err, nil
 	}
 	switch route {
+	case "ai.projection.attach", "ai.projection.detach":
+		result, err := s.projectionCommand(route, input)
+		return result, err, nil
 	case "ai.stream.open":
 		return s.openGeneration(input)
 	case "ai.stream.attach":
@@ -257,6 +276,9 @@ func newModel(body object) object {
 }
 
 func (s *server) data(method, path string, query object, body any) (any, error) {
+	if result, err, handled := s.notificationData(method, path, query, obj(body)); handled {
+		return result, err
+	}
 	if path == "/archives" {
 		if method != "GET" {
 			return nil, notMigrated(method + " " + path)

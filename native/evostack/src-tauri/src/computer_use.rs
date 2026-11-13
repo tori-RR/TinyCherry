@@ -1,4 +1,6 @@
 use serde_json::{json, Value};
+#[path = "computer_ui.rs"]
+mod ui;
 use std::{
     collections::{HashMap, HashSet},
     io::{Read, Write},
@@ -10,6 +12,7 @@ use std::{
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+use ui::{app_keys, ensure_app_available};
 
 const MAX_NATIVE_FRAME: usize = 16 * 1024 * 1024;
 const RESULT_BUDGET: usize = 3 * 1024 * 1024;
@@ -61,7 +64,7 @@ fn closed() -> ControlError {
 fn background_key_unavailable() -> ControlError {
     ControlError::new(
         "BACKGROUND_UNAVAILABLE",
-        "The current Windows helper cannot reliably route background key presses to application controls",
+        "Background key dispatch is disabled until its focused-control effect is verified",
     )
 }
 fn host_capabilities(mut capabilities: Value) -> Value {
@@ -520,8 +523,15 @@ struct SnapshotPermit {
     elements: HashMap<String, HashSet<String>>,
     image: Option<(f64, f64)>,
 }
+#[derive(Clone)]
+struct AppControl {
+    app: Value,
+    status: &'static str,
+    opening: bool,
+}
 struct Task {
     owner: String,
+    label: String,
     epoch: u64,
     cancelled: AtomicBool,
     initialized: AtomicBool,
@@ -530,10 +540,13 @@ struct Task {
     known_apps: Mutex<HashMap<String, Value>>,
     sessions: Mutex<HashMap<String, String>>,
     snapshots: Mutex<HashMap<String, SnapshotPermit>>,
+    apps: Mutex<HashMap<String, AppControl>>,
+    cleanup_unconfirmed: AtomicBool,
 }
 impl Task {
     fn new(owner: String, epoch: u64) -> Self {
         Self {
+            label: owner.clone(),
             owner,
             epoch,
             cancelled: AtomicBool::new(false),
@@ -543,6 +556,8 @@ impl Task {
             known_apps: Mutex::new(HashMap::new()),
             sessions: Mutex::new(HashMap::new()),
             snapshots: Mutex::new(HashMap::new()),
+            apps: Mutex::new(HashMap::new()),
+            cleanup_unconfirmed: AtomicBool::new(false),
         }
     }
     fn cancel(&self) {
@@ -577,10 +592,14 @@ struct ControlState {
     last_revoke_epoch: Option<u64>,
 }
 type RuntimeFactory = Arc<dyn Fn() -> Result<Arc<dyn Runtime>, ControlError> + Send + Sync>;
+type ControlEvents = Arc<dyn Fn(Value) + Send + Sync>;
 pub struct Controller {
     state: Mutex<ControlState>,
     configuration: Mutex<()>,
+    standalone: Mutex<()>,
+    standalone_runtime: Mutex<Option<Arc<dyn Runtime>>>,
     factory: RuntimeFactory,
+    control_events: Mutex<Option<ControlEvents>>,
 }
 impl Controller {
     pub fn new(path: PathBuf) -> Self {
@@ -592,7 +611,10 @@ impl Controller {
         Self {
             state: Mutex::new(ControlState::default()),
             configuration: Mutex::new(()),
+            standalone: Mutex::new(()),
+            standalone_runtime: Mutex::new(None),
             factory,
+            control_events: Mutex::new(None),
         }
     }
     pub fn capture_open(&self, owner: &str) -> Option<GrantTicket> {
@@ -774,6 +796,7 @@ impl Controller {
         };
         if let Some(task) = task {
             task.cancel();
+            self.emit_controls();
             let controller = self.clone();
             let id = id.to_owned();
             std::thread::spawn(move || {
@@ -801,13 +824,57 @@ impl Controller {
                 task.cancel();
             }
         }
+        let standalone = self.standalone_runtime.lock().unwrap().clone();
+        if let Some(runtime) = &standalone {
+            runtime.revoke();
+        }
         std::thread::scope(|scope| {
+            if let Some(runtime) = standalone {
+                scope.spawn(move || {
+                    let _ = self.finish_standalone(&runtime);
+                });
+            }
             for id in ids {
                 scope.spawn(move || {
                     let _ = self.close_task(&id);
                 });
             }
         });
+    }
+    fn start_standalone(&self) -> Result<Arc<dyn Runtime>, ControlError> {
+        // Register under the same shutdown boundary before any native request.
+        let state = self.state.lock().unwrap();
+        if state.shutdown {
+            return Err(closed());
+        }
+        let mut slot = self.standalone_runtime.lock().unwrap();
+        if slot.is_some() {
+            return Err(ControlError::uncertain(
+                "CLEANUP_UNCONFIRMED",
+                "A private desktop helper has not confirmed cleanup",
+                "none",
+            ));
+        }
+        let runtime = (self.factory)()?;
+        *slot = Some(runtime.clone());
+        Ok(runtime)
+    }
+    fn finish_standalone(&self, runtime: &Arc<dyn Runtime>) -> Result<(), ControlError> {
+        let result = runtime.close();
+        let mut state = self.state.lock().unwrap();
+        if result.is_err() {
+            state.cleanup_blocked = true;
+            state.enabled = false;
+        } else {
+            let mut slot = self.standalone_runtime.lock().unwrap();
+            if slot
+                .as_ref()
+                .is_some_and(|active| Arc::ptr_eq(active, runtime))
+            {
+                *slot = None;
+            }
+        }
+        result
     }
     fn close_task(&self, id: &str) -> Result<(), ControlError> {
         let task = {
@@ -820,6 +887,7 @@ impl Controller {
             return Ok(());
         };
         task.cancel();
+        self.emit_controls();
         let runtime = task.runtime.lock().unwrap().clone();
         let result = runtime.map_or(Ok(()), |r| r.close());
         let mut state = self.state.lock().unwrap();
@@ -827,9 +895,12 @@ impl Controller {
             state.tasks.remove(id);
             state.app_owners.retain(|_, owner| owner != id);
         } else {
+            task.cleanup_unconfirmed.store(true, Ordering::Release);
             state.cleanup_blocked = true;
             state.enabled = false;
         }
+        drop(state);
+        self.emit_controls();
         result
     }
     fn task(&self, input: &Value) -> Result<(String, Arc<Task>), ControlError> {
@@ -882,7 +953,11 @@ impl Controller {
                 "Desktop session limit reached; disable and re-enable control",
             ));
         }
-        let task = Arc::new(Task::new(owner, epoch));
+        let mut task = Task::new(owner, epoch);
+        if let Some(label) = input["label"].as_str().filter(|label| !label.is_empty()) {
+            task.label = label.chars().take(256).collect();
+        }
+        let task = Arc::new(task);
         state.tasks.insert(id.clone(), task.clone());
         Ok((id, task))
     }
@@ -925,6 +1000,7 @@ impl Controller {
             return Err(background_key_unavailable());
         }
         let (id, task) = self.task(input)?;
+        self.emit_controls();
         let _operation = task.operation.try_lock().map_err(|_| {
             ControlError::new(
                 "CONTROL_BUSY",
@@ -948,6 +1024,7 @@ impl Controller {
             if !task.initialized.load(Ordering::Acquire) {
                 runtime.initialize()?;
                 task.initialized.store(true, Ordering::Release);
+                self.emit_controls();
             }
             self.run_tool(&id, &task, &runtime, &tool, arguments)
         })();
@@ -1005,6 +1082,18 @@ impl Controller {
             "open_app" => {
                 object_fields(&input, &["appId"])?;
                 let app_id = string(&input, "appId")?;
+                if task
+                    .apps
+                    .lock()
+                    .unwrap()
+                    .get(&app_id)
+                    .is_some_and(|app| matches!(app.status, "stopping" | "stopped" | "unconfirmed"))
+                {
+                    return Err(ControlError::new(
+                        "USER_STOPPED",
+                        "The user stopped this application's control in this turn",
+                    ));
+                }
                 let app = task
                     .known_apps
                     .lock()
@@ -1017,6 +1106,13 @@ impl Controller {
                             "Select an application returned by list_apps in this task",
                         )
                     })?;
+                let keys = app_keys(&app);
+                if task.apps.lock().unwrap().values().any(|blocked| {
+                    matches!(blocked.status, "stopping" | "stopped" | "unconfirmed")
+                        && app_keys(&blocked.app).iter().any(|key| keys.contains(key))
+                }) {
+                    return Err(ControlError::new("USER_STOPPED", "The user stopped this application; another native token cannot bypass that stop"));
+                }
                 if let Some(session_id) =
                     task.sessions
                         .lock()
@@ -1031,13 +1127,6 @@ impl Controller {
                         })
                 {
                     return Ok(json!({"appSessionId":session_id,"app":app,"status":"active"}));
-                }
-                let mut keys = vec![format!(
-                    "name:{}",
-                    app["name"].as_str().unwrap_or("").to_lowercase()
-                )];
-                if let Some(identity) = app["identity"].as_str().filter(|id| !id.is_empty()) {
-                    keys.push(format!("identity:{}", identity.to_lowercase()));
                 }
                 {
                     let mut state = self.state.lock().unwrap();
@@ -1054,16 +1143,43 @@ impl Controller {
                         state.app_owners.insert(key.clone(), id.into());
                     }
                 }
+                task.apps.lock().unwrap().insert(
+                    app_id.clone(),
+                    AppControl {
+                        app: app.clone(),
+                        status: "opening",
+                        opening: true,
+                    },
+                );
+                self.emit_controls();
                 let result = runtime.call("openAppSession", input, "none");
                 let session = match result {
                     Ok(session) => session,
                     Err(error) => {
+                        let mut apps = task.apps.lock().unwrap();
+                        if let Some(app) = apps.get_mut(&app_id) {
+                            app.opening = false;
+                            if app.status == "stopping" {
+                                app.status = "stopped";
+                            } else {
+                                apps.remove(&app_id);
+                            }
+                        }
+                        let retained = apps
+                            .values()
+                            .flat_map(|app| app_keys(&app.app))
+                            .collect::<HashSet<_>>();
+                        drop(apps);
                         let mut state = self.state.lock().unwrap();
                         for key in &keys {
-                            if state.app_owners.get(key).is_some_and(|owner| owner == id) {
+                            if !retained.contains(key)
+                                && state.app_owners.get(key).is_some_and(|owner| owner == id)
+                            {
                                 state.app_owners.remove(key);
                             }
                         }
+                        drop(state);
+                        self.emit_controls();
                         return Err(error);
                     }
                 };
@@ -1078,7 +1194,15 @@ impl Controller {
                 task.sessions
                     .lock()
                     .unwrap()
-                    .insert(session_id.clone(), app_id);
+                    .insert(session_id.clone(), app_id.clone());
+                if let Some(app) = task.apps.lock().unwrap().get_mut(&app_id) {
+                    app.opening = false;
+                    if app.status == "opening" {
+                        app.status = "active";
+                    }
+                }
+                self.emit_controls();
+                ensure_app_available(task, &session_id)?;
                 Ok(json!({"appSessionId":session_id,"app":session["app"],"status":"active"}))
             }
             "get_app_state" => {
@@ -1125,6 +1249,7 @@ impl Controller {
         }
     }
     fn check_session(&self, task: &Task, id: &str) -> Result<(), ControlError> {
+        ensure_app_available(task, id)?;
         if task.sessions.lock().unwrap().contains_key(id) {
             Ok(())
         } else {
@@ -1135,6 +1260,7 @@ impl Controller {
         }
     }
     fn record_snapshot(&self, task: &Task, session: &str, mut snapshot: Value) -> ControlResult {
+        ensure_app_available(task, session)?;
         if snapshot["appSessionId"] != session {
             return Err(invalid());
         }
@@ -1206,6 +1332,9 @@ impl Controller {
         Ok(snapshot)
     }
     pub fn request(&self, route: &str, input: &Value) -> Option<Result<Value, String>> {
+        if let Some(result) = self.control_request(route, input) {
+            return Some(result);
+        }
         match route {
             "computer_use.get_permission_status" if input.is_null() => {}
             "computer_use.request_permissions" if valid_permission_request(input) => {}
@@ -1215,7 +1344,8 @@ impl Controller {
             _ => return None,
         }
         Some((|| {
-            let runtime = (self.factory)().map_err(|e| e.message)?;
+            let _standalone = self.standalone.lock().unwrap();
+            let runtime = self.start_standalone().map_err(|e| e.message)?;
             let result = (|| {
                 runtime.initialize()?;
                 let status = runtime.call("getPermissionStatus", json!({}), "none")?;
@@ -1226,7 +1356,7 @@ impl Controller {
                     !state.shutdown && !state.cleanup_blocked && capabilities_available(&caps),
                 )
             })();
-            let cleanup = runtime.close();
+            let cleanup = self.finish_standalone(&runtime);
             match (result, cleanup) {
                 (Ok(value), Ok(())) => Ok(value),
                 (Err(error), _) | (_, Err(error)) => Err(error.message),
@@ -1305,6 +1435,7 @@ fn validated_action(
     };
     object_fields(&input, fields)?;
     let session = string(&input, "appSessionId")?;
+    ensure_app_available(task, &session)?;
     let snapshot = string(&input, "snapshotId")?;
     if !task.sessions.lock().unwrap().contains_key(&session) {
         return Err(ControlError::new(
@@ -1665,6 +1796,11 @@ mod tests {
         cancelled: AtomicBool,
         closed: AtomicBool,
         waiting: AtomicBool,
+        two_apps: AtomicBool,
+        hold_open: AtomicBool,
+        opening: AtomicBool,
+        bad_stop: AtomicBool,
+        hold_icon: AtomicBool,
         fail_close: bool,
         sequence: AtomicU64,
     }
@@ -1675,6 +1811,11 @@ mod tests {
                 cancelled: AtomicBool::new(false),
                 closed: AtomicBool::new(false),
                 waiting: AtomicBool::new(false),
+                two_apps: AtomicBool::new(false),
+                hold_open: AtomicBool::new(false),
+                opening: AtomicBool::new(false),
+                bad_stop: AtomicBool::new(false),
+                hold_icon: AtomicBool::new(false),
                 fail_close,
                 sequence: AtomicU64::new(0),
             }
@@ -1693,17 +1834,53 @@ mod tests {
                 "getPermissionStatus" => Ok(json!({"permissions":[]})),
                 "getCapabilities" => Ok(capabilities()),
                 "listApps" => {
-                    Ok(json!([{"id":"app-1","name":"Fixture","identity":"fixture:stable"}]))
+                    let mut apps =
+                        json!([{"id":"app-1","name":"Fixture","identity":"fixture:stable"}]);
+                    if self.two_apps.load(Ordering::Acquire) {
+                        apps.as_array_mut().unwrap().push(
+                            json!({"id":"app-2","name":"Other fixture","identity":"fixture:other"}),
+                        );
+                    }
+                    Ok(apps)
                 }
-                "openAppSession" => Ok(
-                    json!({"id":"session-1","app":{"id":"app-1","name":"Fixture"},"status":"active"}),
+                "openAppSession" => {
+                    self.opening.store(true, Ordering::Release);
+                    while self.hold_open.load(Ordering::Acquire)
+                        && !self.cancelled.load(Ordering::Acquire)
+                    {
+                        std::thread::sleep(Duration::from_millis(1));
+                    }
+                    let other = input["appId"] == "app-2";
+                    Ok(
+                        json!({"id":if other {"session-2"} else {"session-1"},"app":{"id":input["appId"],"name":if other {"Other fixture"} else {"Fixture"}},"status":"active"}),
+                    )
+                }
+                "stopAppSession" => Ok(
+                    json!({"appSessionId":if self.bad_stop.load(Ordering::Acquire) {json!("wrong-session")} else {input["appSessionId"].clone()},"status":"stopped","cleanup":"complete"}),
                 ),
+                "getAppIcon" => {
+                    if self.hold_icon.load(Ordering::Acquire) {
+                        self.waiting.store(true, Ordering::Release);
+                        while !self.cancelled.load(Ordering::Acquire) {
+                            std::thread::sleep(Duration::from_millis(1));
+                        }
+                        return Err(closed());
+                    }
+                    Ok(
+                        json!({"status":"available","icon":{"mimeType":"image/png","dataBase64":"AAAA"}}),
+                    )
+                }
                 "getAppState" => {
                     assert_eq!(input["activation"], "never");
-                    Ok(snapshot(&format!(
+                    let mut value = snapshot(&format!(
                         "snapshot-{}",
                         self.sequence.fetch_add(1, Ordering::Relaxed)
-                    )))
+                    ));
+                    if input["appSessionId"] == "session-2" {
+                        value["appSessionId"] = json!("session-2");
+                        value["app"] = json!({"id":"app-2","name":"Other fixture"});
+                    }
+                    Ok(value)
                 }
                 "act" => {
                     assert_eq!(input["allowGlobalInput"], false);
@@ -2176,6 +2353,15 @@ mod tests {
             .unwrap();
         assert_eq!(result["permissions"], json!([]));
         assert_eq!(result["controlAvailable"], true);
+        let icon = c
+            .request(
+                "computer_use.get_app_icon",
+                &json!({"identity":"evostack:unavailable-preflight-fixture"}),
+            )
+            .unwrap()
+            .unwrap();
+        assert_eq!(icon, json!({"status":"unavailable"}));
+        c.shutdown();
     }
     #[test]
     fn stop_before_first_native_call_rejects_old_ack_and_allows_new_user_open() {
@@ -2220,5 +2406,286 @@ mod tests {
         configure(&c, 1, true);
         assert_eq!(invoke(&c, TASK, 1, "list_apps", json!({}))["ok"], true);
         c.shutdown();
+    }
+
+    fn controls(c: &Controller) -> Value {
+        c.request("computer_use.get_controls", &Value::Null)
+            .unwrap()
+            .unwrap()
+    }
+    fn app_status(c: &Controller, app_id: &str) -> String {
+        controls(c)
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["appId"] == app_id)
+            .and_then(|row| row["status"].as_str())
+            .unwrap_or("absent")
+            .to_owned()
+    }
+    fn wait_until(condition: impl Fn() -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !condition() {
+            assert!(
+                Instant::now() < deadline,
+                "Fixture did not reach the expected state"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    #[test]
+    fn ui_controls_follow_native_ack_and_stop_only_the_selected_app() {
+        let (c, runtimes) = controller(false);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let received = events.clone();
+        c.set_control_events(Arc::new(move |rows| received.lock().unwrap().push(rows)));
+        configure(&c, 1, true);
+        assert_eq!(controls(&c), json!([]));
+        open(&c, TASK);
+        let runtime = runtimes.lock().unwrap()[0].clone();
+        runtime.two_apps.store(true, Ordering::Release);
+        assert_eq!(invoke(&c, TASK, 1, "list_apps", json!({}))["ok"], true);
+        assert_eq!(
+            invoke(&c, TASK, 1, "open_app", json!({"appId":"app-2"}))["ok"],
+            true
+        );
+        assert_eq!(app_status(&c, "app-1"), "active");
+        assert_eq!(controls(&c)[0]["label"], "Fixture task");
+        assert_eq!(controls(&c)[0]["appIdentity"], "fixture:stable");
+        assert_eq!(
+            invoke(
+                &c,
+                TASK,
+                1,
+                "get_app_state",
+                json!({"appSessionId":"session-2"})
+            )["ok"],
+            true
+        );
+        c.request(
+            "computer_use.stop_app",
+            &json!({"ownerId":OWNER,"appId":"app-1"}),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(app_status(&c, "app-1"), "stopped");
+        assert_eq!(app_status(&c, "app-2"), "active");
+        let task = c.state.lock().unwrap().tasks[TASK].clone();
+        assert!(task.snapshots.lock().unwrap().contains_key("session-2"));
+        assert_eq!(
+            invoke(
+                &c,
+                TASK,
+                1,
+                "get_app_state",
+                json!({"appSessionId":"session-2"})
+            )["ok"],
+            true
+        );
+        assert_eq!(
+            invoke(&c, TASK, 1, "open_app", json!({"appId":"app-1"}))["error"]["code"],
+            "USER_STOPPED"
+        );
+        task.known_apps.lock().unwrap().insert(
+            "alias".into(),
+            json!({"id":"alias","name":"Fixture","identity":"fixture:stable"}),
+        );
+        assert_eq!(
+            invoke(&c, TASK, 1, "open_app", json!({"appId":"alias"}))["error"]["code"],
+            "USER_STOPPED"
+        );
+        assert!(runtime
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(method, input)| method == "stopAppSession"
+                && input["appSessionId"] == "session-1"));
+        let events = events.lock().unwrap();
+        assert!(events.iter().any(|rows: &Value| rows
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["status"] == "opening")));
+        assert!(events.iter().any(|rows| rows
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|row| row["appId"] == "app-1" && row["status"] == "stopping")));
+        drop(events);
+        c.shutdown();
+    }
+
+    #[test]
+    fn ui_stop_all_revokes_pending_grants_and_waits_for_owned_cleanup() {
+        let (c, runtimes) = controller(false);
+        configure(&c, 1, true);
+        open(&c, TASK);
+        let pending = c.capture_open(OWNER).unwrap();
+        c.request("computer_use.stop_all", &Value::Null)
+            .unwrap()
+            .unwrap();
+        assert_eq!(controls(&c), json!([]));
+        assert!(runtimes.lock().unwrap()[0].closed.load(Ordering::Acquire));
+        assert!(!c.grant_task(pending, TASK2));
+        authorize(&c, TASK2);
+        assert_eq!(invoke(&c, TASK2, 1, "list_apps", json!({}))["ok"], true);
+        c.shutdown();
+    }
+
+    #[test]
+    fn ui_bad_stop_ack_keeps_unconfirmed_cleanup_visible_and_blocks_new_grants() {
+        let (c, runtimes) = controller(true);
+        configure(&c, 1, true);
+        open(&c, TASK);
+        runtimes.lock().unwrap()[0]
+            .bad_stop
+            .store(true, Ordering::Release);
+        let error = c
+            .request(
+                "computer_use.stop_app",
+                &json!({"ownerId":OWNER,"appId":"app-1"}),
+            )
+            .unwrap()
+            .unwrap_err();
+        assert!(error.starts_with("CLEANUP_UNCONFIRMED:"));
+        assert_eq!(app_status(&c, "app-1"), "unconfirmed");
+        assert!(c.capture_open(OWNER).is_none());
+        assert!(c
+            .request("computer_use.stop_all", &Value::Null)
+            .unwrap()
+            .is_err());
+    }
+
+    #[test]
+    fn ui_stop_during_open_waits_for_native_ack_without_resurrecting_the_app() {
+        let (c, runtimes) = controller(false);
+        configure(&c, 1, true);
+        authorize(&c, TASK);
+        assert_eq!(invoke(&c, TASK, 1, "list_apps", json!({}))["ok"], true);
+        let runtime = runtimes.lock().unwrap()[0].clone();
+        runtime.hold_open.store(true, Ordering::Release);
+        let opening_controller = c.clone();
+        let opening = std::thread::spawn(move || {
+            invoke(
+                &opening_controller,
+                TASK,
+                1,
+                "open_app",
+                json!({"appId":"app-1"}),
+            )
+        });
+        wait_until(|| runtime.opening.load(Ordering::Acquire));
+        assert_eq!(app_status(&c, "app-1"), "opening");
+        let stopping_controller = c.clone();
+        let stopping = std::thread::spawn(move || {
+            stopping_controller
+                .request(
+                    "computer_use.stop_app",
+                    &json!({"ownerId":OWNER,"appId":"app-1"}),
+                )
+                .unwrap()
+        });
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while app_status(&c, "app-1") != "stopping" && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        let was_stopping = app_status(&c, "app-1") == "stopping";
+        runtime.hold_open.store(false, Ordering::Release);
+        let opened = opening.join().unwrap();
+        let stopped = stopping.join().unwrap();
+        assert!(was_stopping);
+        assert_eq!(opened["error"]["code"], "USER_STOPPED");
+        assert_eq!(stopped.unwrap(), Value::Null);
+        assert_eq!(app_status(&c, "app-1"), "stopped");
+        c.shutdown();
+    }
+
+    #[test]
+    fn ui_icons_use_only_private_presentation_calls_and_repl_is_explicitly_gated() {
+        let (c, runtimes) = controller(false);
+        let identity = "x".repeat(512);
+        let icon = c
+            .request("computer_use.get_app_icon", &json!({"identity":identity}))
+            .unwrap()
+            .unwrap();
+        assert_eq!(icon["status"], "available");
+        assert_eq!(runtimes.lock().unwrap().len(), 1);
+        let runtime = runtimes.lock().unwrap()[0].clone();
+        assert!(runtime.closed.load(Ordering::Acquire));
+        assert_eq!(
+            runtime
+                .calls
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|(method, _)| method.as_str())
+                .collect::<Vec<_>>(),
+            vec!["getAppIcon"]
+        );
+        assert!(c
+            .request(
+                "computer_use.get_app_icon",
+                &json!({"identity":"x".repeat(513)})
+            )
+            .unwrap()
+            .is_err());
+        assert!(c
+            .request(
+                "computer_use.get_app_icon",
+                &json!({"identity":"🧪".repeat(257)})
+            )
+            .unwrap()
+            .is_err());
+        assert!(c
+            .request("computer_use.get_call_apps", &json!({"cell":TASK}))
+            .unwrap()
+            .unwrap_err()
+            .starts_with("EVOSTACK_NOT_MIGRATED:"));
+        assert!(c
+            .request("computer_use.get_controls", &json!({}))
+            .unwrap()
+            .is_err());
+        assert!(c
+            .request("computer_use.stop_all", &json!({}))
+            .unwrap()
+            .is_err());
+        assert!(c
+            .request(
+                "computer_use.stop_app",
+                &json!({"ownerId":OWNER,"appId":"app-1","unexpected":true})
+            )
+            .unwrap()
+            .is_err());
+        assert_eq!(runtimes.lock().unwrap().len(), 1);
+        c.shutdown();
+        assert!(c
+            .request("computer_use.get_app_icon", &json!({"identity":"fixture"}))
+            .unwrap()
+            .is_err());
+        assert_eq!(runtimes.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn shutdown_cancels_and_closes_the_owned_presentation_helper() {
+        let runtime = Arc::new(FakeRuntime::new(false));
+        runtime.hold_icon.store(true, Ordering::Release);
+        let instance = runtime.clone();
+        let c = Arc::new(Controller::with_factory(Arc::new(move || {
+            Ok(instance.clone())
+        })));
+        let requesting = c.clone();
+        let icon = std::thread::spawn(move || {
+            requesting
+                .request("computer_use.get_app_icon", &json!({"identity":"fixture"}))
+                .unwrap()
+        });
+        wait_until(|| runtime.waiting.load(Ordering::Acquire));
+        c.shutdown();
+        assert!(runtime.cancelled.load(Ordering::Acquire));
+        assert!(runtime.closed.load(Ordering::Acquire));
+        assert!(icon.join().unwrap().is_err());
+        assert!(c.standalone_runtime.lock().unwrap().is_none());
     }
 }

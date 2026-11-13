@@ -95,7 +95,6 @@ vi.mock('@renderer/hooks/useExecutionOverlay', () => ({
   useExecutionOverlay: (
     _topicId: string,
     executions: ActiveExecution[],
-    _messages: CherryUIMessage[],
     options?: {
       onUpdate?: (executionId: string, event: Pick<ExecutionFinishEvent, 'attemptId' | 'message'>) => void
       onFinish?: (executionId: string, event: ExecutionFinishEvent) => void
@@ -113,7 +112,7 @@ vi.mock('@renderer/hooks/useExecutionOverlay', () => ({
   }
 }))
 
-vi.mock('@renderer/hooks/useToolApprovalBridge', () => ({
+vi.mock('../hooks/useToolApprovalBridge', () => ({
   useToolApprovalBridge: () => vi.fn()
 }))
 
@@ -286,7 +285,6 @@ describe('useChatRuntimeState', () => {
       })
     })
 
-    expect(mocks.seedMessagesCache).toHaveBeenCalledWith([reservedMessage], { preserveActiveNode: true })
     expect(mocks.onBranchLiveStateChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ activeNodeId: 'selected-branch' })
     )

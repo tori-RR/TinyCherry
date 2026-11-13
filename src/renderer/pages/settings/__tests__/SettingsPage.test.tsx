@@ -1,5 +1,5 @@
 import { MockUsePreferenceUtils } from '@test-mocks/renderer/usePreference'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -9,9 +9,10 @@ import { ipcApi } from '@renderer/ipc'
 
 import SettingsPage from '../SettingsPage'
 
-const { isMacTransparentWindowMock, navigateMock } = vi.hoisted(() => ({
+const { isMacTransparentWindowMock, navigateMock, locationMock } = vi.hoisted(() => ({
   isMacTransparentWindowMock: vi.fn(),
-  navigateMock: vi.fn()
+  navigateMock: vi.fn(),
+  locationMock: { pathname: '/settings/provider' }
 }))
 
 vi.mock('@renderer/ipc', () => ({ ipcApi: { request: vi.fn().mockResolvedValue(undefined) } }))
@@ -19,12 +20,6 @@ vi.mock('@renderer/ipc', () => ({ ipcApi: { request: vi.fn().mockResolvedValue(u
 vi.mock('@cherrystudio/ui', async (importOriginal) => ({
   ...(await importOriginal<typeof CherryUiModule>()),
   MenuDivider: () => <hr data-testid="menu-divider" />,
-  MenuItem: ({ icon, label, onClick }: { icon?: ReactNode; label: string; onClick?: () => void }) => (
-    <button type="button" data-testid="menu-item" onClick={onClick}>
-      {icon}
-      {label}
-    </button>
-  ),
   MenuList: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   PageHeader: ({ title, action }: { title: string; action?: ReactNode }) => (
     <header>
@@ -61,7 +56,7 @@ vi.mock('@tanstack/react-router', () => ({
       <a href="#provider">Internal settings</a>
     </>
   ),
-  useLocation: () => ({ pathname: '/settings/provider' }),
+  useLocation: () => locationMock,
   useNavigate: () => navigateMock,
   useRouter: () => ({ history: { canGoBack: () => false, back: vi.fn() } }),
   useSearch: () => ({})
@@ -82,11 +77,15 @@ vi.mock('react-i18next', () => ({
         'settings.dependencies.localModels.title': '本地模型',
         'settings.general.common.title': zhCN['settings.general.common.title'],
         'settings.menuGroups.automation': '效率',
+        'settings.menuGroups.builtinTools': '内置工具',
         'settings.menuGroups.capabilities': '工具',
         'settings.menuGroups.personal': '偏好',
         'settings.menuGroups.quickAccess': '快捷入口',
         'settings.menuGroups.system': '系统',
         'settings.model': '默认模型',
+        'settings.computerUse.title': '电脑操作',
+        'settings.browser.title': '浏览器',
+        'settings.tool.websearch.title': '网络搜索',
         'settings.prompts.title': '提示词',
         'settings.quickAssistant.title': '快捷助手',
         'settings.scheduledTasks.title': '定时任务',
@@ -105,6 +104,7 @@ describe('SettingsPage', () => {
     MockUsePreferenceUtils.resetMocks()
     isMacTransparentWindowMock.mockReturnValue(false)
     navigateMock.mockReset()
+    locationMock.pathname = '/settings/provider'
     vi.mocked(ipcApi.request).mockClear()
   })
 
@@ -146,13 +146,8 @@ describe('SettingsPage', () => {
     expect(screen.getByRole('button', { name: 'settings.search.placeholder' })).toBeInTheDocument()
   })
 
-  it('places General directly above Appearance and local models directly below the default model', () => {
-    const { container } = render(<SettingsPage />)
-
-    expect(container.querySelector('[data-ui="settings.view"]')).toBeInTheDocument()
-    expect(container.querySelector('[data-ui="settings.navigation"]')).toBeInTheDocument()
-    expect(container.querySelector('[data-ui="settings.content"]')).toBeInTheDocument()
-    expect(screen.getByText('偏好')).toBeInTheDocument()
+  it('opens General and local model settings', () => {
+    render(<SettingsPage />)
 
     const generalItem = screen.getByRole('button', { name: '通用' })
     const appearanceItem = screen.getByRole('button', { name: '外观' })
@@ -185,36 +180,60 @@ describe('SettingsPage', () => {
     expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/dependencies' })
   })
 
-  it('places Skills below MCP and prompt management directly below Skills', () => {
+  it('opens skills and built-in prompt management', () => {
     render(<SettingsPage />)
 
-    const mcpItem = screen.getByText('MCP').closest('button')
     const skillsItem = screen.getByRole('button', { name: '技能' })
 
-    expect(mcpItem).not.toBeNull()
-    expect(mcpItem?.nextElementSibling).toBe(skillsItem)
     fireEvent.click(skillsItem)
     expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/skills' })
 
-    const promptsItem = screen.getByRole('button', { name: '提示词' })
-    expect(skillsItem.nextElementSibling).toBe(promptsItem)
-    fireEvent.click(promptsItem)
+    const builtinToolsItem = screen.getByRole('button', { name: '内置工具' })
+    fireEvent.click(builtinToolsItem)
     expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/prompts' })
   })
 
-  it('merges quick access into efficiency and places both assistants last', () => {
+  it('shows the four retained built-in settings destinations in a secondary menu and preserves their routes', () => {
+    locationMock.pathname = '/settings/browser'
     render(<SettingsPage />)
 
     expect(screen.getByText('效率')).toBeInTheDocument()
     expect(screen.queryByText('快捷入口')).not.toBeInTheDocument()
 
-    const efficiencyItems = ['定时任务', '快捷键', '快捷助手', '划词助手'].map((name) =>
-      screen.getByRole('button', { name })
+    expect(screen.queryByRole('button', { name: '定时任务' })).not.toBeInTheDocument()
+    const menu = within(screen.getByRole('navigation', { name: '内置工具' }))
+    const destinations = [
+      ['提示词', '/settings/prompts'],
+      ['电脑操作', '/settings/computer-use'],
+      ['浏览器', '/settings/browser'],
+      ['网络搜索', '/settings/websearch']
+    ]
+    expect(menu.getAllByRole('button').map((button) => button.textContent)).toEqual(
+      destinations.map(([label]) => label)
     )
-    const menuItems = screen.getAllByTestId('menu-item')
-    const efficiencyStart = menuItems.indexOf(efficiencyItems[0])
+    for (const [label, route] of destinations) {
+      fireEvent.click(menu.getByRole('button', { name: label }))
+      expect(navigateMock).toHaveBeenLastCalledWith({ to: route })
+    }
+    expect(menu.queryByRole('button', { name: 'MCP' })).not.toBeInTheDocument()
+    expect(menu.queryByRole('button', { name: '技能' })).not.toBeInTheDocument()
+  })
 
-    expect(menuItems.slice(efficiencyStart, efficiencyStart + efficiencyItems.length)).toEqual(efficiencyItems)
-    expect(efficiencyItems.at(-1)?.nextElementSibling).toHaveAttribute('data-testid', 'menu-divider')
+  it('updates the secondary selection on direct navigation and removes it on other settings pages', () => {
+    locationMock.pathname = '/settings/browser'
+    const { rerender } = render(<SettingsPage />)
+    const selectedItem = () => within(screen.getByRole('navigation', { name: '内置工具' }))
+    expect(selectedItem().getByRole('button', { name: '浏览器' })).toHaveAttribute('data-active', 'true')
+    expect(screen.getByRole('button', { name: '内置工具' })).toHaveAttribute('data-active', 'true')
+
+    locationMock.pathname = '/settings/computer-use'
+    rerender(<SettingsPage />)
+    expect(selectedItem().getByRole('button', { name: '浏览器' })).not.toHaveAttribute('data-active')
+    expect(selectedItem().getByRole('button', { name: '电脑操作' })).toHaveAttribute('data-active', 'true')
+
+    locationMock.pathname = '/settings/data'
+    rerender(<SettingsPage />)
+    expect(screen.queryByRole('navigation', { name: '内置工具' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '内置工具' })).not.toHaveAttribute('data-active')
   })
 })

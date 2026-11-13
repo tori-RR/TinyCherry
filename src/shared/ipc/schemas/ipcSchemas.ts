@@ -1,7 +1,9 @@
 import type { RouteDef } from '../define'
+import { agentRequestSchemas } from './agent'
 import { type AiEventSchemas, aiRequestSchemas } from './ai'
 import { type ApiGatewayEventSchemas, apiGatewayRequestSchemas } from './apiGateway'
 import { type AppEventSchemas, appRequestSchemas } from './app'
+import { assistantRequestSchemas } from './assistant'
 import { type BackupEventSchemas, backupRequestSchemas } from './backup'
 import { type BinaryEventSchemas, binaryRequestSchemas } from './binary'
 import { type BrowserEventSchemas, browserRequestSchemas } from './browser'
@@ -10,7 +12,7 @@ import { type CherryCloudEventSchemas, cherryCloudRequestSchemas } from './cherr
 import { cherryinRequestSchemas } from './cherryin'
 import { citationRequestSchemas } from './citation'
 import { codeCliRequestSchemas } from './codeCli'
-import { computerUseRequestSchemas } from './computerUse'
+import { type ComputerUseEventSchemas, computerUseRequestSchemas } from './computerUse'
 import { deepSeekHarnessRequestSchemas } from './deepSeekHarness'
 import { diagnosticsRequestSchemas } from './diagnostics'
 import { doctorRequestSchemas } from './doctor'
@@ -23,7 +25,7 @@ import { knowledgeRequestSchemas } from './knowledge'
 import { type McpEventSchemas, mcpRequestSchemas } from './mcp'
 import { type MiniAppEventSchemas, miniAppRequestSchemas } from './miniApp'
 import { type NavigationEventSchemas, navigationRequestSchemas } from './navigation'
-import type { NotificationEventSchemas } from './notification'
+import { type NotificationEventSchemas, notificationRequestSchemas } from './notification'
 import { oauthRequestSchemas } from './oauth'
 import { openclawRequestSchemas } from './openclaw'
 import { ovmsRequestSchemas } from './ovms'
@@ -55,6 +57,7 @@ import { type WindowEventSchemas, windowRequestSchemas } from './window'
  */
 export const ipcRequestSchemas = {
   ...aiRequestSchemas,
+  ...agentRequestSchemas,
   ...apiGatewayRequestSchemas,
   ...appRequestSchemas,
   ...backupRequestSchemas,
@@ -78,11 +81,13 @@ export const ipcRequestSchemas = {
   ...mcpRequestSchemas,
   ...miniAppRequestSchemas,
   ...navigationRequestSchemas,
+  ...notificationRequestSchemas,
   ...oauthRequestSchemas,
   ...openclawRequestSchemas,
   ...ovmsRequestSchemas,
   ...pdfjsRequestSchemas,
   ...printRequestSchemas,
+  ...assistantRequestSchemas,
   ...profileRequestSchemas,
   ...proxyRequestSchemas,
   ...providerRequestSchemas,
@@ -118,6 +123,7 @@ export type IpcEventSchemas = AiEventSchemas &
   BrowserEventSchemas &
   ChannelEventSchemas &
   CherryCloudEventSchemas &
+  ComputerUseEventSchemas &
   FileEventSchemas &
   McpEventSchemas &
   MiniAppEventSchemas &

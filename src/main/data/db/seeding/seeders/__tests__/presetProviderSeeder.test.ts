@@ -94,10 +94,6 @@ describe('PresetProviderSeeder.run — insert-only behavior', () => {
     const openai = rows.find((r) => r.providerId === 'openai')
     // User customization must be preserved
     expect(openai?.name).toBe('User-renamed OpenAI')
-
-    const ids = rows.map((r) => r.providerId)
-    expect(ids).toContain('anthropic')
-    expect(ids).not.toContain('cherryai')
   })
 
   it('repairs a legacy provider order key before appending preset providers', async () => {

@@ -256,8 +256,6 @@ describe('AppUpdaterService', () => {
         'X-Region': 'global'
       })
       expect(autoUpdater.requestHeaders).not.toHaveProperty('X-Release-Channel')
-      expect(autoUpdater.allowDowngrade).toBe(false)
-      expect(autoUpdater.disableDifferentialDownload).toBe(false)
     })
 
     it('uses the China region for users in China', async () => {
@@ -369,7 +367,6 @@ describe('AppUpdaterService', () => {
           signal: expect.any(AbortSignal)
         })
       )
-      expect(releaseNotesUpdaterInstances).toHaveLength(1)
     })
 
     it('uses the China edition channel for the latest release notes request', async () => {

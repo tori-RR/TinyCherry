@@ -1,17 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { screenshotRequestSchemas } from '@shared/ipc/schemas/screenshot'
+
 const { appGetMock } = vi.hoisted(() => ({ appGetMock: vi.fn() }))
 vi.mock('@application', () => ({ application: { get: appGetMock } }))
 
+import { IpcRouter } from '../../IpcRouter'
 import { screenshotHandlers } from '../screenshot'
 
 const overlayService = {
   isSessionOverlay: vi.fn(),
   isActiveOverlay: vi.fn(),
+  isActiveCapture: vi.fn(),
   startCapture: vi.fn(),
   commit: vi.fn(),
   copy: vi.fn(),
-  save: vi.fn(async () => {}),
+  save: vi.fn<(result: unknown) => Promise<void>>(async () => {}),
   submitResult: vi.fn(),
   dismiss: vi.fn(),
   markOverlayActive: vi.fn(),
@@ -21,6 +25,9 @@ const overlayService = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  overlayService.isActiveCapture.mockImplementation(
+    (_windowId: string, mediaId: string) => overlayService.isActiveOverlay() && mediaId === 'media-1'
+  )
   appGetMock.mockImplementation((name: string) => {
     if (name === 'ScreenshotOverlayService') return overlayService
     throw new Error(`Unexpected application.get(${name})`)
@@ -28,7 +35,7 @@ beforeEach(() => {
 })
 
 const ctx = (senderId: string | null) => ({ senderId })
-const captureResult = { pngBytes: new Uint8Array([137, 80, 78, 71]) }
+const captureResult = { mediaId: 'media-1', pngBytes: new Uint8Array([137, 80, 78, 71]) }
 
 /** Every route that consults a predicate, with the input its schema declares. */
 const guardedRoutes = {
@@ -54,6 +61,43 @@ const expectNoDelegation = () => {
 }
 
 describe('screenshotHandlers', () => {
+  it.each(['commit', 'copy', 'save', 'submit_result'] as const)(
+    'requires the current capture identity before producing a %s result',
+    async (action) => {
+      const route = `screenshot.${action}` as const
+      const router = new IpcRouter(screenshotRequestSchemas, screenshotHandlers)
+      const produced: unknown[] = []
+      const method = action === 'submit_result' ? 'submitResult' : action
+      overlayService[method].mockImplementation(async (result: unknown) => {
+        produced.push(result)
+      })
+      overlayService.isActiveCapture.mockImplementation(
+        (windowId: string, mediaId: string) => windowId === 'overlay-a' && mediaId === 'media-2'
+      )
+      const payload = { ...captureResult, text: 'message' }
+      for (const senderId of [null, 'another-window', 'overlay-a']) {
+        await router.dispatch(route, payload, ctx(senderId))
+      }
+      expect(produced).toEqual([])
+      const current = { ...payload, mediaId: 'media-2' }
+      await router.dispatch(route, current, ctx('another-window'))
+      expect(produced).toEqual([])
+      await router.dispatch(route, current, ctx('overlay-a'))
+      expect(produced).toEqual([
+        action === 'submit_result'
+          ? { pngBytes: captureResult.pngBytes, text: 'message' }
+          : { pngBytes: captureResult.pngBytes }
+      ])
+      await expect(
+        router.dispatch(route, { pngBytes: captureResult.pngBytes, text: 'message' }, ctx('overlay-a'))
+      ).rejects.toThrow('Invalid input')
+      await expect(router.dispatch(route, { ...payload, mediaId: '' }, ctx('overlay-a'))).rejects.toThrow(
+        'Invalid input'
+      )
+      expect(produced).toHaveLength(1)
+    }
+  )
+
   describe('active scope', () => {
     beforeEach(() => {
       // A session overlay the user has moved away from: the one state that separates the two tiers,
@@ -123,9 +167,9 @@ describe('screenshotHandlers', () => {
       await guardedRoutes['screenshot.copy']()
       await guardedRoutes['screenshot.save']()
 
-      expect(overlayService.commit).toHaveBeenCalledWith(captureResult)
-      expect(overlayService.copy).toHaveBeenCalledWith(captureResult)
-      expect(overlayService.save).toHaveBeenCalledWith(captureResult)
+      expect(overlayService.commit).toHaveBeenCalledWith({ pngBytes: captureResult.pngBytes })
+      expect(overlayService.copy).toHaveBeenCalledWith({ pngBytes: captureResult.pngBytes })
+      expect(overlayService.save).toHaveBeenCalledWith({ pngBytes: captureResult.pngBytes })
     })
   })
 

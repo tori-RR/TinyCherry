@@ -7,6 +7,9 @@ import (
 )
 
 func (s *server) topicRows(topicID string) ([]object, error) {
+	if s.store.temporary.has(topicID) {
+		return s.store.temporary.rows(topicID), nil
+	}
 	return s.store.entities("SELECT body FROM entity WHERE resource='messages' AND json_extract(body,'$.topicId')=? ORDER BY rowid", topicID)
 }
 func rootID(rows []object) string {

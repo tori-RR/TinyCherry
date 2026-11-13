@@ -8,6 +8,10 @@ foreach ($EvoName in @('TinyCherry-EvoStack.exe','tinycherry-evostack-backend.ex
   $EvoOffset = [BitConverter]::ToInt32($EvoBytes, 0x3c)
   if ([BitConverter]::ToUInt16($EvoBytes, $EvoOffset + 4) -ne 0x8664) { throw "Expected x64: $EvoName" }
   if ($EvoName -eq 'open-computer-use.exe') { continue }
+  if ($EvoName -eq 'TinyCherry-EvoStack.exe') {
+    $EvoProductVersion = (Get-Item -LiteralPath $EvoExecutable).VersionInfo.ProductVersion
+    if ($EvoProductVersion -notmatch ('^' + [Regex]::Escape($ExpectedVersion) + '(?:\.0)?$')) { throw 'Host executable product version mismatch' }
+  }
   $EvoIdentity = & $EvoExecutable --evostack-build-info | ConvertFrom-Json
   if ($LASTEXITCODE -ne 0 -or $EvoIdentity.version -ne $ExpectedVersion -or $EvoIdentity.revision -ne $ExpectedRevision -or $EvoIdentity.protocol -ne 1) { throw "Package identity mismatch: $EvoName" }
   $EvoIdentities += $EvoIdentity
@@ -25,7 +29,7 @@ $EvoHost = $null
 try {
   $env:TINYCHERRY_EVOSTACK_DATA_DIR = $EvoSmoke
   $env:TINYCHERRY_EVOSTACK_SMOKE_TOKEN = $EvoToken
-  $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$EvoPort --remote-debugging-address=127.0.0.1"
+  $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$EvoPort --remote-debugging-address=127.0.0.1 --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows --disable-features=CalculateNativeWinOcclusion"
   $EvoHost = Start-Process -FilePath (Join-Path $EvoDirectory 'TinyCherry-EvoStack.exe') -WorkingDirectory $EvoDirectory -WindowStyle Hidden -PassThru
   $EvoDeadline = (Get-Date).AddSeconds(20)
   do {

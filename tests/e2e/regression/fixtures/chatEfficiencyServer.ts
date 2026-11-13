@@ -1,5 +1,7 @@
 import { once } from 'node:events'
 import { createServer } from 'node:http'
+import { Readable } from 'node:stream'
+import type { ReadableStream } from 'node:stream/web'
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
@@ -61,7 +63,7 @@ export async function startChatEfficiencyServer() {
           body: JSON.stringify(body)
         })
         res.writeHead(response.status, { 'Content-Type': 'text/event-stream' })
-        for await (const chunk of response.body!) res.write(chunk)
+        for await (const chunk of Readable.fromWeb(response.body! as ReadableStream)) res.write(chunk)
         res.end()
         return
       }

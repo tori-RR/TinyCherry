@@ -6,7 +6,7 @@ const path = require('path')
 const { parse } = require('yaml')
 
 const { ensureLinuxNativeArtifact } = require('../linux-native/download')
-const { buildSelectionPanel } = require('../../native/darwin/build')
+const { buildSelectionPanel } = require('../../native/selection-panel/build')
 const { buildExternalApp } = require('../../native/external-app/build.cjs')
 
 // if you want to add new prebuild binaries packages with different architectures, you can add them here
@@ -103,7 +103,7 @@ async function prepareNativeModulesForElectron(
   const platformName = context.packager.platform.name
   const platform = platformToArch[platformName]
   const electronVersion = context.packager.config.electronVersion
-  const projectRoot = path.join(__dirname, '../..')
+  const projectRoot = context.packager.projectDir
 
   if (!platform || !electronVersion) {
     throw new Error(`Cannot resolve Electron rebuild target for ${platformName}-${arch}`)
@@ -121,17 +121,28 @@ async function prepareNativeModulesForElectron(
     return
   }
 
-  // electron-builder's automatic pnpm rebuild can retain the host Node prebuild.
-  // Force the ABI-sensitive addon from source for the exact target before app files are copied.
-  await rebuildFn({
-    buildPath: projectRoot,
-    electronVersion,
-    platform,
-    arch,
-    onlyModules: ['better-sqlite3'],
-    force: true,
-    buildFromSource: true
-  })
+  const moduleRoot = path.dirname(require.resolve('better-sqlite3/package.json', { paths: [projectRoot] }))
+  const sourceBinding = path.join(moduleRoot, 'build/Release/better_sqlite3.node')
+  fs.rmSync(sourceBinding, { force: true })
+  const forceBuild = process.env.npm_package_config_node_gyp_force_build
+  // better-sqlite3's binding.gyp skips compilation when a bundled N-API prebuild exists.
+  process.env.npm_package_config_node_gyp_force_build = '1'
+  try {
+    await rebuildFn({
+      buildPath: projectRoot,
+      electronVersion,
+      platform,
+      arch,
+      onlyModules: ['better-sqlite3'],
+      force: true,
+      buildFromSource: true
+    })
+    // The v13 loader prefers this file over build/Release, even after a source rebuild.
+    fs.copyFileSync(sourceBinding, path.join(moduleRoot, `prebuilds/${platform}-${arch}.node`))
+  } finally {
+    if (forceBuild === undefined) delete process.env.npm_package_config_node_gyp_force_build
+    else process.env.npm_package_config_node_gyp_force_build = forceBuild
+  }
 }
 exports.prepareNativeModulesForElectron = prepareNativeModulesForElectron
 
@@ -168,13 +179,9 @@ exports.keepPackages = keepPackages
 
 const getNativeModuleFilters = (platform, arch) => {
   const keptPackages = keepPackages(platform, arch)
-  const nativeBindingTarget = `${platform}-${arch}${platform === 'win32' ? '-msvc' : platform === 'linux' ? '-gnu' : ''}`
   return [
     ...packages.filter((name) => !keptPackages.includes(name)).map((name) => `!**/node_modules/${name}/**`),
-    `!**/node_modules/@mariozechner/clipboard-!(${nativeBindingTarget})/**`,
-    `!**/node_modules/@koromix/koffi-!(${platform}-${arch})/**`,
-    `!**/node_modules/node-addon-require-builtin-!(${nativeBindingTarget})/**`,
-    `!**/node_modules/{node-pty,selection-hook}/prebuilds/!(${platform}-${arch})/**`
+    `!**/node_modules/selection-hook/prebuilds/!(${platform}-${arch})/**`
   ]
 }
 exports.getNativeModuleFilters = getNativeModuleFilters

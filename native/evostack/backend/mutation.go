@@ -66,6 +66,9 @@ func (s *server) mutationChanged(method, path string, body object) {
 	resource = strings.Split(resource, ":")[0]
 	var endpoints []string
 	switch resource {
+	case "notifications":
+		// Notification mutations enqueue their exact effects only when rows change.
+		return
 	case "models":
 		if method == "DELETE" {
 			endpoints = []string{"/assistants", "/topics/:topicId/messages", "/topics/:topicId/tree", "/pins"}

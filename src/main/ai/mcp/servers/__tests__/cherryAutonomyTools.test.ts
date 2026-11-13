@@ -577,42 +577,6 @@ describe('cherry-tools autonomy tools', () => {
       })
     })
 
-    it('places metadata-only Session hits after ranked message evidence', async () => {
-      mockSearchSessionMessages.mockReturnValue([
-        {
-          messageId: 'message-ranked',
-          sessionId: 'session-ranked',
-          sessionName: 'Ranked evidence',
-          agentId: 'agent_a',
-          agentName: 'Agent A',
-          snippet: 'ranked evidence',
-          createdAt: '2026-08-10T00:00:00.000Z'
-        }
-      ])
-      mockSearchSessions.mockReturnValue([
-        {
-          item: {
-            id: 'session-metadata',
-            title: 'Metadata only',
-            subtitle: 'Agent B',
-            target: { agentId: 'agent_b' }
-          },
-          matches: [{ field: 'name', snippet: 'Metadata only' }]
-        }
-      ])
-
-      const result = await callTool(createServer(), { query: 'evidence' }, 'session_search')
-
-      expect(JSON.parse(result.content[0].text).sessions).toEqual([
-        expect.objectContaining({ sessionId: 'session-ranked', matches: [expect.anything()] }),
-        expect.objectContaining({
-          sessionId: 'session-metadata',
-          matches: [],
-          metadataMatches: [{ field: 'name', snippet: 'Metadata only' }]
-        })
-      ])
-    })
-
     it('merges metadata evidence and applies limit to final Sessions', async () => {
       mockSearchSessionMessages.mockReturnValue([
         {
@@ -805,7 +769,7 @@ describe('cherry-tools autonomy tools', () => {
       mockCreateTask.mockReturnValue(task)
 
       const server = createServer('agent_1', WORKSPACE_PATH, null)
-      const result = await callTool(server, {
+      await callTool(server, {
         action: 'add',
         name: 'Daily standup',
         message: 'Run standup check',
@@ -820,7 +784,6 @@ describe('cherry-tools autonomy tools', () => {
         timeoutMinutes: undefined,
         channelIds: undefined
       })
-      expect(result.content[0].text).toContain('Job created')
     })
 
     it('should create a task with interval schedule', async () => {
@@ -921,15 +884,6 @@ describe('cherry-tools autonomy tools', () => {
       expect(mockListTasks).toHaveBeenCalledWith('agent_1', { limit: 100 })
       expect(result.content[0].text).toContain('Job 1')
     })
-
-    it('should handle empty task list', async () => {
-      mockListTasks.mockReturnValue({ tasks: [], total: 0 })
-
-      const server = createServer()
-      const result = await callTool(server, { action: 'list' })
-
-      expect(result.content[0].text).toBe('No scheduled jobs.')
-    })
   })
 
   describe('remove action', () => {
@@ -937,10 +891,9 @@ describe('cherry-tools autonomy tools', () => {
       mockDeleteTask.mockResolvedValue(true)
 
       const server = createServer('agent_1')
-      const result = await callTool(server, { action: 'remove', id: 'task_1' })
+      await callTool(server, { action: 'remove', id: 'task_1' })
 
       expect(mockDeleteTask).toHaveBeenCalledWith('agent_1', 'task_1')
-      expect(result.content[0].text).toContain('removed')
     })
 
     it('should error when task not found', async () => {

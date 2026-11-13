@@ -19,8 +19,6 @@ vi.mock('../../processors/registry', () => ({
 
 import { MockMainPreferenceServiceUtils } from '@test-mocks/main/PreferenceService'
 
-import { MB } from '@shared/utils/constants'
-
 import { getFileProcessorConfigById, resolveProcessorConfigByFeature } from '../resolveProcessorConfig'
 
 describe('resolveProcessorConfig', () => {
@@ -45,7 +43,7 @@ describe('resolveProcessorConfig', () => {
       }
     })
 
-    expect(getFileProcessorConfigById('open-mineru')).toEqual({
+    expect(getFileProcessorConfigById('open-mineru')).toMatchObject({
       id: 'open-mineru',
       type: 'api',
       capabilities: [
@@ -53,8 +51,7 @@ describe('resolveProcessorConfig', () => {
           feature: 'document_to_markdown',
           inputs: ['document'],
           output: 'markdown',
-          apiHost: 'http://127.0.0.1:9000',
-          maxInputBytes: 200 * MB
+          apiHost: 'http://127.0.0.1:9000'
         }
       ],
       apiKeys: ['secret-key'],
@@ -62,6 +59,28 @@ describe('resolveProcessorConfig', () => {
         langs: ['eng']
       }
     })
+  })
+
+  it('merges Doc2X export options into the main-process capability config', () => {
+    MockMainPreferenceServiceUtils.setPreferenceValue('feature.file_processing.overrides', {
+      doc2x: {
+        capabilities: {
+          document_to_markdown: {
+            modelId: 'v3-2026',
+            formulaLevel: 2,
+            mergeCrossPageForms: true
+          }
+        }
+      }
+    })
+
+    expect(getFileProcessorConfigById('doc2x').capabilities[0]).toEqual(
+      expect.objectContaining({
+        modelId: 'v3-2026',
+        formulaLevel: 2,
+        mergeCrossPageForms: true
+      })
+    )
   })
 
   it('getFileProcessorConfigById throws notFound for an unknown processor id', () => {

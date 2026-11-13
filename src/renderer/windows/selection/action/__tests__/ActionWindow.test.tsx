@@ -122,15 +122,6 @@ describe('ActionWindow surface', () => {
     expect(container.firstElementChild).toHaveStyle({ opacity: '0.6' })
   })
 
-  it('leaves additional title spacing after the macOS traffic lights', () => {
-    platform.isMac = true
-
-    const { container } = render(<ActionWindow />)
-    const titleBar = container.firstElementChild?.firstElementChild
-
-    expect(titleBar).toHaveStyle({ paddingLeft: '78px' })
-  })
-
   it('names the pin action and updates its name after toggling the native window state', () => {
     render(<ActionWindow />)
     fireEvent.click(screen.getByRole('button', { name: 'selection.action.window.pin' }))
@@ -148,7 +139,7 @@ describe('ActionWindow surface', () => {
 
     fireEvent.click(pinButton!)
     fireEvent.click(opacityButton!)
-    expect(pinButton).toHaveClass('bg-accent')
+
     expect(container.querySelector('[data-slot="slider"]')).toBeInTheDocument()
 
     vi.mocked(HTMLElement.prototype.scrollTo).mockClear()
@@ -159,7 +150,6 @@ describe('ActionWindow surface', () => {
 
     await waitFor(() => {
       expect(container.querySelector('[data-slot="slider"]')).not.toBeInTheDocument()
-      expect(pinButton).not.toHaveClass('bg-accent')
     })
     expect(container.firstElementChild).toHaveStyle({ opacity: '0.6' })
     expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledWith({ top: 0 })

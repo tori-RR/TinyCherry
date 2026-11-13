@@ -8,6 +8,8 @@ export type QuickPanelTriggerInfo = {
 }
 
 export interface QuickPanelInsertTextOptions {
+  /** Default cursor; start inserts before the existing draft without replacing its tokens. */
+  position?: 'cursor' | 'start'
   /** Default true — turn `${name}` in the inserted text into prompt-variable chips. */
   tokenizeVariables?: boolean
 }
@@ -26,8 +28,8 @@ export interface QuickPanelInputAdapter {
   getCursorOffset?: () => number
   getSelectionEndOffset?: () => number
   /**
-   * Inserts at the cursor. By default `${name}` markers in the text become editable prompt-variable
-   * chips (quick phrases rely on it). Pass `tokenizeVariables: false` for text from a source that
+   * Inserts at the cursor unless `position` is `start`. By default `${name}` markers become editable
+   * prompt-variable chips (quick phrases rely on it). Pass `tokenizeVariables: false` for text from a source that
    * did not author those markers as fields — a rendered MCP prompt whose body may contain a shell
    * `${HOME}` — so it stays literal.
    */
@@ -126,6 +128,7 @@ export type QuickPanelListItem = {
   /** Stable identity for selection updates and DOM keys. */
   id?: string
   label: React.ReactNode | string
+  shortcut?: string
   description?: React.ReactNode | string
   tooltip?: React.ReactNode | string
   /** In-row element used as the controlled Tooltip trigger. */

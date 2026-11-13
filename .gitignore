@@ -109,8 +109,6 @@ YOUR_MEMORY_FILE_PATH
 
 /native/external-app/build/
 
-#codereview
-.code_review/
+/.code_review/
 
-# Local review logs
 /README_LOG.MD

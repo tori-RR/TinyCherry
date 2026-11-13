@@ -1,8 +1,10 @@
 import type { IpcRequestSchemas } from '@shared/ipc/schemas/ipcSchemas'
 import type { IpcHandlersFor } from '@shared/ipc/types'
 
+import { agentHandlers } from './agent'
 import { aiHandlers } from './ai'
 import { appHandlers } from './app'
+import { assistantHandlers } from './assistant'
 import { backupHandlers } from './backup'
 import { binaryHandlers } from './binary'
 import { browserHandlers } from './browser'
@@ -23,6 +25,7 @@ import { knowledgeHandlers } from './knowledge'
 import { mcpHandlers } from './mcp'
 import { miniAppHandlers } from './miniApp'
 import { navigationHandlers } from './navigation'
+import { notificationHandlers } from './notification'
 import { oauthHandlers } from './oauth'
 import { openclawHandlers } from './openclaw'
 import { ovmsHandlers } from './ovms'
@@ -54,6 +57,7 @@ type RemovedRoute = Extract<
 /** All IPC handlers exposed by TinyCherry. Legacy request schemas remain typed for source compatibility. */
 export const ipcHandlers = {
   ...aiHandlers,
+  ...agentHandlers,
   ...appHandlers,
   ...backupHandlers,
   ...binaryHandlers,
@@ -75,11 +79,13 @@ export const ipcHandlers = {
   ...mcpHandlers,
   ...miniAppHandlers,
   ...navigationHandlers,
+  ...notificationHandlers,
   ...oauthHandlers,
   ...openclawHandlers,
   ...ovmsHandlers,
   ...pdfjsHandlers,
   ...printHandlers,
+  ...assistantHandlers,
   ...proxyHandlers,
   ...providerHandlers,
   ...quickAssistantHandlers,

@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { reportRendererReady } from '../rendererReady'
 
+const host = vi.hoisted(() => ({ invoke: vi.fn() }))
+vi.mock('../transport', () => ({ ipcRenderer: { invoke: host.invoke } }))
+
 afterEach(() => {
   window.dispatchEvent(new Event('pagehide'))
   document.body.replaceChildren()
@@ -10,32 +13,24 @@ afterEach(() => {
 
 describe('native renderer readiness', () => {
   it('waits for the interactive React welcome instead of accepting a boot spinner', async () => {
-    const invoke = vi.fn().mockResolvedValue(undefined)
-    vi.stubGlobal('__TAURI__', { core: { invoke } })
+    const invoke = host.invoke.mockReset().mockResolvedValue(undefined)
     document.body.innerHTML = '<div id="root"><img alt="boot" /></div>'
     const ready = reportRendererReady()
     await Promise.resolve()
     expect(invoke).not.toHaveBeenCalled()
     document.getElementById('root')!.innerHTML = '<h1>Welcome</h1><button>Configure</button>'
     await ready
-    expect(invoke).toHaveBeenCalledExactlyOnceWith('ipc_request', {
-      channel: 'evostack:renderer-ready',
-      args: ['onboarding']
-    })
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('evostack:renderer-ready', 'onboarding')
     document.getElementById('root')!.append(document.createElement('div'))
     await Promise.resolve()
     expect(invoke).toHaveBeenCalledOnce()
   })
 
   it('recognizes an existing-profile workspace and cancels when the page closes during boot', async () => {
-    const invoke = vi.fn().mockResolvedValue(undefined)
-    vi.stubGlobal('__TAURI__', { core: { invoke } })
+    const invoke = host.invoke.mockReset().mockResolvedValue(undefined)
     document.body.innerHTML = '<div id="root"><main data-ui="app.content"></main></div>'
     await reportRendererReady()
-    expect(invoke).toHaveBeenCalledWith('ipc_request', {
-      channel: 'evostack:renderer-ready',
-      args: ['workspace']
-    })
+    expect(invoke).toHaveBeenCalledWith('evostack:renderer-ready', 'workspace')
     invoke.mockClear()
     document.getElementById('root')!.replaceChildren()
     const closed = reportRendererReady()

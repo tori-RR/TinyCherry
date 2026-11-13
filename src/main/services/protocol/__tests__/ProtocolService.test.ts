@@ -11,13 +11,20 @@ const {
   mainWindowServiceMock,
   mcpServerServiceMock,
   openSettingsInMainWindowMock,
+  profileMock,
+  protocolHandlers,
   platformMock,
   windowManagerMock
 } = vi.hoisted(() => {
+  const protocolHandlers = new Map<string, { executable?: string; args?: string[] }>()
+  const profileMock = { root: undefined as string | undefined }
   const appMock = {
     on: vi.fn(),
     removeListener: vi.fn(),
-    setAsDefaultProtocolClient: vi.fn()
+    setAsDefaultProtocolClient: vi.fn((scheme: string, executable?: string, args?: string[]) => {
+      protocolHandlers.set(scheme, { executable, args })
+      return true
+    })
   }
   const loggerMock = {
     debug: vi.fn(),
@@ -57,6 +64,8 @@ const {
     mainWindowServiceMock,
     mcpServerServiceMock,
     openSettingsInMainWindowMock,
+    profileMock,
+    protocolHandlers,
     platformMock,
     windowManagerMock
   }
@@ -106,6 +115,12 @@ vi.mock('@main/services/mainWindowNavigation', () => ({
 
 vi.mock('@main/core/platform', () => platformMock)
 
+vi.mock('@main/core/paths/constants', () => ({
+  get DEV_PROFILE_ROOT() {
+    return profileMock.root
+  }
+}))
+
 vi.mock('../handlers/mcpInstall', () => ({
   parseMcpInstallProtocolUrl: handlersMock.parseMcpInstallProtocolUrl
 }))
@@ -142,6 +157,8 @@ describe('ProtocolService', () => {
     originalArgv = process.argv
     originalDefaultApp = (process as NodeJS.Process & { defaultApp?: boolean }).defaultApp
     vi.clearAllMocks()
+    profileMock.root = undefined
+    protocolHandlers.clear()
     platformMock.isLinux = false
     platformMock.isPortable = false
     platformMock.isWin = false
@@ -220,6 +237,29 @@ describe('ProtocolService', () => {
       expect(loggerMock.error).toHaveBeenCalledWith('Failed to handle providers protocol URL', error)
     })
   })
+
+  it.each([false, true])(
+    'preserves the installed protocol handler in an isolated profile (defaultApp=%s)',
+    async (defaultApp) => {
+      setDefaultApp(defaultApp)
+      process.argv = ['electron', '.', 'tinycherry://navigate/agents']
+      profileMock.root = '/private/tmp/isolated-tinycherry-profile'
+      const installedHandler = { executable: '/Applications/TinyCherry.app', args: [] }
+      const cherryHandler = { executable: '/Applications/Cherry Studio.app', args: [] }
+      protocolHandlers.set('tinycherry', installedHandler)
+      protocolHandlers.set('cherrystudio', cherryHandler)
+      const navigations: string[] = []
+      handlersMock.handleNavigateProtocolUrl.mockImplementation((url: URL) => navigations.push(url.href))
+
+      await (service as any).onInit()
+      await markProtocolHandlingReady()
+
+      expect(appMock.setAsDefaultProtocolClient).not.toHaveBeenCalled()
+      expect(protocolHandlers.get('tinycherry')).toBe(installedHandler)
+      expect(protocolHandlers.get('cherrystudio')).toBe(cherryHandler)
+      expect(navigations).toEqual(['tinycherry://navigate/agents'])
+    }
+  )
 
   it('broadcasts unknown protocol hosts to all windows', async () => {
     await markProtocolHandlingReady()
@@ -450,5 +490,11 @@ describe('ProtocolService', () => {
       expect(mainWindowServiceMock.showMainWindow).toHaveBeenCalledTimes(1)
       expect(ipcApiServiceMock.broadcast).not.toHaveBeenCalled()
     })
+  })
+
+  it('handles malformed protocol URLs without throwing', async () => {
+    await markProtocolHandlingReady()
+
+    expect(() => (service as any).handleProtocolUrl('not a url')).not.toThrow()
   })
 })

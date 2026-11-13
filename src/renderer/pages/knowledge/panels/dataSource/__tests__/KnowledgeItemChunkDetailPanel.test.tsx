@@ -102,7 +102,7 @@ vi.mock('@cherrystudio/ui', () => ({
       {description}
     </div>
   ),
-  Scrollbar: ({ children, ...props }: { children: ReactNode; [key: string]: unknown }) => {
+  ScrollArea: ({ children, ...props }: { children: ReactNode; [key: string]: unknown }) => {
     delete props.autoHideScrollbar
     return <div {...props}>{children}</div>
   }

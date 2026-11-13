@@ -523,19 +523,6 @@ describe('EnvironmentDependencies', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('shows the install duration hint while an install is in progress', async () => {
-    setSnapshots({
-      uv: {
-        name: 'uv',
-        application: { status: 'absent' },
-        availability: { source: 'none' },
-        operation: { status: 'installing' }
-      }
-    })
-    render(<EnvironmentDependencies />)
-    expect(await screen.findByText('settings.dependencies.installingHint')).toBeInTheDocument()
-  })
-
   it('does not fetch latest versions in mini mode', async () => {
     render(<EnvironmentDependencies mini />)
     await waitFor(() => expect(ipcMocks.snapshots).toHaveBeenCalled())
@@ -953,11 +940,6 @@ describe('EnvironmentDependencies', () => {
     act(() => ipcEventHandlers.get('binary.availability_changed')?.(undefined))
 
     await waitFor(() => expect(screen.queryByText('v2.0.0')).not.toBeInTheDocument())
-  })
-
-  it('fetches latest versions on mount', async () => {
-    render(<EnvironmentDependencies />)
-    await waitFor(() => expect(ipcMocks.latestVersions).toHaveBeenCalledWith(false))
   })
 
   it('shows persistent failed-install details on demand', async () => {

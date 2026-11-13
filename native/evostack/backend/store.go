@@ -28,6 +28,7 @@ type defaults struct {
 
 // This trial owns a separate schema. It never opens a Cherry/Drizzle database.
 type store struct {
+	temporary         *temporaryState
 	directory         string
 	db                *sql.DB
 	tx                *sql.Tx
@@ -72,7 +73,7 @@ func openStore(directory string) (*store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
-	s := &store{db: db, directory: directory}
+	s := &store{db: db, directory: directory, temporary: newTemporaryState()}
 	fail := func(err error) (*store, error) { db.Close(); return nil, err }
 	if err := json.Unmarshal(defaultsJSON, &s.defaults); err != nil {
 		return fail(err)
@@ -160,7 +161,27 @@ func (s *store) recoverInterruptedMessages() error {
 			}
 		}
 		_, err = s.connection().Exec("UPDATE entity SET body=json_set(body,'$.status','error','$.updatedAt',?) WHERE resource='messages' AND json_extract(body,'$.status')='pending'", timestamp())
-		return err
+		if err != nil {
+			return err
+		}
+		for _, message := range messages {
+			row, err := s.get("messages", message.id)
+			if err != nil {
+				return err
+			}
+			if row["role"] != "assistant" {
+				continue
+			}
+			if _, err := s.get("topics", text(row["topicId"])); errors.Is(err, sql.ErrNoRows) {
+				continue
+			} else if err != nil {
+				return err
+			}
+			if _, err := s.generationNotification(row, "interrupted", time.Now().UnixMilli()); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 
@@ -168,17 +189,34 @@ func (s *store) transaction(fn func(*store) error) error {
 	if s.tx != nil {
 		return fn(s)
 	}
+	locked := s.temporary != nil
+	if locked {
+		s.temporary.mu.Lock()
+		defer func() {
+			if locked {
+				s.temporary.mu.Unlock()
+			}
+		}()
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	view := &store{directory: s.directory, db: s.db, tx: tx, defaults: s.defaults, preferenceUpdates: object{}}
+	if s.temporary != nil {
+		view.temporary = s.temporary.copyLocked()
+	}
 	defer tx.Rollback()
 	if err := fn(view); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return err
+	}
+	if locked {
+		s.temporary.topics, s.temporary.messages, s.temporary.deleting = view.temporary.topics, view.temporary.messages, view.temporary.deleting
+		s.temporary.mu.Unlock()
+		locked = false
 	}
 	for _, effect := range view.afterCommit {
 		effect()
@@ -194,6 +232,11 @@ func (s *store) onCommit(effect func()) {
 	}
 }
 func (s *store) get(resource, id string) (object, error) {
+	if s.temporary != nil {
+		if row, ok := s.temporary.get(resource, id); ok {
+			return row, nil
+		}
+	}
 	var data string
 	if err := s.connection().QueryRow("SELECT body FROM entity WHERE resource=? AND id=?", resource, id).Scan(&data); err != nil {
 		return nil, err
@@ -232,6 +275,9 @@ func (s *store) put(resource string, value object) error {
 	}
 	if err := s.validateRelations(resource, value); err != nil {
 		return err
+	}
+	if s.temporary != nil && s.temporary.put(resource, value) {
+		return nil
 	}
 	data, err := json.Marshal(value)
 	if err != nil {
@@ -368,6 +414,15 @@ func (s *store) pruneUnusedSecrets() error {
 	return nil
 }
 func (s *store) delete(resource, id string) error {
+	if s.temporary != nil {
+		s.temporary.mu.Lock()
+		if resource == "messages" && s.temporary.messages[id] != nil {
+			delete(s.temporary.messages, id)
+			s.temporary.mu.Unlock()
+			return nil
+		}
+		s.temporary.mu.Unlock()
+	}
 	_, err := s.connection().Exec("DELETE FROM entity WHERE resource=? AND id=?", resource, id)
 	return err
 }

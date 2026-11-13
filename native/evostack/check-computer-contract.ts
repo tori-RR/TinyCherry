@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { resolve } from 'node:path'
@@ -7,7 +8,12 @@ import { createInterface } from 'node:readline'
 
 import { readUIMessageStream, type UIMessage, type UIMessageChunk, uiMessageChunkSchema } from 'ai'
 
-import { MessageSchema } from '../../src/shared/data/types/message'
+import {
+  applyMessageProjectionUpdate,
+  type MessageProjectionView,
+  type TopicProjectionState
+} from '../../src/shared/ai/messageProjection'
+import { MessageDataSchema, MessageSchema } from '../../src/shared/data/types/message'
 
 async function main(): Promise<void> {
   const root = resolve(__dirname)
@@ -16,11 +22,13 @@ async function main(): Promise<void> {
   const syntheticKey = 'computer-contract-loopback-only'
   const screenshot = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='
   const requests: any[] = []
+  let abortedRequests = 0
+  let releasePlain: (() => void) | undefined
   let fatal: unknown
   const service = createServer((request, response) => {
     let body = ''
     request.on('data', (chunk) => (body += chunk))
-    request.on('end', () => {
+    request.on('end', async () => {
       try {
         assert.equal(request.headers.authorization, `Bearer ${syntheticKey}`)
         const payload = JSON.parse(body)
@@ -31,8 +39,22 @@ async function main(): Promise<void> {
           response.write(
             `data: ${JSON.stringify({ choices: [{ delta, ...(finishReason ? { finish_reason: finishReason } : {}) }] })}\n\n`
           )
-        if (!payload.tools) frame({ content: 'Plain SSE contract passed.' }, 'stop')
-        else if (toolResults.length < 2) {
+        if (JSON.stringify(payload.messages).includes('Abort synthetic projection')) {
+          response.once('close', () => abortedRequests++)
+          frame({ content: 'Partial cancellation proof' })
+          return
+        }
+        if (!payload.tools) {
+          frame({ content: 'Plain ' })
+          await new Promise<void>((done) => {
+            releasePlain = done
+            response.once('close', done)
+          })
+          if (response.destroyed) return
+          frame({ content: 'SSE contract passed.' })
+          await new Promise((done) => setTimeout(done, 160))
+          frame({}, 'stop')
+        } else if (toolResults.length < 2) {
           assert.equal(payload.parallel_tool_calls, false)
           assert.equal(payload.tools.length, 9)
           assert(!payload.tools.some((tool: any) => tool.function.name === 'mcp__computer__press_key'))
@@ -53,7 +75,13 @@ async function main(): Promise<void> {
             ]
           })
           frame({ tool_calls: [{ index: 0, function: { arguments: encoded.slice(7) } }] }, 'tool_calls')
-        } else frame({ content: 'Computer tool contract passed.' }, 'stop')
+        } else {
+          frame({ content: 'Computer tool ' })
+          await new Promise((done) => setTimeout(done, 160))
+          frame({ content: 'contract passed.' })
+          await new Promise((done) => setTimeout(done, 160))
+          frame({}, 'stop')
+        }
         response.end('data: [DONE]\n\n')
       } catch (error) {
         fatal = error
@@ -162,13 +190,92 @@ async function main(): Promise<void> {
     assert(result.ok, result.error?.message)
     return result.data
   }
-  const run = async (assistantId: string, text: string) => {
+  const waitFor = async (condition: () => boolean, description: string) => {
+    const end = Date.now() + 10_000
+    while (!condition()) {
+      if (fatal) throw fatal
+      const failure = events.find((event) => event.channel === 'ipc-api:event' && event.args[0] === 'ai.stream.error')
+      assert(!failure, failure?.args[1]?.error?.message)
+      assert(Date.now() < end, description)
+      await new Promise((done) => setTimeout(done, 10))
+    }
+  }
+  const projectionEvents = (subscriptionId: string) =>
+    events
+      .filter((event) => event.channel === 'ipc-api:event' && event.args[0] === 'ai.projection.changed')
+      .map((event) => event.args[1])
+      .filter((event) => event.subscriptionId === subscriptionId)
+  const validateView = (view: MessageProjectionView<TopicProjectionState>, topicId: string) => {
+    assert.equal(view.kind, 'topic')
+    assert.equal(view.topicId, topicId)
+    assert(Number.isSafeInteger(view.revision) && view.revision >= 0)
+    assert.equal(new Set(view.messages.map((message) => message.id)).size, view.messages.length)
+    for (const message of view.messages) MessageDataSchema.parse({ parts: message.parts })
+  }
+  const applyEvents = (baseline: MessageProjectionView<TopicProjectionState>, subscriptionId: string) => {
+    let view = baseline
+    for (const { update } of projectionEvents(subscriptionId)) {
+      assert.equal(update.revision, view.revision + 1, 'Projection delivery lost or reordered a revision')
+      const next = applyMessageProjectionUpdate(view, update)
+      assert(next, 'The original renderer rejected a projection patch or message order')
+      view = next
+      validateView(view, baseline.topicId)
+    }
+    return view
+  }
+  const run = async (assistantId: string, text: string, reconnect = false, abort = false) => {
     const topic = await data('POST', '/topics', { assistantId })
-    await command('ai.stream.open', {
+    const target = { kind: 'topic', topicId: topic.id }
+    let subscriptionId = randomUUID()
+    let baseline: MessageProjectionView<TopicProjectionState> = await command('ai.projection.attach', {
+      target,
+      subscriptionId
+    })
+    validateView(baseline, topic.id)
+    assert.deepEqual(baseline.messages, [])
+    const originalBaseline = baseline
+    const originalSerialized = JSON.stringify(baseline)
+    const ack = await command('ai.stream.open', {
       topicId: topic.id,
       trigger: 'submit-message',
       userMessageParts: [{ type: 'text', text }]
     })
+    assert.equal(ack.mode, 'started', 'The start acknowledgement must remain compatible with the new dispatcher')
+    if (reconnect || abort) {
+      await waitFor(
+        () =>
+          applyEvents(baseline, subscriptionId).messages.some((message) =>
+            message.parts.some((part) => part.type === 'text' && part.text.length > 0)
+          ),
+        'The new renderer projection did not receive partial text'
+      )
+    }
+    if (reconnect) {
+      assert(applyEvents(baseline, subscriptionId).executions.some((execution) => execution.status === 'active'))
+      const detached = subscriptionId
+      await command('ai.projection.detach', { target, subscriptionId: detached })
+      const detachedEventCount = projectionEvents(detached).length
+      subscriptionId = randomUUID()
+      baseline = await command('ai.projection.attach', { target, subscriptionId })
+      validateView(baseline, topic.id)
+      assert(baseline.messages.some((message) => message.parts.some((part) => part.type === 'text')))
+      assert(baseline.executions.some((execution) => execution.status === 'active'))
+      releasePlain?.()
+      releasePlain = undefined
+      await waitFor(
+        () =>
+          projectionEvents(subscriptionId).some(({ update }) =>
+            update.patches.some((patch: any) => patch.type === 'append')
+          ),
+        'The reconnected renderer did not receive incremental append patches'
+      )
+      assert.equal(
+        projectionEvents(detached).length,
+        detachedEventCount,
+        'Detached projection continued delivering events'
+      )
+    }
+    if (abort) await command('ai.stream.abort', { topicId: topic.id })
     const end = Date.now() + 10_000
     while (
       !events.some(
@@ -212,13 +319,22 @@ async function main(): Promise<void> {
     assert(message)
     const branch = await data('GET', `/topics/${topic.id}/messages`)
     const stored = MessageSchema.parse(branch.items.find((item: any) => item.message.id === message?.id).message)
-    assert.equal(stored.status, 'success')
+    assert.equal(stored.status, abort ? 'paused' : 'success')
     assert.deepEqual(
       JSON.parse(JSON.stringify(message.parts)),
       stored.data.parts,
       'Live SDK projection and durable DTO differ'
     )
-    return { message, stored, chunks }
+    const projection = applyEvents(baseline, subscriptionId)
+    assert.equal(JSON.stringify(originalBaseline), originalSerialized, 'Attach baseline mutated after delivery')
+    assert(projection.executions.some((execution) => execution.status === (abort ? 'paused' : 'done')))
+    const projected = projection.messages.find((item) => item.id === stored.id)
+    assert(projected)
+    assert.deepEqual(projected.parts, stored.data.parts, 'New renderer projection and durable DTO differ')
+    const replayBaseline = await command('ai.projection.attach', { target, subscriptionId })
+    assert.deepEqual(replayBaseline, projection, 'Reconnect baseline differs from the applied live projection')
+    await command('ai.projection.detach', { target, subscriptionId })
+    return { message, stored, chunks, projection, revisions: projectionEvents(subscriptionId).length, reconnect }
   }
   try {
     const provider = await data('POST', '/providers', {
@@ -236,7 +352,7 @@ async function main(): Promise<void> {
       }
     ])
     const assistant = await data('POST', '/assistants', { name: 'Computer contract', modelId: model.id })
-    const plain = await run(assistant.id, 'Plain text only')
+    const plain = await run(assistant.id, 'Plain text only', true)
     assert(plain.message.parts.some((part) => part.type === 'text' && part.text === 'Plain SSE contract passed.'))
     assert.equal(nativeCalls.length, 0)
     await invoke('preference:set', 'app.computer_use.agent_control.enabled', true)
@@ -253,7 +369,10 @@ async function main(): Promise<void> {
     assert(tool.message.parts.some((part) => part.type === 'text' && part.text === 'Computer tool contract passed.'))
     assert(!JSON.stringify(tool.stored).includes(screenshot), 'Screenshot leaked into SQLite message')
     assert(!JSON.stringify(tool.chunks).includes(screenshot), 'Screenshot leaked into replay frames')
-    for (const payload of requests.slice(2)) {
+    assert(!JSON.stringify(tool.projection).includes(screenshot), 'Screenshot leaked into renderer projection')
+    for (const payload of requests.filter(
+      (payload) => payload.tools && payload.messages.some((message: any) => message.role === 'tool')
+    )) {
       const images = payload.messages.flatMap((message: any) =>
         Array.isArray(message.content) ? message.content.filter((part: any) => part.type === 'image_url') : []
       )
@@ -262,6 +381,10 @@ async function main(): Promise<void> {
     }
     assert.equal(closedTasks, 1)
     assert.equal(grantedTasks.size, 1)
+    await invoke('preference:set', 'app.computer_use.agent_control.enabled', false)
+    const aborted = await run(assistant.id, 'Abort synthetic projection', false, true)
+    assert(aborted.message.parts.some((part) => part.type === 'text' && part.text === 'Partial cancellation proof'))
+    await waitFor(() => abortedRequests === 1, 'Abort did not close the owned provider request')
     const result = {
       passed: true,
       modelRequests: requests.length,
@@ -270,12 +393,24 @@ async function main(): Promise<void> {
       plainSdkParts: plain.message.parts.length,
       toolSdkParts: tool.message.parts.length,
       screenshotPersisted: false,
-      originalSdkAndStoredPartsEqual: true
+      originalSdkAndStoredPartsEqual: true,
+      rendererProjectionAndStoredPartsEqual: true,
+      incrementalReconnect: plain.reconnect,
+      projectionRevisions: { plain: plain.revisions, tool: tool.revisions, aborted: aborted.revisions },
+      abortStatus: aborted.stored.status,
+      abortedRequests
     }
     writeFileSync(resolve(evidence, 'result.json'), JSON.stringify(result, null, 2))
     process.stdout.write(`computer contract passed: ${evidence}\n`)
     await rpc('backend.shutdown', null)
+  } catch (error) {
+    writeFileSync(
+      resolve(evidence, 'failure.json'),
+      JSON.stringify({ error: String(error), events, requests }, null, 2)
+    )
+    throw error
   } finally {
+    releasePlain?.()
     child.stdin.end()
     let timer: ReturnType<typeof setTimeout> | undefined
     await Promise.race([

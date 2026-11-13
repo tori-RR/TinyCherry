@@ -1,4 +1,3 @@
-import { useChat } from '@ai-sdk/react'
 import { isEmpty } from 'es-toolkit/compat'
 import type { FC } from 'react'
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -11,11 +10,11 @@ import { toMessageListItem } from '@renderer/components/chat/messages/utils/mess
 import { useAssistant } from '@renderer/hooks/useAssistant'
 import { useExecutionOverlay } from '@renderer/hooks/useExecutionOverlay'
 import { useDefaultModel } from '@renderer/hooks/useModel'
+import { useStreamCommands } from '@renderer/hooks/useStreamCommands'
 import { useTemporaryTopic } from '@renderer/hooks/useTemporaryTopic'
 import { useTheme } from '@renderer/hooks/useTheme'
 import { useTopicStreamStatus } from '@renderer/hooks/useTopicStreamStatus'
 import { ipcApi, useIpcOn } from '@renderer/ipc'
-import { ipcChatTransport } from '@renderer/services/aiTransport'
 import { toast } from '@renderer/services/toast'
 import { getTextFromParts } from '@renderer/utils/message/partsHelpers'
 import { isMac } from '@renderer/utils/platform'
@@ -42,9 +41,6 @@ const TranslateWindow = React.lazy(() => import('../translate/TranslateWindow'))
 const LazyBranchFallback = () => <div className="flex-1" />
 
 const logger = loggerService.withContext('HomeWindow')
-
-// Stable empty array — quick-assistant temp topic has no DB-backed messages.
-const EMPTY_UI_MESSAGES: CherryUIMessage[] = []
 
 type MiniRoute = 'home' | 'chat' | 'translate' | 'summary' | 'explanation'
 
@@ -134,28 +130,18 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
     sendMessage,
     stop: stopChat,
     setMessages
-  } = useChat<CherryUIMessage>({
-    id: temporaryTopicId ?? 'pending-temp',
-    transport: ipcChatTransport,
-    experimental_throttle: 50,
-    onError: (err) => {
-      setIsPreparing(false)
-      setFlowError(err.message)
-    }
+  } = useStreamCommands(temporaryTopicId ?? 'pending-temp', undefined, (err) => {
+    setIsPreparing(false)
+    setFlowError(err.message)
   })
 
-  // Chunks are routed to the per-execution collector (Main tags every
-  // chunk with its modelId). Primary `useChat.state.messages`
-  // (chatMessages) only receives user messages pushed by `sendMessage` —
-  // no assistant content. We accumulate assistant turns across completed
-  // streams in `completedAssistants` so the multi-turn conversation
-  // renders properly. Cleared on `clear()` together with `setMessages([])`.
+  // Local inputs and projected assistant messages share the existing message list.
   const { activeExecutions, isPending } = useTopicStreamStatus(temporaryTopicId ?? 'pending-temp')
   const {
     liveAssistants,
     reset: resetExecutionMessages,
     clear: clearExecutionMessages
-  } = useExecutionOverlay(temporaryTopicId ?? 'pending-temp', activeExecutions, EMPTY_UI_MESSAGES)
+  } = useExecutionOverlay(temporaryTopicId ?? 'pending-temp', activeExecutions)
   const [completedAssistants, setCompletedAssistants] = useState<CherryUIMessage[]>([])
 
   const prevActiveCountRef = useRef(activeExecutions.length)
@@ -163,8 +149,7 @@ const HomeWindow: FC<{ draggable?: boolean }> = ({ draggable = true }) => {
     const wasActive = prevActiveCountRef.current > 0
     prevActiveCountRef.current = activeExecutions.length
     if (activeExecutions.length === 0 && wasActive) {
-      // Snapshots are retained after a reader tears down, so the final
-      // frames are still in `liveAssistants` at this →0 transition.
+      // Terminal projection retains the final frame through the history handoff.
       if (liveAssistants.length) {
         setCompletedAssistants((done) => [...done, ...finalizeLiveMessages(liveAssistants)])
         resetExecutionMessages()

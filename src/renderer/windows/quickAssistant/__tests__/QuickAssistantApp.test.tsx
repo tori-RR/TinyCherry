@@ -9,7 +9,7 @@ import QuickAssistantApp from '../QuickAssistantApp'
 // ThemeProvider/CodeStyleProvider and cannot catch this throw.
 vi.mock('../home/HomeWindow', () => ({ default: () => null }))
 
-const state = vi.hoisted(() => ({ throwTheme: true, renderVoicePlaybackHost: vi.fn() }))
+const state = vi.hoisted(() => ({ throwTheme: true }))
 
 vi.mock('@renderer/components/ThemeProvider', () => ({
   ThemeProvider: ({ children }: { children: ReactNode }) => {
@@ -24,19 +24,12 @@ vi.mock('@renderer/components/CodeStyleProvider', () => ({
 
 vi.mock('@renderer/components/PopupHost', () => ({ PopupHost: () => null }))
 vi.mock('@renderer/components/ToastHost', () => ({ default: () => null }))
-vi.mock('@renderer/components/VoicePlaybackHost', () => ({
-  VoicePlaybackHost: () => {
-    state.renderVoicePlaybackHost()
-    return <div aria-label="Voice playback" />
-  }
-}))
 vi.mock('@renderer/hooks/useCustomCss', () => ({ useCustomCss: vi.fn() }))
 vi.mock('@renderer/hooks/useLanguageSync', () => ({ useLanguageSync: vi.fn() }))
 
 describe('QuickAssistantApp top-level error boundary', () => {
   beforeEach(() => {
     state.throwTheme = true
-    state.renderVoicePlaybackHost.mockClear()
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 
@@ -50,12 +43,11 @@ describe('QuickAssistantApp top-level error boundary', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('theme provider boom')
   })
 
-  it('mounts the shared playback host inside the quick-assistant providers', () => {
+  it('keeps playback controls out of the quick-assistant shell', () => {
     state.throwTheme = false
 
     render(<QuickAssistantApp />)
 
-    expect(screen.getByLabelText('Voice playback')).toBeInTheDocument()
-    expect(state.renderVoicePlaybackHost).toHaveBeenCalledOnce()
+    expect(screen.queryByLabelText('Voice playback')).not.toBeInTheDocument()
   })
 })

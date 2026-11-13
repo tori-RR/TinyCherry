@@ -399,6 +399,7 @@ func (s *server) readComputerModelStep(ctx context.Context, g *generation, confi
 				_ = s.chunk(g, object{"type": kind + "-end", "id": ids[kind]})
 			}
 		}
+		s.updateProjection(g, "active", nil, false)
 	}()
 	scanner := bufio.NewScanner(response.Body)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
@@ -512,6 +513,7 @@ func (s *server) readComputerModelStep(ctx context.Context, g *generation, confi
 				step.Reasoning = builder.String()
 			}
 		}
+		s.updateProjection(g, "active", nil, false)
 		if !g.streamingStatusSent {
 			s.cache("topic.stream.statuses."+g.topicID, object{"status": "streaming", "activeExecutions": []object{g.execution()}, "awaitingApprovalAnchors": []any{}})
 			g.streamingStatusSent = true

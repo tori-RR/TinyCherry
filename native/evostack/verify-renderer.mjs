@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url'
 
 const [port, profile, revision] = process.argv.slice(2)
 assert(/^\d+$/.test(port) && profile && revision)
+const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
+const expectedVersion = JSON.parse(readFileSync(join(repository, 'package.json'), 'utf8')).version
 const deadline = Date.now() + 30_000
 const pause = () => new Promise((resolve) => setTimeout(resolve, 100))
 let target
@@ -91,10 +93,17 @@ const until = async (expression) => {
 try {
   await command('Runtime.enable', {})
   await until('Boolean(window.api?.ipcApi?.request && document.querySelector("#root h1"))')
-  const owner = await evaluate(
-    `(async()=>{const r=await window.api.ipcApi.request('app.get_info');if(!r.ok)throw Error('App info failed');return r.data.userDataPath})()`
+  const info = await evaluate(
+    `(async()=>{const r=await window.api.ipcApi.request('app.get_info');if(!r.ok)throw Error('App info failed');return r.data})()`
   )
-  assert.equal(resolve(owner).toLowerCase(), resolve(profile).toLowerCase(), 'CDP belongs to another profile')
+  assert.equal(
+    resolve(info.userDataPath).toLowerCase(),
+    resolve(profile).toLowerCase(),
+    'CDP belongs to another profile'
+  )
+  assert.equal(info.version, expectedVersion, 'Packaged renderer is connected to another app version')
+  assert.equal(info.platform, 'win32')
+  assert.equal(info.arch, 'x64')
   const locales = resolve(dirname(fileURLToPath(import.meta.url)), '../../src/renderer/i18n/locales')
   const labels = readdirSync(locales)
     .filter((file) => file.endsWith('.json'))
@@ -108,16 +117,39 @@ try {
   await until('Boolean(document.querySelector(\'[data-ui~="app.content"]\'))')
   const after = await evaluate(`window.api.preference.get('app.onboarding.provider_setup.status')`)
   assert.equal(after, 'skipped')
+  const contracts = await evaluate(`(async()=>{
+    const request=async(route,input)=>{const r=await window.api.ipcApi.request(route,input);if(!r.ok)throw Error(route+': '+r.error?.message);return r.data};
+    const controls=await request('computer_use.get_controls');
+    if(!Array.isArray(controls)||controls.length!==0)throw Error('Fresh profile unexpectedly has desktop controls');
+    const repl=await window.api.ipcApi.request('computer_use.get_call_apps',{cell:crypto.randomUUID()});
+    if(repl.ok||!repl.error?.message?.startsWith('EVOSTACK_NOT_MIGRATED:'))throw Error('Unmigrated REPL was not explicitly gated');
+    const topic=await request('ai.temporary_topic.create',{name:'Packaged projection smoke'});
+    const target={kind:'topic',topicId:topic.id};const subscriptionId=crypto.randomUUID();
+    try{
+      const view=await request('ai.projection.attach',{target,subscriptionId});
+      if(view?.kind!=='topic'||view.topicId!==topic.id||view.revision!==0||view.messages?.length!==0||view.executions?.length!==0)throw Error('Invalid fresh renderer projection baseline');
+      await request('ai.projection.detach',{target,subscriptionId});
+      return {nativeControls:true,replExplicitlyGated:true,temporaryTopic:true,projectionBaseline:true};
+    }finally{await request('ai.temporary_topic.delete',{id:topic.id})}
+  })()`)
+  assert.deepEqual(contracts, {
+    nativeControls: true,
+    replExplicitlyGated: true,
+    temporaryTopic: true,
+    projectionBaseline: true
+  })
   assert.deepEqual(errors, [], 'Unexpected renderer error')
   const result = {
     passed: true,
     revision,
+    version: info.version,
     profileVerified: true,
     rendererReady: true,
     clickedSetUpLater: true,
     before,
     after,
-    workspaceVisible: true
+    workspaceVisible: true,
+    contracts
   }
   writeFileSync(join(profile, 'renderer-ui-smoke.json'), JSON.stringify(result, null, 2))
   process.stdout.write('Packaged React ready and Set Up Later → workspace persistence passed\n')

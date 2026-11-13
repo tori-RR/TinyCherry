@@ -22,7 +22,7 @@ import { getSentryBuildContext } from './src/shared/utils/sentry'
 export { resolveRendererEdition } from './build/renderer.config'
 
 const { buildSelectionPanel, sourcePath: selectionPanelSource } = createRequire(import.meta.url)(
-  './native/darwin/build'
+  './native/selection-panel/build'
 )
 
 const { buildExternalApp, sourceFiles: externalAppSources } = createRequire(import.meta.url)(
@@ -72,14 +72,8 @@ const sentrySourceMapPlugins = (outputDirectory: 'main' | 'preload' | 'renderer'
       })
     : []
 
-// Bundle/externalize split for the main process: everything in `dependencies` is
-// externalized below (kept in node_modules of the packaged app), and everything
-// NOT in `dependencies` (i.e. in `devDependencies`) is bundled into the main bundle by
-// Rolldown. The API gateway's Elysia stack (`elysia`, `@elysia/*`) is intentionally in
-// `devDependencies` for exactly this reason — it is pure JS and bundles cleanly. Do NOT
-// move it to `dependencies`: that would externalize it, and since devDependencies are
-// pruned from production packages, the packaged app would fail at runtime with
-// MODULE_NOT_FOUND (no test catches this). See docs/dev/references/api-gateway/README.md.
+// `dependencies` stay external and ship whole; everything else is bundled. Only R1–R4 packages
+// belong there: see "Main-Process Dependencies" in CLAUDE.md.
 const mainExternalDependencies = [
   ...Object.keys(pkg.dependencies),
   // optionalDependencies too: platform-gated natives (e.g. node-mac-permissions) are real import
@@ -136,6 +130,7 @@ export const mainResolveAlias = {
   '@cherrystudio/web-search/providers/exa': resolve('packages/web-search/src/providers/exa.ts'),
   '@cherrystudio/web-search/providers/exa-mcp': resolve('packages/web-search/src/providers/exaMcp.ts'),
   '@cherrystudio/web-search/providers/bocha': resolve('packages/web-search/src/providers/bocha.ts'),
+  '@cherrystudio/web-search/providers/stepfun': resolve('packages/web-search/src/providers/stepfun.ts'),
   '@cherrystudio/web-search/providers/querit': resolve('packages/web-search/src/providers/querit.ts'),
   '@cherrystudio/web-search/providers/jina': resolve('packages/web-search/src/providers/jina.ts'),
   '@cherrystudio/web-search/providers/firecrawl': resolve('packages/web-search/src/providers/firecrawl.ts'),
@@ -146,6 +141,7 @@ export const mainResolveAlias = {
   '@cherrystudio/web-search/providers/deepseek': resolve('packages/web-search/src/providers/deepseek.ts'),
   '@cherrystudio/web-search/providers/desearch': resolve('packages/web-search/src/providers/desearch.ts'),
   '@cherrystudio/web-search/providers/searchapi': resolve('packages/web-search/src/providers/searchapi.ts'),
+  '@cherrystudio/web-search/providers/serpkite': resolve('packages/web-search/src/providers/serpkite.ts'),
   '@cherrystudio/web-search/tools/config': resolve('packages/web-search/src/tools/config.ts'),
   '@cherrystudio/web-search/tools/url-filter': resolve('packages/web-search/src/tools/urlFilter.ts'),
   '@cherrystudio/web-search/tools/content': resolve('packages/web-search/src/tools/content.ts'),
@@ -226,6 +222,8 @@ export default defineConfig({
       }
     },
     build: {
+      externalizeDeps: false,
+      isolatedEntries: true,
       sourcemap: sentrySourceMap,
       rolldownOptions: {
         // Unlike renderer which auto-discovers entries from HTML files,

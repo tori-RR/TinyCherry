@@ -12,7 +12,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  Scrollbar,
+  ScrollArea,
   Select,
   SelectContent,
   SelectItem,
@@ -258,12 +258,12 @@ export default function OnboardingPage({
     async (modelId: UniqueModelId, expectedStatus: CherryCloudStatus) => {
       setIsCompleting(true)
       try {
-        if (!(await persistPrivacyChoice()) || expectedStatus !== cloudStatusRef.current) return
+        if (!(await persistPrivacyChoice()) || expectedStatus.scopeId !== cloudStatusRef.current?.scopeId) return
         await updateSeededAgentModels(modelId)
-        if (expectedStatus !== cloudStatusRef.current) return
+        if (expectedStatus.scopeId !== cloudStatusRef.current?.scopeId) return
         await updateOnboardingPreferences({ providerSetupStatus: 'skipped' })
       } catch {
-        if (expectedStatus === cloudStatusRef.current) {
+        if (expectedStatus.scopeId === cloudStatusRef.current?.scopeId) {
           toast.error(t('onboarding.toast.complete_failed'))
         }
       } finally {
@@ -291,7 +291,7 @@ export default function OnboardingPage({
     void ipcApi
       .request('cherry_cloud.models.sync')
       .then(({ availableModelIds, quotaExhaustedModelIds }) => {
-        if (expectedStatus !== cloudStatusRef.current) return
+        if (expectedStatus.scopeId !== cloudStatusRef.current?.scopeId) return
 
         const exhaustedModelIds = new Set(quotaExhaustedModelIds)
         const agentModelId = availableModelIds.agent.find((modelId) => !exhaustedModelIds.has(modelId))
@@ -302,7 +302,7 @@ export default function OnboardingPage({
         }
       })
       .catch(() => {
-        if (expectedStatus === cloudStatusRef.current) {
+        if (expectedStatus.scopeId === cloudStatusRef.current?.scopeId) {
           setStep(canContinueProviderSetup ? 'select-model' : 'provider')
         }
       })
@@ -551,7 +551,9 @@ export default function OnboardingPage({
                   onBack={() => setStep('provider')}
                   padded
                 />
-                <Scrollbar className="flex min-h-0 flex-1 justify-center border-border border-t px-6 py-8">
+                <ScrollArea
+                  contentProps={{ className: 'flex justify-center px-6 py-8' }}
+                  className="min-h-0 flex-1 border-border border-t">
                   <div className="my-auto w-full max-w-[440px]">
                     <div className="w-full">
                       <ModelSettings
@@ -582,7 +584,7 @@ export default function OnboardingPage({
                       </div>
                     </div>
                   </div>
-                </Scrollbar>
+                </ScrollArea>
               </div>
             )}
           </div>
