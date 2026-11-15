@@ -22,22 +22,31 @@ const git = (root, args) => execFileSync('git', args, { cwd: root, encoding: 'ut
 const commit = (root, ref) => git(root, ['rev-parse', '--verify', '--end-of-options', `${ref}^{commit}`])
 
 export function validationEnvironment(root, original = process.env) {
-  const env = { ...original, CI: 'true', TRANSLATION_BASE_LOCALE: 'en-us' }
-  delete env.VALIDATION_PLAN
-  delete env.VALIDATION_WORKSPACE_PREPARED
   // Native packaging prepares its own Go/Cargo caches; pnpm must also stay in the workspace.
-  env.npm_config_store_dir = path.join(root, '.pnpm-store')
-  env.npm_config_verify_store_integrity = 'true'
   const cache = path.join(root, '.cache/upstream-validation')
   for (const name of ['tmp', 'npm', 'cache', 'state', 'data']) mkdirSync(path.join(cache, name), { recursive: true })
-  env.TEMP = env.TMP = path.join(cache, 'tmp')
-  env.npm_config_cache = path.join(cache, 'npm')
-  env.npm_config_devdir = path.join(cache, 'node-gyp')
-  env.PREK_HOME = path.join(cache, 'prek')
-  env.XDG_CACHE_HOME = path.join(cache, 'cache')
-  env.XDG_STATE_HOME = path.join(cache, 'state')
-  env.XDG_DATA_HOME = path.join(cache, 'data')
-  return env
+  const overrides = {
+    CI: 'true',
+    TRANSLATION_BASE_LOCALE: 'en-us',
+    npm_config_store_dir: path.join(root, '.pnpm-store'),
+    npm_config_verify_store_integrity: 'true',
+    TEMP: path.join(cache, 'tmp'),
+    TMP: path.join(cache, 'tmp'),
+    npm_config_cache: path.join(cache, 'npm'),
+    npm_config_devdir: path.join(cache, 'node-gyp'),
+    PREK_HOME: path.join(cache, 'prek'),
+    XDG_CACHE_HOME: path.join(cache, 'cache'),
+    XDG_STATE_HOME: path.join(cache, 'state'),
+    XDG_DATA_HOME: path.join(cache, 'data')
+  }
+  // Windows spawn keeps only one case-insensitive key; an inherited uppercase alias can win.
+  const replaced = new Set(
+    [...Object.keys(overrides), 'VALIDATION_PLAN', 'VALIDATION_WORKSPACE_PREPARED'].map((key) => key.toLowerCase())
+  )
+  return {
+    ...Object.fromEntries(Object.entries(original).filter(([key]) => !replaced.has(key.toLowerCase()))),
+    ...overrides
+  }
 }
 
 export function validationSteps(base) {

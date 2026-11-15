@@ -109,6 +109,28 @@ describe('upstream validation plan and environment', () => {
     }
     expect(env.npm_config_store_dir).toBe(join(root, '.pnpm-store'))
   })
+
+  it('removes every case alias before overriding Windows environment keys', () => {
+    const { root } = fixture()
+    const env = validationEnvironment(root, {
+      NPM_CONFIG_CACHE: 'external-uppercase-cache',
+      npm_CONFIG_cache: 'external-mixed-cache',
+      npm_config_cache: 'external-lowercase-cache',
+      NPM_CONFIG_STORE_DIR: 'external-store',
+      validation_plan: '{"projects":[]}',
+      Validation_Workspace_Prepared: 'true',
+      ci: 'false'
+    })
+    expect(Object.keys(env).filter((key) => key.toLowerCase() === 'npm_config_cache')).toEqual(['npm_config_cache'])
+    expect(Object.keys(env).filter((key) => key.toLowerCase() === 'npm_config_store_dir')).toEqual([
+      'npm_config_store_dir'
+    ])
+    expect(Object.keys(env).filter((key) => /^validation_(plan|workspace_prepared)$/i.test(key))).toEqual([])
+    expect(env.npm_config_cache).toBe(join(root, '.cache/upstream-validation/npm'))
+    expect(env.npm_config_store_dir).toBe(join(root, '.pnpm-store'))
+    expect(env.CI).toBe('true')
+    expect(env).not.toHaveProperty('ci')
+  })
 })
 
 describe('upstream validation execution', () => {
