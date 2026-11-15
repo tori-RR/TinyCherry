@@ -4,6 +4,23 @@
 `pnpm check` executes that plan serially; `pnpm check:all` runs the full gate.
 `lint` only checks lint rules, `lint:fix` applies lint fixes, and `format` formats files.
 
+## Upstream synchronization
+
+Follow the required [upstream synchronization workflow](../../docs/dev/contrib/upstream-sync.md)
+before promoting or pushing an upstream integration. `pnpm upstream:verify --base
+<target-sha> --upstream <upstream-ref>` validates the committed, clean candidate with
+a fresh frozen dependency installation, all static checks, CI's Windows platform-test
+inventory, gate/planner regressions, drift/policy checks, native packaging, and final
+i18n checks after all local tests. Existing dependencies are backed up under ignored
+`.cache/` before installation, restored on installation failure, and retained as a
+reported backup on success. Linux's full test projects and Windows/macOS contracts
+remain mandatory in exact-SHA full CI before promotion. Results stay under ignored `.cache/` and bind the
+commit/tree to the check set, Node version, and package hashes. Source or artifact
+changes require a new result. `pnpm upstream:check` verifies that result;
+`pnpm upstream:merge --ref <candidate>` performs validated fast-forward promotion.
+Install the dedicated pre-push hook with `pnpm upstream:hooks` in each synchronization
+checkout; it verifies every actual non-deletion ref update.
+
 ## Change selection
 
 The default comparison is the merge base of `origin/main` and HEAD, plus staged,
@@ -32,10 +49,12 @@ it does not claim that file-level affected tests cover runtime dependencies.
 ## Execution
 
 `--group repository|lint|types|i18n|main|renderer|packages|platform|checks|tests` restricts an
-existing plan. `--shard=N/M` forwards Vitest's built-in sharding option. `--plan --json`
+existing plan. `--shard=N/M` forwards Vitest's built-in sharding option; `--max-workers N`
+sets an explicit positive worker limit. `--plan --json`
 prints a machine-readable plan. Test commands are one Vitest invocation with explicit
 projects; compilers run serially. Local Vitest defaults to two workers, overridable
 through the direct Vitest command or project wrappers' `--maxWorkers` option.
+`--max-workers=N` bounds workers without changing the selected tests; the local upstream gate uses two workers with CI lint semantics.
 
 Required workspace packages are built before typechecks and tests. CI setup marks a
 successful installation with `VALIDATION_WORKSPACE_PREPARED=true`, so later groups
@@ -44,6 +63,8 @@ main tests still rebuild SQLite for Node. Do not run Electron development and No
 worktree. Use isolated worktrees and dependency installations for concurrent agents.
 
 `VALIDATION_PLAN` lets CI execute the exact plan from its classification job.
+An explicit `--all` overrides that environment plan; the upstream gate also clears
+inherited plan/prepared-workspace flags and sets `CI=true`.
 `--github-output` emits that plan and selected job groups without installing dependencies.
 Unknown tasks or groups fail before execution. Summary validation rejects failed,
 cancelled, missing, or unexpectedly skipped jobs selected by the plan.

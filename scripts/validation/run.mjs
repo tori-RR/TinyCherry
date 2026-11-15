@@ -17,6 +17,7 @@ const { values } = parseArgs({
     committed: { type: 'boolean' },
     group: { type: 'string' },
     shard: { type: 'string' },
+    'max-workers': { type: 'string' },
     'github-output': { type: 'boolean' }
   }
 })
@@ -24,9 +25,13 @@ const root = fileURLToPath(new URL('../../', import.meta.url))
 const groups = ['repository', 'lint', 'types', 'i18n', 'main', 'renderer', 'packages', 'platform', 'checks', 'tests']
 if (values.group && !groups.includes(values.group)) throw new Error(`Unknown validation group: ${values.group}`)
 if (values.shard && !/^\d+\/\d+$/.test(values.shard)) throw new Error('Expected --shard=N/M')
+if (values['max-workers'] && !/^[1-9]\d*$/.test(values['max-workers']))
+  throw new Error('Expected a positive --max-workers count')
 
 let plan
-if (process.env.VALIDATION_PLAN) {
+if (values.all) {
+  plan = createPlan([], 'Explicit full validation')
+} else if (process.env.VALIDATION_PLAN) {
   plan = JSON.parse(process.env.VALIDATION_PLAN)
   if (
     !Array.isArray(plan.tasks) ||
@@ -36,8 +41,6 @@ if (process.env.VALIDATION_PLAN) {
     plan.projects.some((project) => !testProjects.includes(project))
   )
     throw new Error('Invalid validation plan')
-} else if (values.all) {
-  plan = createPlan([], 'Explicit full validation')
 } else {
   try {
     plan = createPlan(changedFiles(root, values.base, values.head, !values.committed))
@@ -117,6 +120,7 @@ if (projects.length) {
     'run',
     ...projects.flatMap((project) => ['--project', project]),
     ...files,
-    ...(values.shard ? [`--shard=${values.shard}`] : [])
+    ...(values.shard ? [`--shard=${values.shard}`] : []),
+    ...(values['max-workers'] ? ['--maxWorkers', values['max-workers']] : [])
   ])
 }

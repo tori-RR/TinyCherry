@@ -5,7 +5,14 @@ import { join } from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { changedFiles, createPlan, selectedGroups, verifyResults } from '../validation/plan.mjs'
+import {
+  changedFiles,
+  checkTasks,
+  createPlan,
+  selectedGroups,
+  testProjects,
+  verifyResults
+} from '../validation/plan.mjs'
 
 const directories: string[] = []
 afterEach(() => {
@@ -289,6 +296,19 @@ describe('working tree changes', () => {
 
 // A docs-only plan must never start compilers, native rebuilds, lint fixes, or tests.
 describe('validation execution', () => {
+  it('honors explicit full validation over an inherited subset plan', () => {
+    const result = spawnSync(process.execPath, ['scripts/validation/run.mjs', '--all', '--plan', '--json'], {
+      env: { ...process.env, VALIDATION_PLAN: JSON.stringify(createPlan(['docs/dev/contrib/development.md'])) },
+      encoding: 'utf8'
+    })
+
+    expect(result.status, result.stderr).toBe(0)
+    const plan = JSON.parse(result.stdout)
+    expect(plan.projects).toEqual(testProjects)
+    expect(plan.tasks).toEqual(Object.keys(checkTasks))
+    expect(plan.platform).toBe(true)
+  })
+
   it('does not prepare dependencies or run native tests for an unselected platform group', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'cherry-validation-portable-'))
     directories.push(cwd)

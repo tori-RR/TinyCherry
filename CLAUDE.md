@@ -75,8 +75,16 @@ Run `pnpm install` when a build or selected check needs workspace dependencies. 
 - `pnpm docs:check` — links + structure/frontmatter + Agent Note format + bilingual pairing + terminology/index freshness. Use it when edits affect these checks. Reference docs carry `description`/`sources`; contrib/governance docs carry `description`. `docs/dev/README.md`, `docs/dev/sources-index.json`, and `docs/dev/i18n/terminology.md` are generated — edit their owners and run the matching generator.
 - `pnpm change:scope --base <ref>` — versioned committed/staged/unstaged/untracked path report against an explicit merge base.
 - `pnpm docs:affected --base <ref>` — candidate docs whose `sources` prefixes intersect that change scope; candidates require semantic inspection, not automatic edits.
-- `pnpm check:all` / `pnpm build:check` — full checks and tests; leave these to CI unless the user explicitly requests a full local run. Format changed files with `pnpm exec oxfmt --write <files>`; sync and translate locale keys with `pnpm i18n:sync`.
+- `pnpm check:all` / `pnpm build:check` — full checks and tests; leave these to CI except for the mandatory upstream synchronization gate below or an explicit user request for a full local run. Format changed files with `pnpm exec oxfmt --write <files>`; sync and translate locale keys with `pnpm i18n:sync`.
 - `pnpm test:lint` — the CI-equivalent lint gate: Oxlint errors and warnings block CI (`--deny-warnings`); ESLint errors block CI while its warnings remain non-blocking.
+
+### Upstream Synchronization
+
+- Follow the [upstream synchronization workflow](docs/dev/contrib/upstream-sync.md). Prepare the candidate on a branch based on the target, with fixed target/upstream SHAs and the retained TinyCherry feature boundaries.
+- Finish all edits, generation, formatting, and the final commit before running `pnpm upstream:verify --base <target-sha> --upstream <upstream-ref>`. This workflow requires a fresh frozen dependency installation with a retained backup, all static checks, CI's Windows platform-test inventory, gate/planner regressions, native packaging, and final i18n checks after all local tests; stop concurrent edits while it runs.
+- Install the dedicated hook with `pnpm upstream:hooks`. Run `pnpm upstream:check` before pushing; every actual non-deletion push ref must have a valid result for its commit/tree and package hashes.
+- Preserve CI's platform division: full Linux test projects and Windows/macOS contracts must run in the exact candidate SHA's latest successful `workflow_dispatch` CI, in the origin repository before promotion and in the actual destination repository before a push to `main`, `evostack`, or `release/*`. Use `pnpm upstream:merge --ref <candidate>` for fast-forward promotion, then check and push the final target. Any new commit or artifact change requires revalidation and a package for the final SHA. Do not change product behavior or unrelated POSIX fixtures merely to invoke a Linux-owned suite on Windows.
+- Keep validation results and evaluation logs ignored. Preserve removed-feature decisions; fix supported behavior and stale expectations without disabling required checks.
 
 ### Testing
 
