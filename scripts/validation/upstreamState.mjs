@@ -15,6 +15,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 export const UPSTREAM_CHECKS = Object.freeze([
   'environment',
   'dependencies',
+  'git-hooks',
   'dependency-imports',
   'workflow-policy',
   'actionlint',

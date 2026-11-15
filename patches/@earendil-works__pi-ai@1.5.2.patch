@@ -1,10 +1,8 @@
 diff --git a/dist/api/google-generative-ai.js b/dist/api/google-generative-ai.js
-index feb37cc..a4e9e16 100644
+index feb37cc..f189dc5 100644
 --- a/dist/api/google-generative-ai.js
 +++ b/dist/api/google-generative-ai.js
-@@ -31,18 +31,15 @@ export const stream = (model, context, options) => {
-             },
-             stopReason: "pending",
+@@ -33,20 +33,16 @@ export const stream = (model, context, options) => {
              timestamp: Date.now(),
          };
          try {
@@ -21,10 +19,13 @@ index feb37cc..a4e9e16 100644
              const nextParams = await options?.onPayload?.(params, model);
              if (nextParams !== undefined) {
                  params = nextParams;
-             }
-@@ -259,12 +256,15 @@ export const streamSimple = (model, context, options) => {
-             enabled: true,
-             budgetTokens: getGoogleBudget(model, resolvedLevel, options.thinkingBudgets),
+-            }
+-            const googleStream = await retryGoogleRequest(() => client.models.generateContentStream(params), options);
++            }            const googleStream = await retryGoogleRequest(() => client.models.generateContentStream(params), options);
+             stream.push({ type: "start", partial: output });
+             let currentBlock = null;
+             const blocks = output.content;
+@@ -261,14 +257,16 @@ export const streamSimple = (model, context, options) => {
          },
      });
  };
@@ -38,12 +39,17 @@ index feb37cc..a4e9e16 100644
          httpOptions.baseUrl = model.baseUrl;
          httpOptions.apiVersion = ""; // baseUrl already includes version path, don't append
      }
-     const headers = providerHeadersToRecord(getIdentityHeaders(model, identity), model.headers, optionsHeaders);
+-    const headers = providerHeadersToRecord(getIdentityHeaders(model, identity), model.headers, optionsHeaders);
+-    if (headers) {
++    const headers = providerHeadersToRecord(getIdentityHeaders(model, identity), model.headers, optionsHeaders);    if (headers) {
+         httpOptions.headers = headers;
+     }
+     return new GoogleGenAI({
 diff --git a/dist/api/openai-codex-responses.d.ts b/dist/api/openai-codex-responses.d.ts
-index 704476d..3f755ff 100644
+index 704476d..16e5aaf 100644
 --- a/dist/api/openai-codex-responses.d.ts
 +++ b/dist/api/openai-codex-responses.d.ts
-@@ -1,9 +1,9 @@
+@@ -1,13 +1,12 @@
  import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
  import type { SimpleStreamOptions, StreamFunction, StreamOptions } from "../types.ts";
  export interface OpenAICodexResponsesOptions extends StreamOptions {
@@ -53,12 +59,17 @@ index 704476d..3f755ff 100644
      serviceTier?: ResponseCreateParamsStreaming["service_tier"];
      textVerbosity?: "low" | "medium" | "high";
      toolChoice?: "auto" | "none" | "required";
- }
+-}
+-export declare const stream: StreamFunction<"openai-codex-responses", OpenAICodexResponsesOptions>;
++}export declare const stream: StreamFunction<"openai-codex-responses", OpenAICodexResponsesOptions>;
+ export declare const streamSimple: StreamFunction<"openai-codex-responses", SimpleStreamOptions>;
+ export interface OpenAICodexWebSocketDebugStats {
+     requests: number;
 diff --git a/dist/api/openai-responses.d.ts b/dist/api/openai-responses.d.ts
-index 41267bd..f29497b 100644
+index 41267bd..5259913 100644
 --- a/dist/api/openai-responses.d.ts
 +++ b/dist/api/openai-responses.d.ts
-@@ -1,9 +1,9 @@
+@@ -1,13 +1,12 @@
  import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
  import type { SimpleStreamOptions, StreamFunction, StreamOptions } from "../types.ts";
  export interface OpenAIResponsesOptions extends StreamOptions {
@@ -68,32 +79,43 @@ index 41267bd..f29497b 100644
      serviceTier?: ResponseCreateParamsStreaming["service_tier"];
      toolChoice?: ResponseCreateParamsStreaming["tool_choice"];
  }
- /**
+-/**
+- * Generate function for OpenAI Responses API
++/** * Generate function for OpenAI Responses API
+  */
+ export declare const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions>;
+ export declare const streamSimple: StreamFunction<"openai-responses", SimpleStreamOptions>;
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index 9c19bb0fd38cc51e814d3680e8e06519908874b5..0fcbb1efce45f566ac45ab30d7287a705d800133 100644
+index 9c19bb0..f68a173 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
-@@ -35,3 +35,4 @@ export { uuidv7 } from "./utils/uuid.ts";
+@@ -34,4 +34,5 @@ export * from "./utils/transcript.ts";
+ export { uuidv7 } from "./utils/uuid.ts";
  export * from "./utils/validation.ts";
  export { PI_AI_VERSION } from "./utils/version.ts";
- //# sourceMappingURL=index.d.ts.map
+-//# sourceMappingURL=index.d.ts.map
+\ No newline at end of file
++//# sourceMappingURL=index.d.ts.map
 +export { retainNestedToolCall } from "./nested-tool-records.js";
+\ No newline at end of file
 diff --git a/dist/index.js b/dist/index.js
-index a45b61643634b192fb41453b8869e1be3eaab658..c2489650e1f12845cfe6ea5d033f5bd4dd384943 100644
+index a45b616..b359991 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -23,3 +23,4 @@ export { uuidv7 } from "./utils/uuid.js";
+@@ -22,4 +22,5 @@ export * from "./utils/transcript.js";
+ export { uuidv7 } from "./utils/uuid.js";
  export * from "./utils/validation.js";
  export { PI_AI_VERSION } from "./utils/version.js";
- //# sourceMappingURL=index.js.map
+-//# sourceMappingURL=index.js.map
+\ No newline at end of file
++//# sourceMappingURL=index.js.map
 +export { retainNestedToolCall } from "./nested-tool-records.js";
+\ No newline at end of file
 diff --git a/dist/models.js b/dist/models.js
-index c61de87..2a953e5 100644
+index c61de87..1094e23 100644
 --- a/dist/models.js
 +++ b/dist/models.js
-@@ -696,19 +696,19 @@ export function calculateCost(model, usage) {
-     usage.cost.cacheWrite = (rates.cacheWrite * shortWrite + rates.input * 2 * longWrite) / 1000000;
-     usage.cost.total = usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
+@@ -698,7 +698,7 @@ export function calculateCost(model, usage) {
      usage.cost.totalFromProvider = false;
      return usage.cost;
  }
@@ -102,7 +124,7 @@ index c61de87..2a953e5 100644
  export function getSupportedThinkingLevels(model) {
      if (!model.reasoning)
          return ["off"];
-     return EXTENDED_THINKING_LEVELS.filter((level) => {
+@@ -706,13 +706,12 @@ export function getSupportedThinkingLevels(model) {
          const mapped = model.thinkingLevelMap?.[level];
          if (mapped === null)
              return false;
@@ -112,10 +134,15 @@ index c61de87..2a953e5 100644
          return true;
      });
  }
- export function clampThinkingLevel(model, level) {
+-export function clampThinkingLevel(model, level) {
+-    const availableLevels = getSupportedThinkingLevels(model);
++export function clampThinkingLevel(model, level) {    const availableLevels = getSupportedThinkingLevels(model);
+     if (availableLevels.includes(level))
+         return level;
+     const requestedIndex = EXTENDED_THINKING_LEVELS.indexOf(level);
 diff --git a/dist/nested-tool-records.d.ts b/dist/nested-tool-records.d.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..38224a50c2a8c5e92f43d6148e489c5c84efa638
+index 0000000..38224a5
 --- /dev/null
 +++ b/dist/nested-tool-records.d.ts
 @@ -0,0 +1,2 @@
@@ -123,7 +150,7 @@ index 0000000000000000000000000000000000000000..38224a50c2a8c5e92f43d6148e489c5c
 +export declare function retainNestedToolCall(previous: NestedToolCalls | undefined, call: NestedToolCallRecord): NestedToolCalls;
 diff --git a/dist/nested-tool-records.js b/dist/nested-tool-records.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..5392b2fde2a1f64da50c215c3a671a96819b4768
+index 0000000..5392b2f
 --- /dev/null
 +++ b/dist/nested-tool-records.js
 @@ -0,0 +1,25 @@
@@ -153,10 +180,10 @@ index 0000000000000000000000000000000000000000..5392b2fde2a1f64da50c215c3a671a96
 +    return { ...record, version: 1, calls, complete: !record.omittedCalls && calls.every((item) => item.status !== "unfinished" && item.arguments !== undefined && item.result !== undefined) };
 +}
 diff --git a/dist/providers/model-schema.d.ts b/dist/providers/model-schema.d.ts
-index f4015ca..f1f8dde 100644
+index f4015ca..4605cd6 100644
 --- a/dist/providers/model-schema.d.ts
 +++ b/dist/providers/model-schema.d.ts
-@@ -1,23 +1,24 @@
+@@ -1,11 +1,11 @@
  import { type Static } from "@earendil-works/pi-schema";
 -export declare const THINKING_LEVELS: readonly ["minimal", "low", "medium", "high", "xhigh", "max"];
 -export declare const MODEL_THINKING_LEVELS: readonly ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
@@ -172,10 +199,7 @@ index f4015ca..f1f8dde 100644
  export declare const ModelInputModalitySchema: import("@earendil-works/pi-schema").Schema<"image" | "text">;
  export declare const CacheRetentionSchema: import("@earendil-works/pi-schema").Schema<"long" | "none" | "short">;
  export declare const ThinkingLevelMapSchema: import("@earendil-works/pi-schema").Schema<{
-     off?: string | null | undefined;
-     minimal?: string | null | undefined;
-     low?: string | null | undefined;
-     medium?: string | null | undefined;
+@@ -16,12 +16,12 @@ export declare const ThinkingLevelMapSchema: import("@earendil-works/pi-schema")
      high?: string | null | undefined;
      xhigh?: string | null | undefined;
      max?: string | null | undefined;
@@ -184,12 +208,17 @@ index f4015ca..f1f8dde 100644
  export declare const ModelPromptCacheSchema: import("@earendil-works/pi-schema").Schema<{
      short?: number | undefined;
      long?: number | undefined;
- }>;
+-}>;
+-export declare const ModelCostRatesSchema: import("@earendil-works/pi-schema").Schema<{
++}>;export declare const ModelCostRatesSchema: import("@earendil-works/pi-schema").Schema<{
+     input: number;
+     output: number;
+     cacheRead: number;
 diff --git a/dist/providers/model-schema.js b/dist/providers/model-schema.js
-index 2aaea67..1d152b8 100644
+index 2aaea67..b9722c8 100644
 --- a/dist/providers/model-schema.js
 +++ b/dist/providers/model-schema.js
-@@ -1,8 +1,8 @@
+@@ -1,12 +1,11 @@
  import { arr, int, nul, num, oneOf, opt, str, union, } from "@earendil-works/pi-schema";
  import { openObject as object } from "./schema-builders.js";
 -export const THINKING_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"];
@@ -198,10 +227,13 @@ index 2aaea67..1d152b8 100644
  export const MODEL_INPUT_MODALITIES = ["text", "image"];
  export const CACHE_RETENTIONS = ["none", "short", "long"];
  export const MODEL_PROMPT_CACHE_RETENTIONS = ["short", "long"];
- export const ThinkingLevelSchema = oneOf(THINKING_LEVELS);
-@@ -16,10 +16,11 @@ export const ThinkingLevelMapSchema = object({
-     low: opt(ThinkingLevelMapValueSchema),
-     medium: opt(ThinkingLevelMapValueSchema),
+-export const ThinkingLevelSchema = oneOf(THINKING_LEVELS);
+-export const ModelThinkingLevelSchema = oneOf(MODEL_THINKING_LEVELS);
++export const ThinkingLevelSchema = oneOf(THINKING_LEVELS);export const ModelThinkingLevelSchema = oneOf(MODEL_THINKING_LEVELS);
+ export const ModelInputModalitySchema = oneOf(MODEL_INPUT_MODALITIES);
+ export const CacheRetentionSchema = oneOf(CACHE_RETENTIONS);
+ const ThinkingLevelMapValueSchema = union([str(), nul()]);
+@@ -18,12 +17,12 @@ export const ThinkingLevelMapSchema = object({
      high: opt(ThinkingLevelMapValueSchema),
      xhigh: opt(ThinkingLevelMapValueSchema),
      max: opt(ThinkingLevelMapValueSchema),
@@ -210,12 +242,17 @@ index 2aaea67..1d152b8 100644
      description: "Provider value sent for each thinking level. null marks a level unsupported. Levels the model does not map use the provider's default value through high; xhigh and max are unsupported.",
  });
  const PromptCacheLifetimeSchema = num({ exclusiveMinimum: 0 });
- export const ModelPromptCacheSchema = object({ short: opt(PromptCacheLifetimeSchema), long: opt(PromptCacheLifetimeSchema) }, {
+-export const ModelPromptCacheSchema = object({ short: opt(PromptCacheLifetimeSchema), long: opt(PromptCacheLifetimeSchema) }, {
+-    description: "Best-effort prompt cache lifetime in seconds for the short and long retention tiers. Pi warms only tiers with a known lifetime.",
++export const ModelPromptCacheSchema = object({ short: opt(PromptCacheLifetimeSchema), long: opt(PromptCacheLifetimeSchema) }, {    description: "Best-effort prompt cache lifetime in seconds for the short and long retention tiers. Pi warms only tiers with a known lifetime.",
+ });
+ const ModelCostRatesProperties = {
+     input: num({ description: "Input cost in USD per million tokens." }),
 diff --git a/dist/types.d.ts b/dist/types.d.ts
-index b410a7bab16c395090ab63e362288306950dec64..bb7fbd89e4abb3d4498653cf9a3a65adf90554a8 100644
+index b410a7b..0ea4937 100644
 --- a/dist/types.d.ts
 +++ b/dist/types.d.ts
-@@ -357,7 +357,18 @@ export interface DeferredHandle {
+@@ -357,11 +357,21 @@ export interface DeferredHandle {
   * accept system messages mid-conversation send each one in place; other providers
   * rebuild the leading system message from the replayed state.
   */
@@ -233,8 +270,13 @@ index b410a7bab16c395090ab63e362288306950dec64..bb7fbd89e4abb3d4498653cf9a3a65ad
 +    contextSources?: SystemContextSources;
      role: "system";
      /** Instruction text. On the leading message this is the base prompt; later, additional instructions. */
-     content: string | TextContent[];
-@@ -413,6 +424,11 @@ export interface AssistantMessage {
+-    content: string | TextContent[];
+-    /**
++    content: string | TextContent[];    /**
+      * Named, ordered prompt sections rendered verbatim after `content`. The leading message
+      * declares them; later messages replace sections by name, and `null` removes one. Keep
+      * each section self-delimiting (a tag, a heading) so the model can relate an update to
+@@ -413,10 +423,14 @@ export interface AssistantMessage {
  }
  /** A tool call that another tool made while it ran, for example from a codemode script. */
  export interface NestedToolCallRecord {
@@ -245,8 +287,13 @@ index b410a7bab16c395090ab63e362288306950dec64..bb7fbd89e4abb3d4498653cf9a3a65ad
 +    resultOmitted?: "budget";
      id: string;
      name: string;
-     /** Omitted when over the size limits; `argumentsBytes` then gives their size. */
-@@ -425,10 +441,12 @@ export interface NestedToolCallRecord {
+-    /** Omitted when over the size limits; `argumentsBytes` then gives their size. */
+-    arguments?: JsonObject;
++    /** Omitted when over the size limits; `argumentsBytes` then gives their size. */    arguments?: JsonObject;
+     /** UTF-8 size of the arguments as JSON, set when `arguments` is omitted. */
+     argumentsBytes?: number;
+     /** `unfinished`: the call was still running when the calling tool finished. */
+@@ -425,22 +439,24 @@ export interface NestedToolCallRecord {
      /** Error text, truncated. */
      error?: string;
  }
@@ -260,8 +307,10 @@ index b410a7bab16c395090ab63e362288306950dec64..bb7fbd89e4abb3d4498653cf9a3a65ad
 +    /** False when calls or payloads were omitted, or calls had not finished. */
      complete: boolean;
  }
- export type ToolResultMessage<TDetails = JsonValue> = IsJsonCompatible<TDetails> extends true ? {
-@@ -437,6 +455,8 @@ export type ToolResultMessage<TDetails = JsonValue> = IsJsonCompatible<TDetails>
+-export type ToolResultMessage<TDetails = JsonValue> = IsJsonCompatible<TDetails> extends true ? {
+-    role: "toolResult";
++export type ToolResultMessage<TDetails = JsonValue> = IsJsonCompatible<TDetails> extends true ? {    role: "toolResult";
+     toolCallId: string;
      toolName: string;
      content: (TextContent | ImageContent)[];
      details?: JsonRepresentation<TDetails>;
@@ -269,10 +318,15 @@ index b410a7bab16c395090ab63e362288306950dec64..bb7fbd89e4abb3d4498653cf9a3a65ad
 +    structuredContent?: JsonValue;
      /** Usage from the tool execution itself, if available. Not part of main LLM context accounting. */
      usage?: Usage;
-     /** Calls this tool made to other tools. Kept for the session record; not sent to the model. */
+-    /** Calls this tool made to other tools. Kept for the session record; not sent to the model. */
+-    nestedCalls?: NestedToolCalls;
++    /** Calls this tool made to other tools. Kept for the session record; not sent to the model. */    nestedCalls?: NestedToolCalls;
+     isError: boolean;
+     /** Unix timestamp in milliseconds when the result was created. */
+     timestamp: number;
 diff --git a/dist/utils/context-usage.d.ts b/dist/utils/context-usage.d.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..c2422f31a9a21f6a2b204c9e1c029bfde09acf73
+index 0000000..c2422f3
 --- /dev/null
 +++ b/dist/utils/context-usage.d.ts
 @@ -0,0 +1,10 @@
@@ -288,7 +342,7 @@ index 0000000000000000000000000000000000000000..c2422f31a9a21f6a2b204c9e1c029bfd
 +export declare function measureSystemContext(system: SystemMessage | undefined, deferred?: readonly (Tool & { contextSource?: ContextSource })[], estimate?: (promptCharacters: number, toolCharacters: number) => number, separator?: string): ContextPart[];
 diff --git a/dist/utils/context-usage.js b/dist/utils/context-usage.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..a37f8e82c6eb306f36ecad165e6562b07f2df1c6
+index 0000000..a37f8e8
 --- /dev/null
 +++ b/dist/utils/context-usage.js
 @@ -0,0 +1,35 @@
@@ -328,21 +382,23 @@ index 0000000000000000000000000000000000000000..a37f8e82c6eb306f36ecad165e6562b0
 +    return parts;
 +}
 diff --git a/dist/utils/estimate.d.ts b/dist/utils/estimate.d.ts
-index 6dcca6eff16b95b83e047a6e27b65d9d7694bf2c..0b56a9ffff6251cadfaecea62a6d8c7463b718cd 100644
+index 6dcca6e..81e343b 100644
 --- a/dist/utils/estimate.d.ts
 +++ b/dist/utils/estimate.d.ts
-@@ -15,3 +15,4 @@ export declare function estimateTextAndImageContentTokens(content: string | Arra
+@@ -14,4 +14,5 @@ export declare function estimateTextTokens(text: string): number;
+ export declare function estimateTextAndImageContentTokens(content: string | Array<TextContent | ImageContent>): number;
  export declare function estimateMessageTokens(message: Message): number;
  export declare function estimateContextTokens(context: TranscriptContext | readonly Message[]): ContextUsageEstimate;
- //# sourceMappingURL=estimate.d.ts.map
+-//# sourceMappingURL=estimate.d.ts.map
+\ No newline at end of file
++//# sourceMappingURL=estimate.d.ts.map
 +export declare function estimateSystemCharacters(promptCharacters: number, toolCharacters: number): number;
+\ No newline at end of file
 diff --git a/dist/utils/estimate.js b/dist/utils/estimate.js
-index 45be26d..cfaf2b0 100644
+index 45be26d..eb9b7f8 100644
 --- a/dist/utils/estimate.js
 +++ b/dist/utils/estimate.js
-@@ -18,21 +18,23 @@ function estimateTextAndImageContentChars(content) {
-     let chars = 0;
-     for (const block of content)
+@@ -20,6 +20,9 @@ function estimateTextAndImageContentChars(content) {
          chars += block.type === "text" ? block.text.length : ESTIMATED_IMAGE_CHARS;
      return chars;
  }
@@ -352,9 +408,7 @@ index 45be26d..cfaf2b0 100644
  export function estimateTextTokens(text) {
      return Math.ceil(text.length / CHARS_PER_TOKEN);
  }
- export function estimateTextAndImageContentTokens(content) {
-     return Math.ceil(estimateTextAndImageContentChars(content) / CHARS_PER_TOKEN);
- }
+@@ -29,14 +32,12 @@ export function estimateTextAndImageContentTokens(content) {
  export function estimateMessageTokens(message) {
      let chars = 0;
      if (message.role === "system") {
@@ -365,14 +419,17 @@ index 45be26d..cfaf2b0 100644
      }
      if (message.role === "user")
          return estimateTextAndImageContentTokens(message.content);
-     if (message.role === "toolResult")
+-    if (message.role === "toolResult")
+-        return estimateTextAndImageContentTokens(message.content);
++    if (message.role === "toolResult")        return estimateTextAndImageContentTokens(message.content);
+     for (const block of message.content) {
+         if (block.type === "text") {
+             chars += block.text.length;
 diff --git a/dist/utils/transcript.js b/dist/utils/transcript.js
-index ac638f4..b4d16a8 100644
+index ac638f4..b034644 100644
 --- a/dist/utils/transcript.js
 +++ b/dist/utils/transcript.js
-@@ -56,15 +56,20 @@ export function getCurrentTools(messages) {
-  * patched by name, and tools are resolved with {@link getCurrentTools}.
-  */
+@@ -58,17 +58,21 @@ export function getCurrentTools(messages) {
  export function getCurrentSystemMessage(messages) {
      const content = [];
      const sections = new Map();
@@ -390,10 +447,13 @@ index ac638f4..b4d16a8 100644
          if (text.length > 0)
              content.push(text);
          for (const [name, value] of Object.entries(message.sections ?? {})) {
-             if (value === null)
-@@ -77,10 +82,11 @@ export function getCurrentSystemMessage(messages) {
-     if (timestamp === undefined && tools.length === 0)
-         return undefined;
+-            if (value === null)
+-                sections.delete(name);
++            if (value === null)                sections.delete(name);
+             else
+                 sections.set(name, value);
+         }
+@@ -79,12 +83,12 @@ export function getCurrentSystemMessage(messages) {
      return {
          role: "system",
          content: content.join("\n\n"),
@@ -402,4 +462,9 @@ index ac638f4..b4d16a8 100644
          ...(tools.length > 0 ? { toolsAdded: tools } : {}),
          timestamp: timestamp ?? 0,
      };
- }
+-}
+-/** Render the current system prompt text after replaying every system message. */
++}/** Render the current system prompt text after replaying every system message. */
+ export function getCurrentSystemPrompt(messages) {
+     const message = getCurrentSystemMessage(messages);
+     return message ? getSystemMessageText(message) : "";

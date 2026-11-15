@@ -4,6 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 
+import { installUpstreamHook } from './install-upstream-hook.mjs'
 import { installFreshDependencies } from './upstreamDependencies.mjs'
 import { checkCatalogPolicy, checkWorkflowPolicy } from './upstreamPolicy.mjs'
 import {
@@ -43,6 +44,7 @@ export function validationSteps(base) {
   return [
     ['environment'],
     ['dependencies', ['install', '--frozen-lockfile']],
+    ['git-hooks', ['exec', 'prek', 'install']],
     [
       'dependency-imports',
       [
@@ -77,6 +79,7 @@ export function validationSteps(base) {
         'scripts/__tests__/upstreamState.test.ts',
         'scripts/__tests__/upstreamValidation.test.ts',
         'scripts/__tests__/upstreamDependencies.test.ts',
+        'scripts/__tests__/piAiPatch.test.ts',
         '--maxWorkers',
         '2'
       ]
@@ -125,6 +128,7 @@ function runStep(id, args, context) {
     if (version !== expected) throw new Error(`Use pnpm ${expected}`)
     if (process.platform !== 'win32')
       throw new Error('The upstream release gate requires Windows x64 Portable validation')
+    installUpstreamHook(root)
     return
   }
   if (id === 'actionlint') {
