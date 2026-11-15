@@ -99,7 +99,11 @@ async function main(): Promise<void> {
   createInterface({ input: child.stdout }).on('line', (line) => {
     const frame = JSON.parse(line)
     assert.equal(frame.jsonrpc, '2.0')
-    if (frame.method === 'event') events.push(frame.params)
+    if (frame.method === 'host.computer') {
+      assert.equal(frame.params.operation, 'configure', 'Plain contracts must never control the desktop')
+      assert.equal(frame.params.enabled, false)
+      child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: frame.id, result: { ok: true, data: {} } })}\n`)
+    } else if (frame.method === 'event') events.push(frame.params)
     else {
       const callback = pending.get(frame.id)
       pending.delete(frame.id)
@@ -150,9 +154,12 @@ async function main(): Promise<void> {
     }
   }
   const waitDone = (topicId: string, from: number) =>
-    waitFor(() =>
-      events.slice(from).some((event) => event.args[0] === 'ai.stream.done' && event.args[1].topicId === topicId)
-    )
+    waitFor(() => {
+      const observed = events.slice(from)
+      const failure = observed.find((event) => event.args[0] === 'ai.stream.error' && event.args[1].topicId === topicId)
+      assert(!failure, failure?.args[1]?.error?.message)
+      return observed.some((event) => event.args[0] === 'ai.stream.done' && event.args[1].topicId === topicId)
+    })
   const preview = async (file: string, expectedText: string) => {
     // Exercise the original preview adapter's strict metadata/read version comparison,
     // including files whose filesystem timestamp has a fractional millisecond.
@@ -171,6 +178,8 @@ async function main(): Promise<void> {
   }
   try {
     assert.equal((await rpc('backend.info', null)).backend, 'go')
+    assert.equal(await invoke('preference:get', 'app.computer_use.agent_control.enabled'), true)
+    await invoke('preference:set', 'app.computer_use.agent_control.enabled', false)
     await invoke('preference:set', 'app.proxy.mode', 'none')
     const provider = ProviderSchema.parse(
       await data('POST', '/providers', {
