@@ -19,6 +19,15 @@ afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true })
 })
 
+function stubPnpmEnvironment(pnpm: string, overrides: NodeJS.ProcessEnv) {
+  const env = { ...process.env, ...overrides }
+  for (const key of Object.keys(env)) {
+    if (key.toLowerCase() === 'npm_execpath') delete env[key]
+  }
+  env.npm_execpath = pnpm
+  return env
+}
+
 describe('validation selection', () => {
   it.each([
     'docs/dev/contrib/development.md',
@@ -320,12 +329,10 @@ describe('validation execution', () => {
       `require('node:fs').appendFileSync(process.env.COMMAND_LOG, JSON.stringify(process.argv.slice(2)) + '\\n')`
     )
     const result = spawnSync(process.execPath, ['scripts/validation/run.mjs', '--group', 'platform'], {
-      env: {
-        ...process.env,
-        npm_execpath: pnpm,
+      env: stubPnpmEnvironment(pnpm, {
         COMMAND_LOG: log,
         VALIDATION_PLAN: JSON.stringify(createPlan(['packages/web-search/src/providers/tavily.ts']))
-      },
+      }),
       encoding: 'utf8'
     })
     expect(result.status, result.stderr).toBe(0)
@@ -343,13 +350,11 @@ describe('validation execution', () => {
        if (process.argv.includes('theme:check')) process.exit(Number(process.env.THEME_EXIT))`
     )
     const result = spawnSync(process.execPath, ['scripts/validation/run.mjs', '--group', 'repository'], {
-      env: {
-        ...process.env,
-        npm_execpath: pnpm,
+      env: stubPnpmEnvironment(pnpm, {
         COMMAND_LOG: log,
         THEME_EXIT: String(exitCode),
         VALIDATION_PLAN: JSON.stringify(createPlan(['src/renderer/components/Thing.tsx']))
-      },
+      }),
       encoding: 'utf8'
     })
     expect(result.status, result.stderr).toBe(exitCode)
@@ -371,12 +376,10 @@ describe('validation execution', () => {
       pnpm,
       `require('node:fs').appendFileSync(process.env.COMMAND_LOG, JSON.stringify(process.argv.slice(2)) + '\\n'); process.exit(Number(process.env.COMMAND_EXIT || 0))`
     )
-    const env = {
-      ...process.env,
-      npm_execpath: pnpm,
+    const env = stubPnpmEnvironment(pnpm, {
       COMMAND_LOG: log,
       VALIDATION_PLAN: JSON.stringify(createPlan(['docs/dev/contrib/development.md']))
-    }
+    })
     const invoke = (...args: string[]) =>
       spawnSync(process.execPath, ['scripts/validation/run.mjs', ...args], { env, encoding: 'utf8' })
     expect(invoke().status).toBe(0)

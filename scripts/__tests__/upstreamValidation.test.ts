@@ -134,6 +134,7 @@ describe('upstream validation plan and environment', () => {
 })
 
 describe('upstream validation execution', () => {
+  // Real Git snapshots around every step need a separate Windows I/O budget.
   it('issues a receipt only after every check finishes against the same clean source', () => {
     const f = fixture()
     f.seedReceipt()
@@ -147,7 +148,7 @@ describe('upstream validation execution', () => {
     expect(result.head).toBe(f.head)
     expect(verifyReceipt(f.root, f.head).head).toBe(f.head)
     expect(JSON.parse(readFileSync(f.receipt, 'utf8')).checks).toEqual(checks)
-  })
+  }, 60_000)
 
   it.each(['static-checks', 'native-package', 'final-i18n'])(
     'fails closed and removes the old receipt when %s fails',
