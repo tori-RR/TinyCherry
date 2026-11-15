@@ -54,6 +54,11 @@ func seedChat(t *testing.T, s *server, base string) object {
 	if err := s.store.setPreference("chat.default_model_id", "test::local"); err != nil {
 		t.Fatal(err)
 	}
+	// Plain-chat fixtures explicitly opt out; desktop tests enable control with
+	// their fake host. Production's fresh-profile default is tested separately.
+	if err := s.store.setPreference(computerPreference, false); err != nil {
+		t.Fatal(err)
+	}
 	var topic object
 	err := s.transaction(func(s *server) error { var err error; topic, err = s.newTopic(object{}); return err })
 	if err != nil {

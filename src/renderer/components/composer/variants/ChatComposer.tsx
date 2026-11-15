@@ -1,5 +1,5 @@
 import { Eraser } from 'lucide-react'
-import mime from 'mime-types'
+import mime from 'mime'
 import React, { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -1306,7 +1306,7 @@ const ChatComposerInner = ({
 
       try {
         const blob = await getImageBlobFromSource(reference.url)
-        const extension = mime.extension(blob.type)
+        const extension = mime.getExtension(blob.type)
         if (!extension || !imageExts.includes(`.${extension}`)) {
           throw new Error(`Unsupported image type: ${blob.type}`)
         }

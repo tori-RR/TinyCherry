@@ -8,6 +8,9 @@ import (
 
 func TestStoreTransactionExecutorIsLocalAndRollbackIsolated(t *testing.T) {
 	s, _ := testServer(t)
+	if err := s.store.setPreference(computerPreference, false); err != nil {
+		t.Fatal(err)
+	}
 	ready, release := make(chan struct{}), make(chan struct{})
 	done := make(chan error, 1)
 	go func() {

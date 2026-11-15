@@ -32,6 +32,53 @@ pub(super) fn ensure_app_available(task: &Task, session: &str) -> Result<(), Con
 }
 
 impl Controller {
+    pub(super) fn approval_app(&self, input: &Value) -> ControlResult {
+        object_fields(input, &["operation", "epoch", "taskId", "ownerId", "appId"])?;
+        let (_, task) = self.task(input)?;
+        let app_id = string(input, "appId")?;
+        let app = task
+            .known_apps
+            .lock()
+            .unwrap()
+            .get(&app_id)
+            .cloned()
+            .ok_or_else(|| {
+                ControlError::new(
+                    "UNKNOWN_APP",
+                    "Select an application discovered in this desktop task",
+                )
+            })?;
+        if !app["identity"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty() && value.encode_utf16().count() <= 512)
+        {
+            return Err(ControlError::new(
+                "APPROVAL_UNAVAILABLE",
+                "Application approval requires a stable native identity",
+            ));
+        }
+        {
+            let mut apps = task.apps.lock().unwrap();
+            if apps.get(&app_id).is_some_and(|control| {
+                matches!(control.status, "stopping" | "stopped" | "unconfirmed")
+            }) {
+                return Err(ControlError::new(
+                    "USER_STOPPED",
+                    "The user stopped this application's control",
+                ));
+            }
+            // Register the pending target before the prompt so Stop App also
+            // revokes an opening that has not reached the native helper yet.
+            apps.entry(app_id).or_insert_with(|| AppControl {
+                app: app.clone(),
+                status: "opening",
+                opening: false,
+            });
+        }
+        self.emit_controls();
+        Ok(app)
+    }
+
     pub fn set_control_events(&self, send: ControlEvents) {
         *self.control_events.lock().unwrap() = Some(send);
     }

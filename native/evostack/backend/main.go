@@ -69,6 +69,7 @@ type server struct {
 type serverState struct {
 	computerHost            computerHost
 	computerEpoch           uint64
+	computerApprovals       *computerApprovalState
 	skills                  *skillRuntime
 	mu                      sync.Mutex
 	interrupts              sync.Map

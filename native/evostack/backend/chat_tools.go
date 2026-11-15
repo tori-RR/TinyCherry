@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"sort"
@@ -373,10 +374,11 @@ func (s *server) readComputerModelStep(ctx context.Context, g *generation, confi
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return step, fmt.Errorf("provider returned HTTP %d", response.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 16*1024))
+		return step, providerFailure(response.StatusCode, body)
 	}
 	if !strings.Contains(response.Header.Get("Content-Type"), "text/event-stream") {
-		return step, errors.New("provider did not return an SSE stream")
+		return step, invalidProviderResponse("Invalid response: provider did not return an SSE stream. Check the endpoint and model.")
 	}
 	s.mu.Lock()
 	err = s.chunk(g, object{"type": "start-step"})
@@ -419,7 +421,7 @@ func (s *server) readComputerModelStep(ctx context.Context, g *generation, confi
 		data = nil
 		dataBytes = 0
 		if kind == "error" {
-			return errors.New("provider returned a stream error")
+			return providerFailure(0, []byte(value))
 		}
 		if value == "[DONE]" {
 			done = true
@@ -445,10 +447,10 @@ func (s *server) readComputerModelStep(ctx context.Context, g *generation, confi
 			Error json.RawMessage `json:"error"`
 		}
 		if json.Unmarshal([]byte(value), &frame) != nil {
-			return errors.New("invalid provider SSE payload")
+			return invalidProviderResponse("Invalid JSON data in the provider stream. Retry or check the endpoint and model.")
 		}
 		if len(frame.Error) > 0 && string(frame.Error) != "null" {
-			return errors.New("provider returned a stream error")
+			return providerFailure(0, frame.Error)
 		}
 		if len(frame.Choices) == 0 {
 			return nil
@@ -558,7 +560,7 @@ func (s *server) readComputerModelStep(ctx context.Context, g *generation, confi
 		return step, errors.New("provider stream interrupted")
 	}
 	if !done {
-		return step, errors.New("provider stream ended without a completion marker")
+		return step, invalidProviderResponse("Invalid response: provider stream ended without a completion marker. Retry the turn.")
 	}
 	for _, call := range indexed {
 		step.Calls = append(step.Calls, *call)
@@ -569,6 +571,9 @@ func (s *server) readComputerModelStep(ctx context.Context, g *generation, confi
 	}
 	if len(step.Calls) == 0 && step.Finish == "tool_calls" {
 		return step, errors.New("provider completed a tool step without calls")
+	}
+	if len(step.Calls) == 0 && strings.TrimSpace(step.Text) == "" && strings.TrimSpace(step.Reasoning) == "" {
+		return step, invalidProviderResponse("Invalid response: empty response body. Retry or switch model.")
 	}
 	return step, nil
 }

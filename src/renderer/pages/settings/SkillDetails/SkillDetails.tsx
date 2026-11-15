@@ -20,6 +20,7 @@ import {
   Switch,
   Tooltip
 } from '@cherrystudio/ui'
+import { usePreference } from '@data/hooks/usePreference'
 import { loggerService } from '@logger'
 import { SkillSourceBadge } from '@renderer/components/resourceCatalog/catalog'
 import { SettingDescription, SettingsContentBody } from '@renderer/components/SettingsPrimitives'
@@ -45,6 +46,7 @@ export function SkillDetails({ skillId }: { skillId: string }) {
   const { scope } = useSearch({ strict: false }) as { scope?: 'all' | 'system' | 'builtin' }
   const { data: skill, isLoading, error, refetch } = useQuery('/skills/:skillId', { params: { skillId } })
   const { updateGlobalEnabled, setMirrorEnabled, uninstallSkill, isUpdating } = useSkillMutationsById(skillId)
+  const [appExternalExportEnabled] = usePreference('agent.skills.external_export.enabled')
   const mirrorToggleId = useId()
   const globalToggleId = useId()
   const [isUpdatingMirror, setIsUpdatingMirror] = useState(false)
@@ -81,7 +83,7 @@ export function SkillDetails({ skillId }: { skillId: string }) {
   }
 
   const handleMirrorToggle = async (checked: boolean) => {
-    if (!skill) return
+    if (!skill || !appExternalExportEnabled) return
     setIsUpdatingMirror(true)
     try {
       await setMirrorEnabled(checked)
@@ -269,8 +271,8 @@ export function SkillDetails({ skillId }: { skillId: string }) {
                 placement="right"
                 asChild>
                 <DropdownMenuCheckboxItem
-                  checked={skill.mirrorEnabled}
-                  disabled={isUpdating || isUpdatingMirror || isEvoStack}
+                  checked={!isEvoStack && appExternalExportEnabled && skill.mirrorEnabled}
+                  disabled={isEvoStack || !appExternalExportEnabled || isUpdating || isUpdatingMirror}
                   aria-label={t('settings.skills.externalAgents')}
                   aria-describedby={`${mirrorToggleId}-description`}
                   onSelect={(event) => event.preventDefault()}
@@ -281,6 +283,9 @@ export function SkillDetails({ skillId }: { skillId: string }) {
                   </span>
                 </DropdownMenuCheckboxItem>
               </Tooltip>
+              {!appExternalExportEnabled && (
+                <SettingDescription>{t('settings.skills.externalExportOverridden')}</SettingDescription>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 variant="destructive"

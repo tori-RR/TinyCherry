@@ -25,6 +25,8 @@ func (h *chatComputerHost) Call(ctx context.Context, params object) (object, err
 	switch params["operation"] {
 	case "configure":
 		return object{}, nil
+	case "approval_app":
+		return object{"id": params["appId"], "name": "Synthetic desktop fixture", "identity": "fixture-native-app"}, nil
 	case "close_task":
 		h.mu.Lock()
 		h.closed++
@@ -47,6 +49,9 @@ func enableChatComputer(t *testing.T, s *server, host *chatComputerHost) {
 	t.Helper()
 	s.computerHost = host
 	if err := s.store.setPreference(computerPreference, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.store.setPreference(approvedComputerAppsPreference, []any{"fixture-native-app"}); err != nil {
 		t.Fatal(err)
 	}
 }

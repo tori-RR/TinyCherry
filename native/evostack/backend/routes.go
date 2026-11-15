@@ -189,6 +189,9 @@ func ipcResult(result any, err error) object {
 
 func (s *server) command(route string, value any) (any, error, func()) {
 	input := obj(value)
+	if result, err, handled := s.computerApprovalCommand(route, input); handled {
+		return result, err, nil
+	}
 	if route == "assistant.set_avatar" {
 		return nil, s.setAssistantAvatar(input), nil
 	}

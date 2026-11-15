@@ -1,6 +1,6 @@
 # TinyCherry EvoStack
 
-Windows x64 desktop host using TinyCherry's React UI and the Cherry Studio v2.2.1 shared contracts. This target keeps host-specific adaptations and a separate Electron build.
+Windows x64 desktop host using TinyCherry's React UI and the Cherry Studio v2.2.2 shared contracts. This target keeps host-specific adaptations and a separate Electron build.
 
 ```mermaid
 flowchart LR
@@ -20,6 +20,8 @@ flowchart LR
 - The notification center stores local conversation results, unread state and dismissal in SQLite. Delivery follows the terminal-message commit; disabled delivery and acknowledged records do not reappear after restart. Unmigrated Agent/task targets remain unavailable.
 - Context-clear markers and global/assistant history windows affect the actual provider payload. A newly added leaf boundary can be cancelled without deleting its history; a boundary with descendants is retained. An absent assistant window inherits the global value; `null` removes that limit. Context compression and tool-output offloading are unavailable and disabled in the native UI.
 - Provider chat, model listing and checks share endpoint profiles, custom headers, application proxy settings and bounded request deadlines. Checks validate a completion body instead of treating HTTP 200 alone as success.
+- Empty or malformed provider responses and context-limit rejections retain safe, structured diagnoses in stored messages and live projections. Provider response bodies are not included in these diagnoses. Reasoning-only replies remain valid.
+- Links to registered Markdown snapshots in the current profile open in the existing read-only preview tab after backend metadata authorization. Relative paths and unregistered files are rejected.
 - Knowledge bases use the original React workspace with Go-owned SQLite FTS5 retrieval. Notes, URLs and UTF-8 text/Markdown/CSV/JSON/HTML files can be indexed, searched, previewed and attached to assistant chats. This slice uses BM25/full-text retrieval; embeddings, reranking, directory ingestion, PDF/OCR processing and group management are not connected and are disabled in the native interface.
 - Prompt settings persist the original prompt, target-binding and ordering DTOs in Go, including optimistic concurrency checks for global visibility changes.
 - The skill catalog includes packaged built-in skills with persistent enablement, file browsing and local management. Skill management does not imply that the Agent execution engine is migrated.
@@ -35,7 +37,7 @@ This is a working migration slice, not feature parity. Agent runtimes (Claude Co
 
 The default profile is `evostack-data` next to `TinyCherry-EvoStack.exe`. It contains `evostack.sqlite3`, WebView2 data and a process-owned lock. A second backend cannot acquire that profile. `TINYCHERRY_EVOSTACK_DATA_DIR` overrides it with an **absolute** path for isolated verification.
 
-The database is a new, versioned EvoStack schema storing the existing UI DTOs. It is **not** a Drizzle-compatible replacement. Do not point this trial at an Electron profile or copy a production database into it. An importer for existing Electron conversation/provider/knowledge data requires separate work. This trial does not read or migrate the user's existing Electron data. Native schema v3 adds the knowledge full-text index; knowledge snapshots and managed skill files remain inside the selected native profile.
+The database is a new, versioned EvoStack schema storing the existing UI DTOs. It is **not** a Drizzle-compatible replacement. Do not point this trial at an Electron profile or copy a production database into it. An importer for existing Electron conversation/provider/knowledge data requires separate work. This trial does not read or migrate the user's existing Electron data. Native schema v3 adds the knowledge full-text index; v4 preserves the disabled Computer Use default of older profiles when no explicit choice was saved. Explicit enable/disable choices are retained. Back up a profile before upgrading: older v3 binaries cannot open v4 databases. Knowledge snapshots and managed skill files remain inside the selected native profile.
 
 Use the original Settings → Providers UI to enable a provider, configure its **OpenAI Chat Completions** base URL and API key, and add/sync a model. Choose that model in Settings → Default Model. Custom compatible providers and local compatible endpoints work through the same UI. Other endpoint families return an explicit migration error. No live provider or real API key is used by the verification scripts.
 
@@ -46,6 +48,8 @@ Knowledge imports fetch/read and split materials before taking the write transac
 ## Computer Use
 
 Enable Settings → Computer Use → Allow agents to control desktop applications to make nine original computer tools available to ordinary assistant chats. The selected model must support Chat Completions function calls. Vision-capable models can also receive the latest target-window screenshot; accessibility observations remain available to text models. This does not enable the separate Claude Code/Pi Agent runtimes or a Node REPL.
+
+New profiles enable Computer Use with no approved applications. Before opening control of an application, the original approval composer offers Always, Approve for session, and Reject. Always stores the stable application identity; session approval lasts only for that conversation in the current backend process. Settings can revoke remembered identities. Existing profiles preserve an explicit saved switch value; older profiles without one stay disabled. Ordinary assistant chats do not expose a bypass permission mode. The native host checks the approved identity against its owned discovery result and the opened application. Stop, switching control off, and cancellation invalidate pending requests; late approval responses cannot restart a revoked task.
 
 `press_key` is not exposed to models and is rejected before dispatch. Background key dispatch remains disabled until the upgraded helper's focused-control effect is verified. The earlier helper's completed result did not produce a Return event in the test editor. Use clickable buttons and editable controls instead. Other background actions also depend on the target application's accessibility and window-message support: a completed dispatch is not proof that the intended task succeeded. Inspect the resulting observation. The host does not request window activation or global input, but the target application can still change its own focus in response to an accessibility action.
 

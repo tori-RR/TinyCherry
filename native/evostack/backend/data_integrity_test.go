@@ -338,7 +338,7 @@ func TestVersionOneMigrationPrunesOrphanSecretsWithoutReseeding(t *testing.T) {
 		t.Fatal("migration changed saved user preferences", err)
 	}
 	var version int
-	if err := reopened.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 3 {
+	if err := reopened.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 4 {
 		t.Fatal("schema version did not advance", err)
 	}
 }

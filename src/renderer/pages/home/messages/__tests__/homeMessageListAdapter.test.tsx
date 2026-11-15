@@ -24,6 +24,16 @@ const exportActionsMock = vi.hoisted(() => ({
   saveTextFile: vi.fn(),
   saveImage: vi.fn()
 }))
+const filePreviewMock = vi.hoisted(() => ({ isEvoStack: false, open: vi.fn(), request: vi.fn() }))
+
+vi.mock('@renderer/components/FilePreview', () => ({ useOptionalOpenFilePreviewTab: () => filePreviewMock.open }))
+vi.mock('@renderer/ipc', () => ({ ipcApi: { request: filePreviewMock.request } }))
+vi.mock(import('@renderer/utils/platform'), async (importOriginal) => ({
+  ...(await importOriginal()),
+  get isEvoStack() {
+    return filePreviewMock.isEvoStack
+  }
+}))
 
 const leafCapabilitiesMock = vi.hoisted(() => ({
   copyImage: vi.fn()
@@ -336,6 +346,8 @@ function MessageListAdapterHarness({
 describe('useHomeMessageListProviderValue topic image actions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    filePreviewMock.isEvoStack = false
+    filePreviewMock.request.mockReset()
     chatWriteMock.canStartNewContext = true
     messageEditingMock.editingMessageId = null
     messageEditingMock.editingMessage = null
@@ -354,6 +366,40 @@ describe('useHomeMessageListProviderValue topic image actions', () => {
         }
       }
     })
+  })
+
+  it('opens a native Markdown link only after the registered-file authority accepts the normalized target', async () => {
+    filePreviewMock.isEvoStack = true
+    filePreviewMock.request.mockResolvedValue({ kind: 'file', mime: 'text/markdown' })
+    let value: MessageListProviderValue | undefined
+    render(<MessageListAdapterHarness topic={createTopic('topic-a')} onValue={(next) => (value = next)} />)
+    await value!.actions.openPath!('C:\\profile\\knowledge\\base\\raw\\item.md')
+    expect(filePreviewMock.request).toHaveBeenCalledExactlyOnceWith('file.get_metadata', {
+      kind: 'path',
+      path: 'C:\\profile\\knowledge\\base\\raw\\item.md'
+    })
+    expect(filePreviewMock.open).toHaveBeenCalledExactlyOnceWith('C:\\profile\\knowledge\\base\\raw\\item.md')
+  })
+
+  it('does not open or fall back to a shell for an unregistered native Markdown target', async () => {
+    filePreviewMock.isEvoStack = true
+    filePreviewMock.request.mockRejectedValue(new Error('path is not authorized'))
+    let value: MessageListProviderValue | undefined
+    render(<MessageListAdapterHarness topic={createTopic('topic-a')} onValue={(next) => (value = next)} />)
+    await expect(value!.actions.openPath!('C:\\outside\\private.md')).rejects.toThrow('path is not authorized')
+    expect(filePreviewMock.open).not.toHaveBeenCalled()
+    expect(filePreviewMock.request).toHaveBeenCalledTimes(1)
+  })
+
+  it('retains the Electron shell opener for chat surfaces without a file preview pane', async () => {
+    let value: MessageListProviderValue | undefined
+    render(<MessageListAdapterHarness topic={createTopic('topic-a')} onValue={(next) => (value = next)} />)
+    await value!.actions.openPath!('C:\\documents\\report.md')
+    expect(filePreviewMock.request).toHaveBeenCalledExactlyOnceWith(
+      'system.shell.open_path',
+      'C:\\documents\\report.md'
+    )
+    expect(filePreviewMock.open).not.toHaveBeenCalled()
   })
 
   it('exposes generated image reference actions only to normal message interactions', () => {

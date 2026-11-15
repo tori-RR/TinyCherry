@@ -34,6 +34,8 @@ beforeEach(async () => {
   vi.clearAllMocks()
   MockUsePreferenceUtils.resetMocks()
   mockUsePreference.mockImplementation(defaultUsePreference)
+  MockUsePreferenceUtils.setPreferenceValue('app.computer_use.approved_apps', [])
+  MockUsePreferenceUtils.setPreferenceValue('app.computer_use.agent_control.enabled', true)
   await i18n.changeLanguage('en-us')
 })
 afterEach(cleanup)
@@ -56,6 +58,7 @@ describe('Computer Use permission settings', () => {
 
   it('allows an explicit native control grant and revocation when the runtime is ready', async () => {
     runtime.isEvoStack = true
+    MockUsePreferenceUtils.setPreferenceValue('app.computer_use.agent_control.enabled', false)
     vi.mocked(ipcApi.request).mockResolvedValue({ permissions: [], controlAvailable: true })
     const user = userEvent.setup()
     showSettings()
@@ -106,15 +109,12 @@ describe('Computer Use permission settings', () => {
     expect(MockUsePreferenceUtils.getPreferenceValue('app.computer_use.agent_control.enabled')).toBe(false)
   })
 
-  it('requires an explicit desktop-control grant independently of OS permission status', async () => {
+  it('defaults to enabled and lets the user explicitly disable desktop control', async () => {
     const user = userEvent.setup()
     vi.mocked(ipcApi.request).mockResolvedValue({ permissions: [] })
     showSettings()
     const toggle = screen.getByRole('switch', { name: 'Allow agents to control desktop applications' })
-    expect(toggle).not.toBeChecked()
-    await user.click(toggle)
     expect(toggle).toBeChecked()
-    expect(MockUsePreferenceUtils.getPreferenceValue('app.computer_use.agent_control.enabled')).toBe(true)
     expect(
       vi.mocked(ipcApi.request).mock.calls.every(([route]) => route === 'computer_use.get_permission_status')
     ).toBe(true)
@@ -123,6 +123,29 @@ describe('Computer Use permission settings', () => {
     expect(toggle).not.toBeChecked()
     expect(MockUsePreferenceUtils.getPreferenceValue('app.computer_use.agent_control.enabled')).toBe(false)
   })
+  it('revokes only the selected saved app through the main-process authority', async () => {
+    MockUsePreferenceUtils.setPreferenceValue('app.computer_use.approved_apps', [
+      'com.example.editor',
+      'com.example.mail'
+    ])
+    vi.mocked(ipcApi.request).mockImplementation(async (route, input) => {
+      if (route === 'computer_use.revoke_approval') {
+        const { identity } = input as { identity: string }
+        const current = MockUsePreferenceUtils.getPreferenceValue('app.computer_use.approved_apps') as string[]
+        MockUsePreferenceUtils.setPreferenceValue(
+          'app.computer_use.approved_apps',
+          current.filter((app) => app !== identity)
+        )
+        return undefined
+      }
+      return { permissions: [] }
+    })
+    showSettings()
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Delete com.example.editor' }))
+    await waitFor(() => expect(screen.queryByText('com.example.editor')).not.toBeInTheDocument())
+    expect(screen.getByText('com.example.mail')).toBeVisible()
+  })
+
   it('requests only on a click, keeps an unconfirmed result, and refreshes after returning from settings', async () => {
     const user = userEvent.setup()
     let granted = false

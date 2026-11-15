@@ -100,6 +100,9 @@ func TestComputerPreferenceRevocationCancelsTurnsWithoutHoldingTheStoreLock(t *t
 
 func TestComputerPreferenceValidationIsAtomicAndFailedCleanupStaysDisabled(t *testing.T) {
 	s, _ := testServer(t)
+	if err := s.store.setPreference(computerPreference, false); err != nil {
+		t.Fatal(err)
+	}
 	calls := 0
 	s.computerHost = computerHostFunc(func(ctx context.Context, params object) (object, error) {
 		calls++

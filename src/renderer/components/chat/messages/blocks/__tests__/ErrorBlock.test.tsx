@@ -156,6 +156,37 @@ required service tier.`
     )
   })
 
+  it.each([
+    {
+      name: 'AI_APICallError',
+      message: 'Provider rejected the request because it exceeds the context limit.',
+      category: 'context_length'
+    },
+    { name: 'AI_TypeValidationError', message: 'Provider returned an empty completion response.', category: 'parse' },
+    { name: 'AI_TypeValidationError', message: 'Provider returned a malformed completion response.', category: 'parse' }
+  ] as const)(
+    'shows the sanitized native diagnosis for $category without suggesting unrelated settings',
+    (nativeError) => {
+      mocks.translations = new Map(Object.entries(enUS))
+      render(
+        <ErrorBlock
+          partId="message-1-part-0"
+          error={{
+            name: nativeError.name,
+            message: nativeError.message,
+            stack: null,
+            providerErrorCategory: nativeError.category
+          }}
+          message={message}
+        />
+      )
+      expect(screen.getByText(enUS[`error.diagnosis.${nativeError.category}`], { exact: true })).toBeInTheDocument()
+      expect(screen.getByText(nativeError.message, { exact: true })).toBeInTheDocument()
+      expect(screen.queryByText(enUS['error.diagnosis.unknown'], { exact: true })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: GO_TO_SETTINGS_LABEL })).not.toBeInTheDocument()
+    }
+  )
+
   // Main-side copy and mapping are asserted in src/main/features/apiGateway/__tests__/bindError.test.ts.
   // This only guards that providerErrorText keeps the serialized message visible.
   it.each([
@@ -180,6 +211,31 @@ required service tier.`
     expect(diagnostic).toHaveTextContent('49152')
     expect(diagnostic).toHaveTextContent('EACCES')
     expect(diagnostic).toHaveTextContent(copy.recovery)
+  })
+
+  it.each([enUS, zhCN])('explains output truncation without blaming the network', (catalog) => {
+    mocks.translations = new Map(Object.entries(catalog))
+    mocks.i18nKeys.add('error.output_token_limit_reached')
+
+    render(
+      <ErrorBlock
+        partId="message-1-part-0"
+        error={{
+          name: 'Error',
+          message: 'Durable response ended: length',
+          stack: null,
+          streamStage: 'response-stream',
+          reason: 'output-truncated',
+          finishReason: 'length',
+          i18nKey: 'output_token_limit_reached'
+        }}
+        message={message}
+      />
+    )
+
+    expect(screen.getByText(catalog['error.output_token_limit_reached'])).toBeInTheDocument()
+    expect(screen.queryByText(catalog['error.diagnosis.stream'])).not.toBeInTheDocument()
+    expect(screen.queryByText(GO_TO_SETTINGS_LABEL)).not.toBeInTheDocument()
   })
 
   it('renders a known app-owned i18nKey without AI diagnosis', () => {

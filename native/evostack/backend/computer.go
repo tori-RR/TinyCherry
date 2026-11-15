@@ -58,11 +58,32 @@ func (s *server) computerTool(ctx context.Context, ownerID, taskID, label, name 
 	if _, err := s.computerHost.Call(ctx, object{"operation": "configure", "epoch": epoch, "enabled": true}); err != nil {
 		return nil, err
 	}
-	return s.computerHost.Call(ctx, object{"operation": "invoke", "epoch": epoch, "ownerId": ownerID, "taskId": taskID, "label": label, "tool": strings.TrimPrefix(name, "mcp__computer__"), "input": input})
+	tool := strings.TrimPrefix(name, "mcp__computer__")
+	request := object{"operation": "invoke", "epoch": epoch, "ownerId": ownerID, "taskId": taskID, "label": label, "tool": tool, "input": input}
+	if tool == "open_app" {
+		// Resolve presentation and stable identity from Rust's owned discovery
+		// catalog, never from model-supplied approval names or identities.
+		app, err := s.computerHost.Call(ctx, object{"operation": "approval_app", "epoch": epoch, "ownerId": ownerID, "taskId": taskID, "appId": input["appId"]})
+		if err != nil {
+			return nil, err
+		}
+		if err := s.authorizeComputerApp(ctx, ownerID, taskID, epoch, app); err != nil {
+			return nil, err
+		}
+		request["approvedIdentity"] = app["identity"]
+	}
+	return s.computerHost.Call(ctx, request)
 }
 
 func (s *server) closeComputerTask(taskID string) error {
-	if taskID == "" || s.computerHost == nil {
+	if taskID == "" {
+		return nil
+	}
+	s.mu.Lock()
+	s.cancelComputerApprovalsLocked("", taskID, "")
+	delete(s.computerApprovalsLocked().blocked, taskID)
+	s.mu.Unlock()
+	if s.computerHost == nil {
 		return nil
 	}
 	if s.context != nil && s.context.Err() != nil {
@@ -88,6 +109,11 @@ func (s *server) setPreferences(channel string, args []any) (any, error, func())
 			return nil, errors.New("desktop control preference must be a boolean"), nil
 		}
 	}
+	if approved, exists := updates[approvedComputerAppsPreference]; exists {
+		if _, err := computerApprovedApps(approved); err != nil {
+			return nil, err, nil
+		}
+	}
 	s.mu.Lock()
 	var old any
 	var readErr error
@@ -110,6 +136,8 @@ func (s *server) setPreferences(channel string, args []any) (any, error, func())
 			s.computerEpoch++
 		}
 		if control == false {
+			s.cancelComputerApprovalsLocked("", "", "")
+			s.computerApprovalsLocked().grants = map[string]map[string]bool{}
 			for _, g := range s.active {
 				if g.computerEnabled {
 					g.cancel()

@@ -31,6 +31,7 @@ type generation struct {
 	frameSizes            []int
 	computerTaskID        string
 	computerEnabled       bool
+	computerBypass        bool
 	computerLabel         string
 	computerVisionEnabled bool
 	streamingStatusSent   bool
@@ -325,6 +326,9 @@ func (s *server) generate(ctx context.Context, g *generation, config providerReq
 		if g.projectionErr != nil {
 			status, topicStatus, generationErr = "error", "error", g.projectionErr
 		}
+		if generationErr != nil && status == "error" {
+			g.parts = appendGenerationError(g.parts, generationErr)
+		}
 		projectionStatus := "done"
 		if status == "paused" {
 			projectionStatus = "paused"
@@ -343,7 +347,7 @@ func (s *server) generate(ctx context.Context, g *generation, config providerReq
 			event["topicId"] = g.topicID
 			event["isTopicDone"] = true
 			event["topicAttemptWatermark"] = g.attempt
-			event["error"] = object{"name": "Error", "message": generationErr.Error()}
+			event["error"] = serializedGenerationError(generationErr)
 			s.event("ai.stream.error", event)
 		} else {
 			_ = s.chunk(g, object{"type": "finish", "finishReason": finishReason})

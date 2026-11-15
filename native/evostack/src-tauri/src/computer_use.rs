@@ -652,6 +652,7 @@ impl Controller {
         let result = match input["operation"].as_str() {
             Some("configure") => self.configure(input),
             Some("invoke") => self.invoke(input),
+            Some("approval_app") => self.approval_app(input),
             Some("close_task") => string(input, "taskId").and_then(|id| {
                 if !uuid(&id) {
                     return Err(invalid());
@@ -972,6 +973,7 @@ impl Controller {
                 "label",
                 "tool",
                 "input",
+                "approvedIdentity",
             ],
         )?;
         let tool = string(input, "tool")?;
@@ -1026,7 +1028,14 @@ impl Controller {
                 task.initialized.store(true, Ordering::Release);
                 self.emit_controls();
             }
-            self.run_tool(&id, &task, &runtime, &tool, arguments)
+            self.run_tool(
+                &id,
+                &task,
+                &runtime,
+                &tool,
+                arguments,
+                input.get("approvedIdentity"),
+            )
         })();
         if let Err(error) = &result {
             if error.unconfirmed || error.effect != "none" {
@@ -1043,6 +1052,7 @@ impl Controller {
         runtime: &Arc<dyn Runtime>,
         tool: &str,
         input: Value,
+        approved_identity: Option<&Value>,
     ) -> ControlResult {
         if task.cancelled.load(Ordering::Acquire) {
             return Err(closed());
@@ -1107,6 +1117,10 @@ impl Controller {
                         )
                     })?;
                 let keys = app_keys(&app);
+                let identity = app["identity"].as_str().filter(|value| !value.is_empty());
+                if identity.is_none() || approved_identity.and_then(Value::as_str) != identity {
+                    return Err(ControlError::new("APPROVAL_REQUIRED", "A matching stable application identity must be approved before opening control"));
+                }
                 if task.apps.lock().unwrap().values().any(|blocked| {
                     matches!(blocked.status, "stopping" | "stopped" | "unconfirmed")
                         && app_keys(&blocked.app).iter().any(|key| keys.contains(key))
@@ -1183,7 +1197,10 @@ impl Controller {
                         return Err(error);
                     }
                 };
-                if session["app"]["id"] != app_id || session["status"] != "active" {
+                if session["app"]["id"] != app_id
+                    || session["status"] != "active"
+                    || session["app"]["identity"].as_str() != identity
+                {
                     return Err(ControlError::uncertain(
                         "PROTOCOL_ERROR",
                         "Desktop helper returned a different application",
@@ -1852,7 +1869,7 @@ mod tests {
                     }
                     let other = input["appId"] == "app-2";
                     Ok(
-                        json!({"id":if other {"session-2"} else {"session-1"},"app":{"id":input["appId"],"name":if other {"Other fixture"} else {"Fixture"}},"status":"active"}),
+                        json!({"id":if other {"session-2"} else {"session-1"},"app":{"id":input["appId"],"name":if other {"Other fixture"} else {"Fixture"},"identity":if other {"fixture:other"} else {"fixture:stable"}},"status":"active"}),
                     )
                 }
                 "stopAppSession" => Ok(
@@ -1932,7 +1949,14 @@ mod tests {
         c.dispatch(&json!({"operation":"configure","epoch":epoch,"enabled":enabled}))
     }
     fn invoke(c: &Controller, task: &str, epoch: u64, tool: &str, input: Value) -> Value {
-        c.dispatch(&json!({"operation":"invoke","epoch":epoch,"taskId":task,"ownerId":OWNER,"label":"Fixture task","tool":tool,"input":input}))
+        let identity = c.state.lock().unwrap().tasks.get(task).and_then(|task| {
+            task.known_apps
+                .lock()
+                .unwrap()
+                .get(input["appId"].as_str().unwrap_or(""))
+                .map(|app| app["identity"].clone())
+        });
+        c.dispatch(&json!({"operation":"invoke","epoch":epoch,"taskId":task,"ownerId":OWNER,"label":"Fixture task","tool":tool,"input":input,"approvedIdentity":identity}))
     }
     fn authorize(c: &Controller, task: &str) {
         assert!(c.grant_task(c.capture_open(OWNER).unwrap(), task));
@@ -1973,6 +1997,45 @@ mod tests {
         assert_eq!(invoke(&c, TASK2, 3, "list_apps", json!({}))["ok"], false);
         c.shutdown();
     }
+    #[test]
+    fn application_identity_approval_is_required_and_pending_open_can_be_stopped() {
+        let (c, runtimes) = controller(false);
+        configure(&c, 1, true);
+        authorize(&c, TASK);
+        invoke(&c, TASK, 1, "list_apps", json!({}));
+        for identity in [Value::Null, json!("fixture:other")] {
+            let result = c.dispatch(&json!({"operation":"invoke","epoch":1,"taskId":TASK,"ownerId":OWNER,"tool":"open_app","input":{"appId":"app-1"},"approvedIdentity":identity}));
+            assert_eq!(result["error"]["code"], "APPROVAL_REQUIRED");
+        }
+        let request = json!({"operation":"approval_app","epoch":1,"taskId":TASK,"ownerId":OWNER,"appId":"app-1"});
+        let app = c.dispatch(&request);
+        assert_eq!(app["data"]["identity"], "fixture:stable");
+        assert_eq!(
+            c.request("computer_use.get_controls", &Value::Null)
+                .unwrap()
+                .unwrap()[0]["status"],
+            "opening"
+        );
+        c.request(
+            "computer_use.stop_app",
+            &json!({"ownerId":OWNER,"appId":"app-1"}),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(c.dispatch(&request)["error"]["code"], "USER_STOPPED");
+        assert_eq!(
+            invoke(&c, TASK, 1, "open_app", json!({"appId":"app-1"}))["error"]["code"],
+            "USER_STOPPED"
+        );
+        assert!(!runtimes.lock().unwrap()[0]
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(method, _)| method == "openAppSession"));
+        c.shutdown();
+    }
+
     #[test]
     fn app_identity_ownership_and_native_scope_are_enforced() {
         let (c, _) = controller(false);

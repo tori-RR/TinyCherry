@@ -150,7 +150,7 @@ func projectionMessage(g *generation, status string, issue error) object {
 	}
 	message := clone(toUIMessage(row))
 	if issue != nil && (status == "error" || status == "unresolved") {
-		message["parts"] = append(array(message["parts"]), object{"type": "data-error", "data": object{"name": "Error", "message": issue.Error()}})
+		message["parts"] = appendGenerationError(array(message["parts"]), issue)
 	}
 	return message
 }

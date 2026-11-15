@@ -254,6 +254,7 @@ export function useChatRuntimeState({
     [uiMessages]
   )
   const toolApprovalComposerOverrides = useToolApprovalComposerOverrides({
+    topicId: topic.id,
     partsByMessageId,
     persistedPartsByMessageId,
     streamingLayers,

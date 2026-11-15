@@ -444,6 +444,19 @@ fn desktop_request(
     input: &Value,
     backend: &Backend,
 ) -> Option<Reply> {
+    if matches!(route, "computer_use.stop_all" | "computer_use.stop_app") {
+        let cancelled = backend.request_with_timeout(
+            "ipc.invoke",
+            json!({"channel":"ipc-api:request","args":[route,input]}),
+            Duration::from_secs(5),
+        );
+        let native = backend.controls.request(route, input)?;
+        return Some(match (cancelled, native) {
+            (Ok(reply), Ok(value)) if reply["ok"] == true => Ok(value),
+            (_, Err(error)) => Err(error),
+            _ => Err("EVOSTACK_APPROVAL_REVOCATION_UNCONFIRMED".into()),
+        });
+    }
     if let Some(result) = backend.controls.request(route, input) {
         return Some(result);
     }
@@ -603,7 +616,15 @@ async fn ipc_request(
             .first()
             .and_then(Value::as_str)
             .ok_or("Missing route")?;
-        if route.starts_with("computer_use.") || route == "skill.folder.open" {
+        if (route.starts_with("computer_use.")
+            && !matches!(
+                route,
+                "computer_use.get_approvals"
+                    | "computer_use.respond_approval"
+                    | "computer_use.revoke_approval"
+            ))
+            || route == "skill.folder.open"
+        {
             let window = window.clone();
             let backend = backend.inner().clone();
             let route = route.to_owned();

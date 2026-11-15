@@ -135,3 +135,8 @@ it('refuses unsupported module and whole-suite mock acceptance before launching'
   for (const task of ['notes', 'mini-app', 'all'] as const)
     expect(() => assertMockTask(task)).toThrow('provider_mode=real')
 })
+
+it('permits combinations only when every selected task supports the mock backend', () => {
+  expect(() => assertMockTask(['startup-smoke', 'chat-stream-failure'])).not.toThrow()
+  expect(() => assertMockTask(['startup-smoke', 'notes'])).toThrow('provider_mode=real')
+})

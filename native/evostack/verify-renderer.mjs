@@ -121,6 +121,11 @@ try {
     const request=async(route,input)=>{const r=await window.api.ipcApi.request(route,input);if(!r.ok)throw Error(route+': '+r.error?.message);return r.data};
     const controls=await request('computer_use.get_controls');
     if(!Array.isArray(controls)||controls.length!==0)throw Error('Fresh profile unexpectedly has desktop controls');
+    const enabled=await window.api.preference.get('app.computer_use.agent_control.enabled');
+    const approved=await window.api.preference.get('app.computer_use.approved_apps');
+    if(enabled!==true||!Array.isArray(approved)||approved.length!==0)throw Error('Fresh profile must enable Computer Use with no remembered apps');
+    const approvals=await request('computer_use.get_approvals');
+    if(!Array.isArray(approvals)||approvals.length!==0)throw Error('Fresh profile unexpectedly has pending approvals');
     const repl=await window.api.ipcApi.request('computer_use.get_call_apps',{cell:crypto.randomUUID()});
     if(repl.ok||!repl.error?.message?.startsWith('EVOSTACK_NOT_MIGRATED:'))throw Error('Unmigrated REPL was not explicitly gated');
     const topic=await request('ai.temporary_topic.create',{name:'Packaged projection smoke'});

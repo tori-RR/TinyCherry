@@ -1,6 +1,8 @@
 name: E2E Regression Test
 
 on:
+  schedule:
+    - cron: "45 19 * * *" # 03:45 BJ Time — daily full regression on main
   workflow_dispatch:
     inputs:
       ref:
@@ -9,51 +11,14 @@ on:
         default: "main"
         type: string
       task:
-        description: "Test task (all = full regression)"
+        description: "Comma-separated modules or focused tasks (all = full regression)"
         required: true
         default: "all"
-        type: choice
-        options:
-          - all
-          - startup-smoke
-          - mini-app
-          - notes
-          - marketplace
-          - settings
-          - assistants
-          - error-recovery
-          - chat-core
-          - system-integration
-          - mcp-skills
-          - code-tools
-          - paintings
-          - agents
-          - scheduled-tasks
-          - topics
-          - files
-          - data-backup
-          - browser
-          - mini-app-smoke
-          - notes-smoke
-          - mini-app-pinning
-          - marketplace-smoke
-          - custom-provider-chat
-          - provider-model-scroll
-          - custom-assistant
-          - chat-stream-failure
-          - clear-chat-messages
-          - chat-error-recovery
-          - quick-assistant
-          - everything-mcp
-          - skill-import
-          - code-cli
-          - openclaw
-          - cherryin-chat
-          - image-generation
-          - agent-basic-task
-          - claude-agent-runtime
-          - pi-runtime
-          - native-recovery
+        type: string
+      settings_search_smoke:
+        description: "Also run standalone settings-search smoke with selected modules"
+        type: boolean
+        default: false
       provider_mode:
         description: "Provider backend: real = repository vars (default), mock = in-job
           mock service (deterministic, no quota, fault injection). Mock supports
@@ -74,7 +39,7 @@ concurrency:
 
 jobs:
   resolve:
-    if: github.event_name == 'workflow_dispatch' && github.ref_type == 'branch'
+    if: (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch') || github.event_name == 'schedule'
     runs-on: ubuntu-latest
     outputs:
       mode: ${{ steps.ref.outputs.mode }}
@@ -82,6 +47,8 @@ jobs:
       ref: ${{ steps.ref.outputs.ref }}
       sha: ${{ steps.ref.outputs.sha }}
       task: ${{ steps.ref.outputs.task }}
+      prepare_mcp: ${{ steps.ref.outputs.prepare_mcp }}
+      smoke: ${{ steps.ref.outputs.smoke }}
     steps:
       - name: Checkout workflow controller
         uses: actions/checkout@v7
@@ -112,13 +79,13 @@ jobs:
         id: ref
         shell: bash
         env:
-          REQUESTED_REF: ${{ inputs.ref }}
-          REQUESTED_TASK: ${{ inputs.task }}
+          REQUESTED_REF: ${{ inputs.ref || 'main' }}
+          REQUESTED_INPUTS: ${{ toJSON(inputs) }}
         run: |
           pnpm exec tsx scripts/e2e/regression/cli.ts resolve-ref \
             --requested "$REQUESTED_REF" \
             --repository "${{ github.repository }}"
-          echo "task=$REQUESTED_TASK" >> "$GITHUB_OUTPUT"
+          pnpm exec tsx scripts/e2e/regression/cli.ts select-tasks --inputs-json "$REQUESTED_INPUTS"
 
   test:
     needs: resolve
@@ -194,10 +161,15 @@ jobs:
           TEST_RUNNER: ${{ matrix.runner }}
           TEST_TASK: ${{ needs.resolve.outputs.task }}
         run: >-
-          pnpm exec tsx scripts/e2e/regression/cli.ts initialize --run-dir
-          "$RUN_DIR" --mode "$TEST_MODE" --platform "${{ matrix.platform }}"
-          --ref "$TEST_REF_NAME" --sha "$TEST_SHA" --runner "$TEST_RUNNER"
-          --task "$TEST_TASK" --provider-mode "${{ inputs.provider_mode }}"
+          pnpm exec tsx scripts/e2e/regression/cli.ts initialize
+          --run-dir "$RUN_DIR"
+          --mode "$TEST_MODE"
+          --platform "${{ matrix.platform }}"
+          --ref "$TEST_REF_NAME"
+          --sha "$TEST_SHA"
+          --runner "$TEST_RUNNER"
+          --task "$TEST_TASK"
+          --provider-mode "${{ inputs.provider_mode || 'real' }}"
 
       - name: Prepare Notification Center on the disposable macOS runner
         if: matrix.platform == 'macos'
@@ -256,8 +228,7 @@ jobs:
           openclaw --version
 
       - name: Prepare Everything MCP package
-        if: needs.resolve.outputs.task == 'all' || needs.resolve.outputs.task ==
-          'mcp-skills' || needs.resolve.outputs.task == 'everything-mcp'
+        if: needs.resolve.outputs.prepare_mcp == 'true'
         shell: bash
         env:
           npm_config_cache: ${{ env.RUN_DIR }}/private/npm-cache
@@ -274,7 +245,7 @@ jobs:
 
       - name: Start in-job mock provider
         id: mock
-        if: inputs.provider_mode == 'mock'
+        if: (inputs.provider_mode || 'real') == 'mock'
         shell: bash
         run: >-
           pnpm exec tsx scripts/e2e/regression/cli.ts mock-start --run-dir
@@ -616,9 +587,7 @@ jobs:
 
       - name: Verify standalone smoke application
         id: smoke-build
-        if: "!cancelled() && steps.stop-app.outcome == 'success' &&
-          steps.app-build.outcome == 'success' && needs.resolve.outputs.mode ==
-          'branch' && needs.resolve.outputs.task == 'all'"
+        if: "!cancelled() && steps.stop-app.outcome == 'success' && steps.app-build.outcome == 'success' && needs.resolve.outputs.mode == 'branch' && needs.resolve.outputs.smoke != 'none'"
         shell: bash
         working-directory: target-app
         run: node -e "require('node:fs').accessSync('out/main/main.js');
@@ -661,9 +630,14 @@ jobs:
           PLAYWRIGHT_HTML_OUTPUT_DIR: ${{ runner.temp }}/cherry-regression/report/smoke
           PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/cherry-regression/report/smoke-results.json
           PLAYWRIGHT_HTML_OPEN: never
+          SMOKE_SCOPE: ${{ needs.resolve.outputs.smoke }}
         run: |
           export E2E_RIPGREP_BIN="$(node -e 'process.stdout.write(require("node:path").resolve("resources/binaries", `${process.platform}-${process.arch}`, process.platform === "win32" ? "rg.exe" : "rg"))')"
-          node "$GITHUB_WORKSPACE/node_modules/@playwright/test/cli.js" test --config "$GITHUB_WORKSPACE/playwright.config.ts" \
+          smoke_args=()
+          if [[ "$SMOKE_SCOPE" == "settings-search" ]]; then
+            smoke_args+=(tests/e2e/smoke/settingsSearchKeepOpen.test.ts)
+          fi
+          node "$GITHUB_WORKSPACE/node_modules/@playwright/test/cli.js" test "${smoke_args[@]}" --config "$GITHUB_WORKSPACE/playwright.config.ts" \
             --output "$RUN_DIR/evidence/smoke" --reporter=html,json --retries=0
 
       - name: Generate platform report
@@ -757,14 +731,14 @@ jobs:
 
       - name: Generate aggregate report
         run: >-
-          pnpm exec tsx scripts/e2e/regression/cli.ts aggregate --input
-          platform-reports --output combined-report --mode "${{
-          needs.resolve.outputs.mode }}" --provider-mode "${{
-          inputs.provider_mode }}"
+          pnpm exec tsx scripts/e2e/regression/cli.ts aggregate
+          --input platform-reports
+          --output combined-report
+          --mode "${{ needs.resolve.outputs.mode }}"
+          --provider-mode "${{ inputs.provider_mode || 'real' }}"
 
       - name: Summarize standalone smoke results
-        if: needs.resolve.outputs.mode == 'branch' && needs.resolve.outputs.task ==
-          'all'
+        if: needs.resolve.outputs.mode == 'branch' && needs.resolve.outputs.smoke != 'none'
         run: |
           node <<'NODE'
           const fs = require('node:fs')

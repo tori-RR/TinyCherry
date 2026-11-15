@@ -14,6 +14,7 @@ import {
   type TopicProjectionState
 } from '../../src/shared/ai/messageProjection'
 import { MessageDataSchema, MessageSchema } from '../../src/shared/data/types/message'
+import { computerUseRequestSchemas } from '../../src/shared/ipc/schemas/computerUse'
 
 async function main(): Promise<void> {
   const root = resolve(__dirname)
@@ -352,6 +353,18 @@ async function main(): Promise<void> {
       }
     ])
     const assistant = await data('POST', '/assistants', { name: 'Computer contract', modelId: model.id })
+    assert.equal(await invoke('preference:get', 'app.computer_use.agent_control.enabled'), true)
+    assert.deepEqual(
+      computerUseRequestSchemas['computer_use.get_approvals'].output.parse(await command('computer_use.get_approvals')),
+      []
+    )
+    assert.equal(
+      computerUseRequestSchemas['computer_use.respond_approval'].output.parse(
+        await command('computer_use.respond_approval', { approvalId: randomUUID(), scope: 'session' })
+      ),
+      false
+    )
+    await invoke('preference:set', 'app.computer_use.agent_control.enabled', false)
     const plain = await run(assistant.id, 'Plain text only', true)
     assert(plain.message.parts.some((part) => part.type === 'text' && part.text === 'Plain SSE contract passed.'))
     assert.equal(nativeCalls.length, 0)

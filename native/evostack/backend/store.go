@@ -82,7 +82,7 @@ func openStore(directory string) (*store, error) {
 	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return fail(err)
 	}
-	if version > 3 {
+	if version > 4 {
 		return fail(errors.New("database version is newer than this EvoStack build"))
 	}
 	err = s.transaction(func(s *store) error {
@@ -93,8 +93,15 @@ CREATE INDEX IF NOT EXISTS entity_provider ON entity(resource,json_extract(body,
 CREATE INDEX IF NOT EXISTS entity_topic ON entity(resource,json_extract(body,'$.topicId')) WHERE resource='messages';
 CREATE INDEX IF NOT EXISTS entity_knowledge_base ON entity(resource,json_extract(body,'$.baseId')) WHERE resource='knowledge-items';
 CREATE INDEX IF NOT EXISTS entity_knowledge_item ON entity(resource,json_extract(body,'$.itemId')) WHERE resource='knowledge-chunks';
-` + knowledgeSchema + `PRAGMA user_version = 3;`); err != nil {
+` + knowledgeSchema + `PRAGMA user_version = 4;`); err != nil {
 			return err
+		}
+		if version > 0 && version < 4 {
+			// Before v4 an absent flag meant disabled. Preserve that choice when
+			// new installations adopt upstream's enabled-with-app-approval default.
+			if _, err := s.connection().Exec("INSERT OR IGNORE INTO preference(key,value) VALUES(?, 'false')", computerPreference); err != nil {
+				return err
+			}
 		}
 		if version == 0 {
 			for _, provider := range s.defaults.Providers {
