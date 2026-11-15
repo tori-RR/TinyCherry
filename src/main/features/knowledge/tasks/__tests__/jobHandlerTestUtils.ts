@@ -48,7 +48,6 @@ const mocks = vi.hoisted(() => ({
   reclaimSpaceMock: vi.fn(),
   listExistingEmbeddingHashesMock: vi.fn(),
   embedKnowledgeTextsMock: vi.fn(),
-  refineLocalEmbeddingChunksMock: vi.fn(),
   loggerWarnMock: vi.fn(),
   scheduleItemMock: vi.fn(),
   removeDirMock: vi.fn()
@@ -89,7 +88,6 @@ export const {
   reclaimSpaceMock,
   listExistingEmbeddingHashesMock,
   embedKnowledgeTextsMock,
-  refineLocalEmbeddingChunksMock,
   loggerWarnMock,
   scheduleItemMock,
   removeDirMock
@@ -220,10 +218,6 @@ vi.mock('@main/utils/file', async () => {
 
 vi.mock('../../pipeline/indexing/embed', () => ({
   embedKnowledgeTexts: embedKnowledgeTextsMock
-}))
-
-vi.mock('../../pipeline/indexing/localEmbeddingTokenLimit', () => ({
-  refineLocalEmbeddingChunks: refineLocalEmbeddingChunksMock
 }))
 
 export const { createCopySourcesJobHandler } = await import('../copySourcesJobHandler')
@@ -462,7 +456,6 @@ beforeEach(() => {
   embedKnowledgeTextsMock.mockImplementation(async (_base: KnowledgeBase, values: string[]) =>
     values.map(fakeEmbedVector)
   )
-  refineLocalEmbeddingChunksMock.mockImplementation(async (_base: KnowledgeBase, chunked) => chunked)
   listMock.mockResolvedValue([])
   getFileProcessingTaskMock.mockResolvedValue(null)
   enqueueMock.mockResolvedValue({ id: 'job-index', snapshot: {}, finished: Promise.resolve({}) })

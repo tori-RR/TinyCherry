@@ -27,6 +27,9 @@ vi.mock('@renderer/hooks/useChatWithHistory', () => ({
     activeExecutions: []
   })
 }))
+vi.mock('@renderer/components/composer/useToolApprovalComposerOverrides', () => ({
+  useToolApprovalComposerOverrides: () => []
+}))
 vi.mock('@renderer/hooks/useConversationErrorToasts', () => ({
   useConversationErrorToasts: () => ({ track: vi.fn(), onFinish: vi.fn() })
 }))
@@ -34,7 +37,6 @@ vi.mock('@renderer/hooks/useExecutionOverlay', () => ({
   useExecutionOverlay: (
     _topicId: string,
     executions: ActiveExecution[],
-    _messages: CherryUIMessage[],
     options: { onFinish?: (executionId: string, event: ExecutionFinishEvent) => void }
   ) => {
     mocks.executions = executions

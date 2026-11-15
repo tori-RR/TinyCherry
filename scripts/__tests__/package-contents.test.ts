@@ -107,13 +107,26 @@ describe('packaged dependency contents', () => {
       'node_modules/mammoth/lib/index.js',
       'node_modules/selection-hook/index.js',
       'node_modules/@earendil-works/pi-coding-agent/dist/index.js',
-      'node_modules/onnxruntime-node/dist/index.js',
-      'node_modules/sherpa-onnx-node/sherpa-onnx.js',
-      // tesseract.js defaults to the LSTM_ONLY OEM and picks the SIMD build wherever wasm SIMD exists.
-      'node_modules/tesseract.js-core/tesseract-core-simd-lstm.js',
-      'node_modules/tesseract.js-core/tesseract-core-simd-lstm.wasm'
+      'node_modules/sharp/lib/index.js'
     ]) {
       expect(includesFile(file), file).toBe(true)
     }
   })
+
+  it.each(['node_modules', 'node_modules/consumer/node_modules'])(
+    'excludes removed speech packages under %s',
+    (modules) => {
+      for (const file of [
+        'sherpa-onnx/package.json',
+        'sherpa-onnx-node/sherpa-onnx.js',
+        'sherpa-onnx-win-x64/sherpa-onnx.node',
+        '@cherrystudio/mlx-asr/package.json',
+        '@cherrystudio/mlx-tts/package.json',
+        '@cherrystudio/system-speech/package.json'
+      ]) {
+        const speechFile = `${modules}/${file}`
+        expect(includesFile(speechFile), speechFile).toBe(false)
+      }
+    }
+  )
 })

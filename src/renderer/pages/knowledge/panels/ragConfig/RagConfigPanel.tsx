@@ -166,7 +166,7 @@ const ActiveRagConfigPanel = ({ base, itemCount, onRestoreBase }: RagConfigPanel
 
   return (
     <KnowledgePanelShell>
-      <ScrollArea className="min-h-0 flex-1 px-6 py-5">
+      <ScrollArea className="min-h-0 flex-1" contentProps={{ className: 'px-6 py-5' }}>
         <div className="flex flex-col gap-4">
           <EmbeddingSection
             embeddingModelId={values.embeddingModelId}

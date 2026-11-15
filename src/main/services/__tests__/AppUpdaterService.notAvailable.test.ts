@@ -1,5 +1,8 @@
 /** Withheld-feed tests: distinguish a withheld rollout from a genuine up-to-date install. */
 
+import { existsSync } from 'node:fs'
+import type * as Fs from 'node:fs'
+
 import type { UpdateInfo } from 'builder-util-runtime'
 import { app } from 'electron'
 import { autoUpdater } from 'electron-updater'
@@ -10,6 +13,11 @@ import { BaseService } from '@main/core/lifecycle/BaseService'
 import { WindowType } from '@main/core/window/types'
 
 import { AppUpdaterService } from '../AppUpdaterService'
+
+vi.mock('node:fs', async (importOriginal) => ({
+  ...(await importOriginal<typeof Fs>()),
+  existsSync: vi.fn()
+}))
 
 vi.mock('@logger', () => ({
   loggerService: {
@@ -82,6 +90,7 @@ describe('AppUpdaterService — update-not-available feed target', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
+    vi.mocked(existsSync).mockImplementation((file) => String(file).endsWith('app-update.yml'))
     BaseService.resetInstances()
     vi.mocked(app.getVersion).mockReturnValue('2.0.13')
 

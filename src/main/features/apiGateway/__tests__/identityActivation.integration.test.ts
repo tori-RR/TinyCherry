@@ -193,12 +193,14 @@ async function expectPendingIdentity(action: () => Promise<unknown>) {
 }
 
 describe('gateway activation with pending identity storage', () => {
-  it.each(['enabled LAN boot', 'start with saved LAN host', 'loopback start then enable LAN'])(
+  it.each(['start with enabled LAN preference', 'start with saved LAN host', 'loopback start then enable LAN'])(
     'finishes %s and schedules a heartbeat before identity is available',
     async (entry) => {
-      if (entry === 'enabled LAN boot') {
+      if (entry === 'start with enabled LAN preference') {
         MockMainPreferenceServiceUtils.setPreferenceValue('feature.api_gateway.enabled', true)
-        await expectPendingIdentity(() => service._doInit())
+        await withinBudget(() => service._doInit())
+        expect(service.isRunning()).toBe(false)
+        await expectPendingIdentity(() => service.start())
       } else {
         if (entry === 'loopback start then enable LAN') {
           MockMainPreferenceServiceUtils.setPreferenceValue('feature.api_gateway.host', '127.0.0.1')
@@ -220,7 +222,8 @@ describe('gateway activation with pending identity storage', () => {
 
   it('keeps the gateway running when asynchronous key-store availability rejects', async () => {
     MockMainPreferenceServiceUtils.setPreferenceValue('feature.api_gateway.enabled', true)
-    await expectPendingIdentity(() => service._doInit())
+    await withinBudget(() => service._doInit())
+    await expectPendingIdentity(() => service.start())
     rejectAvailability(new Error('Keychain denied'))
     await vi.waitFor(() =>
       expect(application.get('CacheService').getShared('feature.remote_access.discovery_status')).toBe('unavailable')
@@ -232,7 +235,8 @@ describe('gateway activation with pending identity storage', () => {
 
   it('does not publish a late identity after ingress closes', async () => {
     MockMainPreferenceServiceUtils.setPreferenceValue('feature.api_gateway.enabled', true)
-    await expectPendingIdentity(() => service._doInit())
+    await withinBudget(() => service._doInit())
+    await expectPendingIdentity(() => service.start())
     remote.closeIngress()
     resolveAvailability(true)
     expect((await withinBudget(() => remote.createInvitation())).desktopIdentity).toBe(expectedIdentity)

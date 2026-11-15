@@ -110,5 +110,6 @@ YOUR_MEMORY_FILE_PATH
 /native/external-app/build/
 
 /.code_review/
+/.cache/
 
 /README_LOG.MD

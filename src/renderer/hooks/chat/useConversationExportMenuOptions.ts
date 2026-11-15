@@ -1,3 +1,5 @@
+import { useMemo } from 'react'
+
 import { useMultiplePreferences } from '@data/hooks/usePreference'
 
 const CONVERSATION_EXPORT_MENU_PREFERENCE_KEYS = {
@@ -11,5 +13,8 @@ const CONVERSATION_EXPORT_MENU_PREFERENCE_KEYS = {
 
 export function useConversationExportMenuOptions() {
   const [exportMenuOptions] = useMultiplePreferences(CONVERSATION_EXPORT_MENU_PREFERENCE_KEYS)
-  return { ...exportMenuOptions, notion: false, yuque: false, joplin: false, siyuan: false }
+  return useMemo(
+    () => ({ ...exportMenuOptions, notion: false, yuque: false, joplin: false, siyuan: false }),
+    [exportMenuOptions]
+  )
 }

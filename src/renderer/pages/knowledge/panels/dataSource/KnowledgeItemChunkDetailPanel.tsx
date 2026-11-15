@@ -157,7 +157,7 @@ const KnowledgeItemChunkDetailPanel = ({
           {renderChunk}
         </DynamicVirtualList>
       ) : (
-        <ScrollArea type="always" className="min-h-0 flex-1 px-4 py-3">
+        <ScrollArea type="always" className="min-h-0 flex-1" contentProps={{ className: 'px-4 py-3' }}>
           {isItemLoading || isLoading ? <KnowledgeItemChunkState>{t('common.loading')}</KnowledgeItemChunkState> : null}
           {!isItemLoading && itemError ? <KnowledgeItemChunkState>{itemError.message}</KnowledgeItemChunkState> : null}
           {!isItemLoading && !isLoading && !itemError && error ? (

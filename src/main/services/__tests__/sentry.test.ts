@@ -158,7 +158,7 @@ describe('Sentry instrumentation surface', () => {
     const options = initOptions()
 
     expect(options.initialScope.tags).toMatchObject({ 'app.edition': 'cn', 'event.process': 'main' })
-    expect(options.release).toBe(`CherryStudio@${options.initialScope.tags['app.version']}`)
+    expect(options.release).toBe(`TinyCherry@${options.initialScope.tags['app.version']}`)
   })
 
   it('opts out of the SDK defaults so an upgrade cannot add instrumentation silently', () => {

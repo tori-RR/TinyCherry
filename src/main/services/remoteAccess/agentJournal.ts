@@ -21,10 +21,12 @@ import {
 import { RemoteRpcError } from '@cherrystudio/remote-transport'
 import type { DbOrTx } from '@data/db/types'
 import { agentSessionMessageService } from '@data/services/AgentSessionMessageService'
+import { agentSessionService } from '@data/services/AgentSessionService'
 import { loggerService } from '@logger'
 import { buildAgentSessionTopicId } from '@main/ai/agentSession/topic'
 import { startAgentSessionRun } from '@main/ai/streamManager'
 import type { StreamDoneResult, StreamErrorResult, StreamListener, StreamPausedResult } from '@main/ai/streamManager'
+import type { Disposable } from '@main/core/lifecycle'
 import { toExecutionFailure } from '@shared/ai/executionFailure'
 import type { CherryMessagePart, CherryUIMessage } from '@shared/data/types/message'
 
@@ -987,12 +989,14 @@ class RemoteAgentListener implements StreamListener {
 export class RemoteAgentHub {
   readonly uploads = new RemoteUploads()
   private readonly journals = new Map<string, SessionJournal>()
+  private sessionUpdates?: Disposable
 
   publishSession(sessionId: string): void {
     this.journals.get(sessionId)?.publishSession()
   }
 
   journal(sessionId: string): SessionJournal {
+    this.sessionUpdates ??= agentSessionService.onSessionUpdated(({ sessionId: id }) => this.publishSession(id))
     let journal = this.journals.get(sessionId)
     if (!journal) {
       if (this.journals.size >= MAX_JOURNALS) {
@@ -1032,6 +1036,10 @@ export class RemoteAgentHub {
         this.journals.delete(journal.sessionId)
       } else journal.poll()
     }
+    if (this.journals.size === 0) {
+      this.sessionUpdates?.dispose()
+      this.sessionUpdates = undefined
+    }
   }
 
   private enforceReplayBudget(): void {
@@ -1046,6 +1054,8 @@ export class RemoteAgentHub {
   }
 
   dispose(): void {
+    this.sessionUpdates?.dispose()
+    this.sessionUpdates = undefined
     for (const journal of this.journals.values()) journal.dispose()
     this.journals.clear()
   }

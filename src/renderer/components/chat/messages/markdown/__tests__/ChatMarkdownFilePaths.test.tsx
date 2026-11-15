@@ -140,7 +140,7 @@ describe('ChatMarkdown code entries', () => {
     expect(await screen.findByRole('link', { name: expected })).toHaveAttribute('data-file-path', expected)
   })
 
-  it.each(['/app/chat', '/settings/skills', '/settings/channels', '/app/mini-app/example'])(
+  it.each(['/app/chat', '/settings/skills', '/settings/provider', '/app/mini-app/example'])(
     'routes %s through the navigation entry',
     async (path) => {
       const user = userEvent.setup()

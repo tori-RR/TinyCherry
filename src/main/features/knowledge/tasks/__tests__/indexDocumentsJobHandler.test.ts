@@ -2,7 +2,6 @@ import { mockNotificationService } from '@test-mocks/main/application'
 import { MockMainCacheServiceExport } from '@test-mocks/main/CacheService'
 import { describe, expect, it } from 'vitest'
 
-import { LOCAL_EMBEDDING_UNIQUE_MODEL_ID } from '@shared/data/presets/localEmbedding'
 import type { PosixRelativeFilePath } from '@shared/utils/file'
 
 import { hashEmbeddingText } from '../../pipeline/vectorstore/indexStore/hashing'
@@ -30,8 +29,7 @@ import {
   listExistingEmbeddingHashesMock,
   loadKnowledgeItemDocumentsMock,
   NOTE_ITEM_ID,
-  rebuildMaterialMock,
-  refineLocalEmbeddingChunksMock
+  rebuildMaterialMock
 } from './jobHandlerTestUtils'
 
 /** Documents whose single-chunk bodies are exactly these strings (no trimming). */
@@ -274,7 +272,7 @@ describe('index-documents job handler', () => {
     expect(lastProgressCall?.[2]).toEqual(expect.any(Number))
   })
 
-  it('does not run local token-limit refinement for non-local embedding models', async () => {
+  it('embeds document chunks without changing their source offsets', async () => {
     const handler = createIndexDocumentsJobHandler(knowledgeLockManager as never)
     knowledgeItemGetByIdMock.mockReturnValue(createNoteItem(NOTE_ITEM_ID))
     knowledgeItemUpdateStatusMock.mockReturnValue(createNoteItem(NOTE_ITEM_ID))
@@ -282,44 +280,10 @@ describe('index-documents job handler', () => {
 
     await handler.execute(createCtx({ baseId: 'kb-1', itemId: NOTE_ITEM_ID, parentJobId: null }))
 
-    expect(refineLocalEmbeddingChunksMock).not.toHaveBeenCalled()
     expect(embedKnowledgeTextsMock.mock.calls[0][1]).toEqual(DISTINCT_DOCS)
-  })
-
-  it('embeds refined local-embedding chunks instead of the oversized original body', async () => {
-    const handler = createIndexDocumentsJobHandler(knowledgeLockManager as never)
-    knowledgeBaseGetByIdMock.mockReturnValue(
-      createBase({
-        embeddingModelId: LOCAL_EMBEDDING_UNIQUE_MODEL_ID,
-        dimensions: 1024
-      })
-    )
-    knowledgeItemGetByIdMock.mockReturnValue(createNoteItem(NOTE_ITEM_ID))
-    knowledgeItemUpdateStatusMock.mockReturnValue(createNoteItem(NOTE_ITEM_ID))
-    loadKnowledgeItemDocumentsMock.mockResolvedValueOnce([{ text: 'abcdefghij', metadata: { source: NOTE_ITEM_ID } }])
-    refineLocalEmbeddingChunksMock.mockImplementationOnce(async (_base, chunked) => ({
-      contentText: chunked.contentText,
-      chunks: [
-        { unitIndex: 0, charStart: 0, charEnd: 4, text: 'abcd' },
-        { unitIndex: 1, charStart: 4, charEnd: 8, text: 'efgh' },
-        { unitIndex: 2, charStart: 8, charEnd: 10, text: 'ij' }
-      ]
-    }))
-
-    await handler.execute(createCtx({ baseId: 'kb-1', itemId: NOTE_ITEM_ID, parentJobId: null }))
-
-    expect(refineLocalEmbeddingChunksMock).toHaveBeenCalledWith(
-      expect.objectContaining({ embeddingModelId: LOCAL_EMBEDDING_UNIQUE_MODEL_ID }),
-      expect.objectContaining({
-        contentText: 'abcdefghij',
-        chunks: [expect.objectContaining({ text: 'abcdefghij' })]
-      }),
-      expect.any(AbortSignal)
-    )
-    expect(embedKnowledgeTextsMock.mock.calls[0][1]).toEqual(['abcd', 'efgh', 'ij'])
     expect(
       lastRebuildInput().units.map((unit) => lastRebuildInput().content.text.slice(unit.charStart, unit.charEnd))
-    ).toEqual(['abcd', 'efgh', 'ij'])
+    ).toEqual(DISTINCT_DOCS)
   })
 
   it('embeds nothing when every chunk body is already stored (full A4 reuse)', async () => {

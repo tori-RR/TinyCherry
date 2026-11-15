@@ -55,6 +55,7 @@ concurrency:
 
 jobs:
   sync:
+    if: github.repository == 'CherryHQ/cherry-studio'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout main

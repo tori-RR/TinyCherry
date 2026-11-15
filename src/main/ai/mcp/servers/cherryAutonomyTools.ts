@@ -77,7 +77,7 @@ function parseDurationToMinutes(duration: string): number {
 const CRON_DESCRIPTION =
   "Manage scheduled jobs: add, update, list, remove. Prefer update over recreating; one-time jobs use an RFC3339 'at'."
 
-const CronInputSchema = z.object({
+const CronInputSchema = z.strictObject({
   action: z.enum(['add', 'update', 'list', 'remove']).describe('The action to perform'),
   name: z
     .string()

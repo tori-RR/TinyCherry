@@ -314,7 +314,7 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     needs: [basic-checks, general-test, render-test]
-    if: always() && (needs.basic-checks.result == 'failure' || needs.general-test.result == 'failure' || needs.render-test.result == 'failure') && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: always() && github.repository == 'CherryHQ/cherry-studio' && (needs.basic-checks.result == 'failure' || needs.general-test.result == 'failure' || needs.render-test.result == 'failure') && github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Check out Git repository
         uses: actions/checkout@v7

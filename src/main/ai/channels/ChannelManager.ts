@@ -27,6 +27,7 @@ export class ChannelManager extends BaseService {
   private readonly runtimes = new Map<string, ChannelRuntime>()
   private readonly channelLogs = new ChannelLogBuffer()
   private acceptingConnections = false
+  private resumeListener?: Disposable
 
   protected async onStop(): Promise<void> {
     await this.stop()
@@ -45,11 +46,18 @@ export class ChannelManager extends BaseService {
   }
 
   async start(): Promise<void> {
+    if (this.acceptingConnections) return
     this.acceptingConnections = true
+    this.resumeListener ??= application.get('PowerService').onResume(() => {
+      for (const runtime of this.runtimes.values()) runtime.adapter?.handleSystemResume()
+    })
     let channels: ReturnType<typeof channelService.listChannels>
     try {
       channels = channelService.listChannels()
     } catch (error) {
+      this.acceptingConnections = false
+      this.resumeListener?.dispose()
+      this.resumeListener = undefined
       logger.error('Failed to list channels during startup', {
         error: error instanceof Error ? error.message : String(error)
       })
@@ -62,6 +70,8 @@ export class ChannelManager extends BaseService {
 
   async stop(): Promise<void> {
     this.acceptingConnections = false
+    this.resumeListener?.dispose()
+    this.resumeListener = undefined
     this.registration.dispose()
     logger.info('Stopping channel manager')
     const runtimes = [...this.runtimes.values()]

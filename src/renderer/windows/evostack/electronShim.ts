@@ -8,6 +8,7 @@ export const contextBridge = {
 }
 export const webUtils = {
   getPathForFile(_file: File): never {
+    void _file
     throw new Error('EVOSTACK_NOT_MIGRATED: file attachments')
   }
 }

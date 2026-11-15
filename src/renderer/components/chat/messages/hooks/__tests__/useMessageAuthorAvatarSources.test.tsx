@@ -2,13 +2,14 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { MessageListItem } from '@renderer/components/chat/messages/types'
+import type * as PlatformModule from '@renderer/utils/platform'
 
 import { useMessageAuthorAvatarSources } from '../useMessageAuthorAvatarSources'
 
 const native = vi.hoisted(() => ({ enabled: true, request: vi.fn(), create: vi.fn(), revoke: vi.fn() }))
 vi.mock('@renderer/ipc', () => ({ ipcApi: { request: native.request } }))
 vi.mock('@renderer/utils/platform', async (original) => ({
-  ...(await original<typeof import('@renderer/utils/platform')>()),
+  ...(await original<typeof PlatformModule>()),
   get isEvoStack() {
     return native.enabled
   }

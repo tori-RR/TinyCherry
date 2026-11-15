@@ -10,6 +10,9 @@
  * cleanup on stop.
  */
 
+import { existsSync } from 'node:fs'
+import type * as Fs from 'node:fs'
+
 import { setupTestDatabase } from '@test-helpers/db'
 import { defaultServiceInstances, mockNotificationService } from '@test-mocks/main/application'
 import type { UpdateInfo } from 'builder-util-runtime'
@@ -25,6 +28,11 @@ import { SchedulerService } from '@main/core/scheduler/SchedulerService'
 import { regionService } from '@main/services/RegionService'
 
 import { AppUpdaterService } from '../AppUpdaterService'
+
+vi.mock('node:fs', async (importOriginal) => ({
+  ...(await importOriginal<typeof Fs>()),
+  existsSync: vi.fn()
+}))
 
 vi.mock('@logger', () => ({
   loggerService: {
@@ -108,6 +116,7 @@ describe('AppUpdaterService — auto update-check scheduling', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
+    vi.mocked(existsSync).mockImplementation((file) => String(file).endsWith('app-update.yml'))
     BaseService.resetInstances()
     setPackaged(true)
 

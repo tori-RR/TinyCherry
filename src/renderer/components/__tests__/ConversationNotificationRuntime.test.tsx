@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { TabsContext, type TabsContextValue } from '@renderer/hooks/tab'
+import type * as PlatformModule from '@renderer/utils/platform'
 
 import { ConversationNotificationRuntime } from '../ConversationNotificationRuntime'
 
@@ -18,7 +19,7 @@ const mocks = vi.hoisted(() => ({
   toastError: vi.fn()
 }))
 vi.mock('@renderer/utils/platform', async (original) => ({
-  ...(await original<typeof import('@renderer/utils/platform')>()),
+  ...(await original<typeof PlatformModule>()),
   get isEvoStack() {
     return mocks.isEvoStack
   }

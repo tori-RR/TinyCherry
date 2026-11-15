@@ -72,11 +72,13 @@ describe('dataReset ↔ pathRegistry conformance', () => {
     expect(USER_DATA_WIPE).toContain('Local Storage.restore')
   })
 
-  it('USER_DATA_KEPT shields the model/toolchain trees the registry places under userData', () => {
-    expect(USER_DATA_KEPT).toContain(firstSegment(registry['feature.embedding.models'], userData))
-    expect(USER_DATA_KEPT).toContain(firstSegment(registry['feature.ocr.paddleocr'], userData))
-    expect(USER_DATA_KEPT).toContain(firstSegment(registry['feature.onnxruntime.binary'], userData))
-    expect(USER_DATA_KEPT).toContain(firstSegment(registry['feature.ocr.tesseract'], userData))
+  it('USER_DATA_KEPT shields retained runtimes and toolchains under userData', () => {
+    expect(USER_DATA_KEPT).toContain(firstSegment(registry['feature.remote_access.identity_file'], userData))
+    expect(USER_DATA_KEPT).toContain(firstSegment(registry['feature.claude_code.binary'], userData))
+    expect(registry).not.toHaveProperty('feature.embedding.models')
+    expect(registry).not.toHaveProperty('feature.onnxruntime.binary')
+    expect(registry).not.toHaveProperty('feature.ocr.paddleocr')
+    expect(registry).not.toHaveProperty('feature.ocr.tesseract')
   })
 
   it('the data-reset marker survives its own wipe (a deliberate third category)', () => {

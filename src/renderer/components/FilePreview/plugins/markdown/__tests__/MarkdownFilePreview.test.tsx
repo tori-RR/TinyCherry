@@ -84,11 +84,13 @@ describe('MarkdownFilePreview', () => {
     const content = '# Native skill preview\n\n保留原始 Markdown 界面。'
     const bytes = Array.from(new TextEncoder().encode(content))
     const invoke = vi.fn(async (_command: string, request: { channel: string; args: unknown[] }) => {
+      if (_command === 'subscribe') return undefined
       if (request.channel !== 'ipc-api:request' || request.args[0] !== 'file.read') {
         throw new Error('EVOSTACK_NOT_MIGRATED: fs:readText')
       }
       return { ok: true, data: { content: bytes, mime: 'text/markdown', version: { size: bytes.length, mtime: 1 } } }
     })
+    vi.stubGlobal('location', new URL('http://tauri.localhost/windows/evostack/index.html'))
     vi.stubGlobal('__TAURI__', { core: { invoke, Channel: vi.fn() } })
     try {
       const { ipcRenderer } = await import('@renderer/windows/evostack/transport')
@@ -97,17 +99,23 @@ describe('MarkdownFilePreview', () => {
 
       expect(await screen.findByRole('heading', { name: 'Native skill preview' })).toBeInTheDocument()
       expect(screen.getByText('保留原始 Markdown 界面。')).toBeInTheDocument()
-      expect(invoke).toHaveBeenCalledExactlyOnceWith('ipc_request', {
-        channel: 'ipc-api:request',
-        args: [
-          'file.read',
+      expect(invoke.mock.calls.filter(([command]) => command === 'ipc_request')).toEqual([
+        [
+          'ipc_request',
           {
-            handle: { kind: 'path', path: 'C:\\fixture\\SKILL.md' },
-            options: { mode: 'full', encoding: 'binary' }
+            channel: 'ipc-api:request',
+            args: [
+              'file.read',
+              {
+                handle: { kind: 'path', path: 'C:\\fixture\\SKILL.md' },
+                options: { mode: 'full', encoding: 'binary' }
+              }
+            ]
           }
         ]
-      })
+      ])
     } finally {
+      window.dispatchEvent(new Event('pagehide'))
       vi.unstubAllGlobals()
     }
   })

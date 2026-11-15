@@ -13,7 +13,7 @@ vi.mock('node:fs', async () => {
 const mockFs = vi.mocked(fs)
 const mockRenameSync = mockFs.renameSync
 
-const CONFIG_PATH = path.resolve('/mock/home/.cherrystudio/boot-config.json')
+const CONFIG_PATH = path.resolve('/mock/home/.tinycherry/boot-config.json')
 const TEMP_PATH = `${CONFIG_PATH}.tmp`
 
 async function createService() {

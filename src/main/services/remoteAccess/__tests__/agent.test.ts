@@ -829,8 +829,8 @@ describe('remote agent access', () => {
   })
 
   it('removes the session update listener when remote access stops', async () => {
-    await service._doStop()
     const journal = hub.journal(sessionId)
+    await service._doStop()
     agentSessionService.update(sessionId, { name: 'Renamed after shutdown' })
     expect(journal.cursor.seq).toBe('0')
   })

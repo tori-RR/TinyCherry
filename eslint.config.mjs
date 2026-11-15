@@ -685,6 +685,9 @@ export default defineConfig([
   {
     ignores: [
       'node_modules/**',
+      '.pnpm-store/**',
+      '**/.cache/**',
+      '.context/**',
       'build/**',
       'dist/**',
       'out/**',
@@ -699,6 +702,7 @@ export default defineConfig([
       'src/renderer/routeTree.gen.ts',
       'packages/**/dist',
       'native/system-speech/dist',
+      'native/evostack/dist/**',
       'packages/**/storybook-static/**',
       'scripts/data-classify/**'
     ]

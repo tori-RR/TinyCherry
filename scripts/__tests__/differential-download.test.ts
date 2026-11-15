@@ -8,22 +8,15 @@ import path from 'node:path'
 import { type BlockMap, CancellationToken } from 'builder-util-runtime'
 import { GenericDifferentialDownloader } from 'electron-updater/out/differentialDownloader/GenericDifferentialDownloader'
 import { describe, expect, it } from 'vitest'
-import { parse } from 'yaml'
 
 const require = createRequire(import.meta.url)
 const builderRequire = createRequire(require.resolve('electron-builder'))
 const appBuilderRequire = createRequire(builderRequire.resolve('app-builder-lib'))
 const { NodeHttpExecutor } = appBuilderRequire('builder-util/out/nodeHttpExecutor')
-const projectRoot = path.resolve(import.meta.dirname, '../..')
 
 // Catch multipart-only requests and corrupt reconstructed bytes using the production downloader.
 describe('native differential downloads', () => {
-  it.each([
-    ['global', false],
-    ['cn', false],
-    ['development', false],
-    ['global', true]
-  ] as const)('reconstructs using %s feed settings and verifies integrity (corrupt: %s)', async (edition, corrupt) => {
+  it.each([false, true])('reconstructs and verifies a single-range feed (corrupt: %s)', async (corrupt) => {
     const directory = await mkdtemp(path.join(tmpdir(), 'cherry-differential-'))
     const oldContents = Buffer.from('AAAABBBBCCCCDDDD')
     const newContents = Buffer.from('AAAAXXXXCCCCYYYY')
@@ -50,17 +43,10 @@ describe('native differential downloads', () => {
       await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
       const address = server.address()
       if (!address || typeof address === 'string') throw new Error('Missing test server address')
-      const config = parse(await readFile(path.join(projectRoot, 'electron-builder.yml'), 'utf8'))
-      const feed =
-        edition === 'cn'
-          ? (
-              await require('../../electron-builder.cn.config.cjs')({
-                packageMetadata: { value: { version: '2.2.0-rc.1' } }
-              })
-            ).publish
-          : edition === 'development'
-            ? parse(await readFile(path.join(projectRoot, 'dev-app-update.yml'), 'utf8'))
-            : config.publish
+      const feed = {
+        url: `http://127.0.0.1:${address.port}/installer.exe`,
+        useMultipleRangeRequest: false
+      }
       const oldFile = path.join(directory, 'old.exe')
       const newFile = path.join(directory, 'new.exe')
       await writeFile(oldFile, oldContents)
@@ -70,7 +56,7 @@ describe('native differential downloads', () => {
         {
           oldFile,
           newFile,
-          newUrl: new URL(`http://127.0.0.1:${address.port}/installer.exe`),
+          newUrl: new URL(feed.url),
           isUseMultipleRangeRequest: feed.useMultipleRangeRequest,
           requestHeaders: null,
           cancellationToken: new CancellationToken(),

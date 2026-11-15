@@ -2389,7 +2389,7 @@ describe('buildClaudeCodeSessionSettings', () => {
     expect(mocks.findBySessionId).not.toHaveBeenCalled()
   })
 
-  it('uses one captured notification authority throughout async MCP materialization', async () => {
+  it('does not expose the retired notify tool even with a captured channel authority', async () => {
     const session = {
       id: 'session-1',
       agentId: 'agent-1',
@@ -2407,7 +2407,7 @@ describe('buildClaudeCodeSessionSettings', () => {
     })
 
     const listed = await listCherryTools(settings)
-    expect(listed.tools.map((tool: { name: string }) => tool.name)).toContain('notify')
+    expect(listed.tools.map((tool: { name: string }) => tool.name)).not.toContain('notify')
     expect(mocks.getTurnTrustedNotifyChannels).not.toHaveBeenCalled()
   })
 

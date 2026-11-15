@@ -26,7 +26,7 @@ async function importRegistryWithPlatform(platform: Platform) {
 }
 
 describe('processorRegistry', () => {
-  it('has one handler for every preset capability', async () => {
+  it('registers retained preset capabilities and excludes image OCR', async () => {
     const processorRegistry = await importRegistryWithPlatform({ isLinux: false, isMac: true, isWin: false })
 
     for (const preset of PRESETS_FILE_PROCESSORS) {
@@ -34,7 +34,16 @@ describe('processorRegistry', () => {
 
       expect(registryEntry, `${preset.id} registry entry`).toBeDefined()
 
+      if (!registryEntry.isSupported()) {
+        expect(registryEntry.capabilities).toEqual({})
+        continue
+      }
+
       for (const capability of preset.capabilities) {
+        if (capability.feature === 'image_to_text') {
+          expect(registryEntry.capabilities[capability.feature]).toBeUndefined()
+          continue
+        }
         expect(
           registryEntry.capabilities[capability.feature],
           `${preset.id}.${capability.feature} registry handler`
@@ -59,45 +68,20 @@ describe('processorRegistry', () => {
   })
 
   it.each([
-    { isLinux: false, isMac: true, isWin: false, expected: true },
-    { isLinux: false, isMac: false, isWin: true, expected: true },
-    { isLinux: true, isMac: false, isWin: false, expected: false }
-  ])('marks System OCR availability from main platform constants %#', async ({ isLinux, isMac, isWin, expected }) => {
-    const processorRegistry = await importRegistryWithPlatform({ isLinux, isMac, isWin })
-
-    expect(processorRegistry.system.isSupported()).toBe(expected)
-  })
-
-  // isSupported must answer "could this machine ever run it", never "is the model
-  // downloaded" — conflating the two is what hid local-paddleocr from the OCR
-  // settings page, the only place offering the download that would unhide it.
-  it.each([
-    { isDarwinX64: false, expected: true },
-    { isDarwinX64: true, expected: false }
-  ])(
-    'gates the local model processors on platform only (isDarwinX64=$isDarwinX64)',
-    async ({ isDarwinX64, expected }) => {
-      const processorRegistry = await importRegistryWithPlatform({
-        isLinux: false,
-        isMac: true,
-        isWin: false,
-        isDarwinX64
-      })
-
-      expect(processorRegistry['local-paddleocr'].isSupported()).toBe(expected)
-      expect(processorRegistry['local-document'].isSupported()).toBe(expected)
+    { isLinux: true, isMac: false, isWin: false },
+    { isLinux: false, isMac: true, isWin: false, isDarwinX64: true },
+    { isLinux: false, isMac: true, isWin: false },
+    { isLinux: false, isMac: false, isWin: true },
+    { isLinux: false, isMac: false, isWin: true, isWinArm64: true }
+  ])('keeps retired local processors disabled on every platform %#', async (platform) => {
+    const processorRegistry = await importRegistryWithPlatform(platform)
+    for (const id of ['tesseract', 'system', 'local-paddleocr', 'local-document', 'ovocr'] as const) {
+      expect(processorRegistry[id].isSupported(), id).toBe(false)
+      expect(processorRegistry[id].capabilities, id).toEqual({})
     }
-  )
-
-  it('keeps local PaddleOCR available but excludes local document processing on Windows ARM64', async () => {
-    const processorRegistry = await importRegistryWithPlatform({
-      isLinux: false,
-      isMac: false,
-      isWin: true,
-      isWinArm64: true
-    })
-
-    expect(processorRegistry['local-paddleocr'].isSupported()).toBe(true)
-    expect(processorRegistry['local-document'].isSupported()).toBe(false)
+    for (const id of ['paddleocr', 'mineru', 'doc2x', 'mistral', 'open-mineru'] as const) {
+      expect(processorRegistry[id].isSupported(), id).toBe(true)
+      expect(processorRegistry[id].capabilities.document_to_markdown, id).toBeDefined()
+    }
   })
 })

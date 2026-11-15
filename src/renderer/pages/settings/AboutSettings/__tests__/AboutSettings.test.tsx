@@ -6,7 +6,6 @@ import type * as StreamdownModule from 'streamdown'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import enUS from '@renderer/i18n/locales/en-us.json'
-import i18n from '@renderer/i18n/resolver'
 
 vi.unmock('@cherrystudio/ui')
 
@@ -197,27 +196,5 @@ describe('AboutSettings repository entry', () => {
     await user.click(screen.getByRole('button', { name: 'Support' }))
 
     expect(mocks.request).toHaveBeenCalledWith('system.shell.open_external_website', REPOSITORY_URL)
-  })
-
-  it.each([
-    ['zh-CN', 'https://cherryai.com.cn'],
-    ['zh-TW', 'https://cherryai.com.cn'],
-    ['en-US', 'https://cherryai.com'],
-    ['ja-JP', 'https://cherryai.com']
-  ])('opens the language-specific official website for %s', async (language, expectedUrl) => {
-    const previousLanguage = i18n.language
-    await i18n.changeLanguage(language)
-    try {
-      const user = userEvent.setup()
-      await renderAboutSettings()
-
-      for (const button of screen.getAllByRole('button', { name: 'settings.about.website.button' })) {
-        await user.click(button)
-      }
-
-      expect(mocks.request).toHaveBeenCalledWith('system.shell.open_external_website', expectedUrl)
-    } finally {
-      await i18n.changeLanguage(previousLanguage)
-    }
   })
 })

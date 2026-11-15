@@ -168,11 +168,20 @@ describe('ChannelManager', () => {
     expect(adapters[0].connect).toHaveBeenCalledOnce()
   })
 
+  it('does not connect channels or register resume hooks during initialization', async () => {
+    rows = [makeChannel()]
+    await manager._doInit()
+    expect(adapters).toHaveLength(0)
+    expect(mocks.resumeListeners.size).toBe(0)
+  })
+
   it('forwards system resume to active adapters and unregisters on stop', async () => {
     rows = [makeChannel()]
     await manager._doInit()
+    await manager.start()
     await vi.waitFor(() => expect(adapters).toHaveLength(1))
 
+    await manager.start()
     expect(mocks.resumeListeners.size).toBe(1)
     for (const listener of mocks.resumeListeners) listener()
     expect(adapters[0].handleSystemResume).toHaveBeenCalledOnce()
@@ -184,6 +193,7 @@ describe('ChannelManager', () => {
   it('treats archive and restore events as hints and preserves channel intent', async () => {
     rows = [makeChannel()]
     await manager._doInit()
+    await manager.start()
     await vi.waitFor(() => expect(adapters).toHaveLength(1))
 
     mocks.getLifecycleState.mockReturnValue('trashed')
@@ -204,6 +214,7 @@ describe('ChannelManager', () => {
   it('disconnects after purge even though the Agent foreign key was already cleared', async () => {
     rows = [makeChannel()]
     await manager._doInit()
+    await manager.start()
     await vi.waitFor(() => expect(adapters).toHaveLength(1))
 
     rows[0] = makeChannel({ agentId: null })

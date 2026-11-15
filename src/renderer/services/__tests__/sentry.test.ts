@@ -64,7 +64,7 @@ describe('renderer Sentry initialization', () => {
 
     expect(JSON.stringify(event)).not.toContain('real-api-key')
     expect(event.tags).toMatchObject({ window: 'QuickAssistant', 'app.edition': 'global', 'event.process': 'renderer' })
-    expect(options.release).toBe(`CherryStudio@${event.tags['app.version']}`)
+    expect(options.release).toBe(`TinyCherry@${event.tags['app.version']}`)
   })
 
   it('captures handled render errors in their originating process with safe context', () => {

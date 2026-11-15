@@ -67,7 +67,7 @@ const KnowledgeItemNoteContentPanel = ({ itemId, onBack }: KnowledgeItemNoteCont
         </div>
       </div>
 
-      <ScrollArea type="always" className="min-h-0 flex-1 px-4 py-3">
+      <ScrollArea type="always" className="min-h-0 flex-1" contentProps={{ className: 'px-4 py-3' }}>
         {isLoading ? <KnowledgeItemNoteContentState>{t('common.loading')}</KnowledgeItemNoteContentState> : null}
         {!isLoading && error ? <KnowledgeItemNoteContentState>{error.message}</KnowledgeItemNoteContentState> : null}
         {!isLoading && !error ? (

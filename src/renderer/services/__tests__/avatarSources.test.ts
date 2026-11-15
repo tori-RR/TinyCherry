@@ -23,7 +23,7 @@ afterEach(() => {
 
 describe('native avatar entries', () => {
   it('reads a registered entry into a revocable blob URL without resolving a file path', async () => {
-    vi.mocked(ipcApi.request).mockResolvedValue({ content: new Uint8Array([0, 127, 255]), mime: 'image/webp' } as never)
+    vi.mocked(ipcApi.request).mockResolvedValue({ content: new Uint8Array([0, 127, 255]), mime: 'image/webp' })
     const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:avatar-1')
     const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
     const avatar = await loadAvatarObjectUrl('avatar-1')
@@ -42,7 +42,7 @@ describe('native avatar entries', () => {
     const create = vi.spyOn(URL, 'createObjectURL')
     vi.mocked(ipcApi.request).mockRejectedValueOnce(new Error('FILE_EDIT_PERMISSION'))
     await expect(loadAvatarObjectUrl('unregistered')).rejects.toThrow('FILE_EDIT_PERMISSION')
-    vi.mocked(ipcApi.request).mockResolvedValueOnce({ content: new Uint8Array([65]), mime: 'text/html' } as never)
+    vi.mocked(ipcApi.request).mockResolvedValueOnce({ content: new Uint8Array([65]), mime: 'text/html' })
     await expect(loadAvatarObjectUrl('not-image')).rejects.toThrow('EVOSTACK_INVALID_AVATAR_IMAGE')
     expect(create).not.toHaveBeenCalled()
   })

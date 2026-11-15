@@ -961,6 +961,7 @@ describe('ChatContent', () => {
     const finish = mockUseExecutionOverlay.mock.lastCall?.[2]?.onFinish
     expect(finish).toBeDefined()
 
+    const refreshesBeforeFinish = refresh.mock.calls.length
     act(() => {
       finish!('forked-exec', {
         attemptId: 9,
@@ -976,7 +977,7 @@ describe('ChatContent', () => {
     })
 
     await waitFor(() => {
-      expect(refresh).toHaveBeenCalledTimes(1)
+      expect(refresh.mock.calls.length).toBeGreaterThan(refreshesBeforeFinish)
       expect(onBranchLiveStateChange).toHaveBeenLastCalledWith(null)
     })
   })

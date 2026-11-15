@@ -296,10 +296,14 @@ export function useChatRuntimeState({
         // Re-read after the optimistic write; an actual in-place retry still reads pending.
         const persistedMessages = await refresh()
         if (currentTopicIdRef.current !== topic.id) return
+        // User siblings stay in the branch overlay until history catches up.
+        // Only an execution reservation participates in this terminal handoff.
+        const reservedAnchorIds = new Set(reservedExecutions.map((execution) => execution.anchorMessageId))
         const settledIds = new Set(
           persistedMessages
             .filter(
               (message) =>
+                reservedAnchorIds.has(message.id) &&
                 reservationBatchesRef.current.get(message.id) === batch &&
                 message.metadata?.status &&
                 message.metadata.status !== 'pending'

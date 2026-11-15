@@ -216,16 +216,16 @@ describe('cron tool persisted task contract', () => {
     expect(agentTaskService.getTask(AGENT_ID, task.id)).toMatchObject({ name: 'renamed', trigger, timeoutMinutes: 20 })
   })
 
-  it('clears notification subscriptions only when an empty array is supplied', async () => {
-    const task = createTask()
-    const tools = await createTools(AGENT_ID, [CHANNEL_ID])
-    const result = await tools.call('cron', { action: 'update', id: task.id, channel_ids: [] })
-    expect(result.isError, resultText(result)).not.toBe(true)
-    expect(agentTaskService.getTask(AGENT_ID, task.id)?.channelIds).toEqual([])
-    const restored = await tools.call('cron', { action: 'update', id: task.id, channel_ids: [CHANNEL_ID] })
-    expect(restored.isError).not.toBe(true)
-    expect(agentTaskService.getTask(AGENT_ID, task.id)?.channelIds).toEqual([CHANNEL_ID])
-  })
+  it.each([[], [CHANNEL_ID], null])(
+    'rejects retired notification subscriptions without changing the task: %j',
+    async (channelIds) => {
+      const task = createTask()
+      const tools = await createTools(AGENT_ID, [CHANNEL_ID])
+      const result = await tools.call('cron', { action: 'update', id: task.id, channel_ids: channelIds })
+      expect(result.isError).toBe(true)
+      expect(agentTaskService.getTask(AGENT_ID, task.id)).toEqual(task)
+    }
+  )
 
   it('supports an explicit unlimited timeout', async () => {
     const task = createTask()

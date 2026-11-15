@@ -2,11 +2,13 @@ import { MockUsePreferenceUtils } from '@test-mocks/renderer/usePreference'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type * as PlatformModule from '@renderer/utils/platform'
+
 const ipcRequest = vi.fn()
 const native = vi.hoisted(() => ({ enabled: false, create: vi.fn(), revoke: vi.fn() }))
 vi.mock('@renderer/ipc', () => ({ ipcApi: { request: (...args: any[]) => ipcRequest(...args) } }))
 vi.mock('@renderer/utils/platform', async (original) => ({
-  ...(await original<typeof import('@renderer/utils/platform')>()),
+  ...(await original<typeof PlatformModule>()),
   get isEvoStack() {
     return native.enabled
   }

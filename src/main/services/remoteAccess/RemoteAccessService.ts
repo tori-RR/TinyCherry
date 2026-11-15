@@ -63,6 +63,9 @@ export class RemoteAccessService extends BaseService {
 
   protected onStop(): void {
     this.closeIngress()
+    this.tokens.clear()
+    this.hub.dispose()
+    this.advertisementRefresh = this.sweepTimer = undefined
   }
 
   /** Gateway pushes its actual listener; temporary local API leases never enable discovery. */
