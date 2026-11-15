@@ -14,7 +14,8 @@ const mocks = vi.hoisted(() => ({
   openNativeApplication: vi.fn(),
   safeOpen: vi.fn(),
   showInFolder: vi.fn(),
-  statSync: vi.fn()
+  statSync: vi.fn(),
+  lstatSync: vi.fn()
 }))
 
 vi.mock('electron', () => ({
@@ -31,7 +32,8 @@ vi.mock('electron', () => ({
 }))
 vi.mock('node:fs', async (importOriginal) => ({
   ...(await importOriginal<typeof NodeFs>()),
-  statSync: mocks.statSync
+  statSync: mocks.statSync,
+  lstatSync: mocks.lstatSync
 }))
 vi.mock('@main/services/file', () => ({ safeOpen: mocks.safeOpen, showInFolder: mocks.showInFolder }))
 vi.mock('@main/utils/externalUrlSafety', () => ({ isSafeExternalUrl: mocks.isSafeExternalUrl }))
@@ -47,12 +49,17 @@ import type * as NativeApplicationModule from '../nativeApplication'
 
 const preview = { id: '/Applications/Preview.app', name: 'Preview', iconPath: '/Applications/Preview.app' }
 const editor = { id: '/Applications/TextEdit.app', name: 'TextEdit' }
+const localAppData = 'C:\\fixture\\LocalAppData'
 
 describe('ExternalAppService', () => {
   beforeEach(() => {
     MockMainCacheServiceUtils.resetMocks()
     vi.clearAllMocks()
+    vi.stubEnv('LOCALAPPDATA', localAppData)
     mocks.statSync.mockReturnValue({ isDirectory: () => false })
+    mocks.lstatSync.mockImplementation(() => {
+      throw new Error('ENOENT')
+    })
     mocks.isSafeExternalUrl.mockReturnValue(true)
     mocks.listNativeApplications.mockResolvedValue({ applications: [preview, editor], defaultApplication: preview })
     mocks.getApplicationInfoForProtocol.mockImplementation(async (protocol: string) => {
@@ -62,6 +69,7 @@ describe('ExternalAppService', () => {
   })
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllEnvs()
     vi.unstubAllGlobals()
   })
 
@@ -205,6 +213,34 @@ describe('ExternalAppService', () => {
       `vscode://file/${drive}/tmp/My%20Workspace/%E5%BC%80%E5%8F%91?windowId=_blank`
     )
     expect(mocks.listNativeApplications).not.toHaveBeenCalled()
+  })
+
+  it.each([false, true])('offers Windows Terminal for directories only when installed: %s', async (installed) => {
+    vi.stubGlobal('process', Object.defineProperty(Object.create(process), 'platform', { value: 'win32' }))
+    mocks.statSync.mockReturnValue({ isDirectory: () => true })
+    const executable = path.win32.join(localAppData, 'Microsoft', 'WindowsApps', 'wt.exe')
+    mocks.lstatSync.mockImplementation((file: NodeFs.PathLike) => {
+      expect(file).toBe(executable)
+      if (!installed) throw new Error('ENOENT')
+      return {}
+    })
+    const service = new ExternalAppService()
+    expect(await service.listOpenTargets('/tmp/project')).toEqual({
+      pathKind: 'directory',
+      recommendedTargetId: 'file_manager',
+      targets: [
+        { id: 'file_manager', kind: 'file_manager' },
+        { id: 'known:vscode', name: 'Visual Studio Code', kind: 'application' },
+        ...(installed ? [{ id: 'known:wt', name: 'Windows Terminal', kind: 'terminal' }] : [])
+      ]
+    })
+    expect(mocks.lstatSync).toHaveBeenCalledWith(executable)
+    await expect(service.openTarget('/tmp/project', nativeTargetId(editor.id))).rejects.toThrow('is not available')
+    mocks.statSync.mockReturnValue({ isDirectory: () => false })
+    await expect(service.openTarget('/tmp/a.txt', 'known:wt', 'file')).rejects.toThrow('is not available')
+    expect(mocks.listNativeApplications).not.toHaveBeenCalled()
+    expect(mocks.openNativeApplication).not.toHaveBeenCalled()
+    expect(mocks.openExternal).not.toHaveBeenCalled()
   })
 
   it('keeps saved controlled editor IDs usable and validates their URLs', async () => {
