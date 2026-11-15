@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -119,44 +119,6 @@ describe('EditDialogShared', () => {
     } finally {
       portalContainer.remove()
     }
-  })
-
-  it('opens the knowledge page in a standalone window without closing the knowledge step', () => {
-    function Harness() {
-      const form = useForm<ResourceCreateWizardFormValues>({
-        defaultValues: {
-          avatar: '💬',
-          name: '',
-          description: '',
-          agentType: 'claude-code',
-          permissionMode: 'default',
-          modelId: null,
-          prompt: '',
-          knowledgeBaseIds: [],
-          skillIds: []
-        }
-      })
-
-      return (
-        <Form {...form}>
-          <KnowledgeStep form={form} portalContainer={null} />
-        </Form>
-      )
-    }
-
-    render(<Harness />)
-
-    expect(screen.queryByRole('button', { name: 'Open Knowledge to create one' })).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Add knowledge base' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Open Knowledge to create one' }))
-
-    expect(mockIpcRequest).toHaveBeenCalledTimes(1)
-    expect(mockIpcRequest).toHaveBeenCalledWith(
-      'tab.detach',
-      expect.objectContaining({ url: '/app/knowledge', type: 'route' })
-    )
-    expect(screen.getByRole('button', { name: 'Open Knowledge to create one' })).toBeInTheDocument()
   })
 
   it('opts the knowledge list into revalidation when the source window regains focus', () => {

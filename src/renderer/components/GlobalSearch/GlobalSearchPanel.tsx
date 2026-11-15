@@ -94,7 +94,7 @@ type GlobalSearchScope = 'all' | 'messages'
 // listbox id that the search input references via `aria-controls`.
 const GLOBAL_SEARCH_LISTBOX_ID = 'global-search-listbox'
 
-const SEARCH_FILTERS: Exclude<GlobalSearchFilter, 'all'>[] = ['topic', 'session', 'assistant', 'agent', 'knowledge']
+const SEARCH_FILTERS: Exclude<GlobalSearchFilter, 'all'>[] = ['topic', 'session', 'assistant', 'agent']
 const MESSAGE_SOURCE_FILTER_BUTTONS: Exclude<GlobalMessageSearchSourceFilter, 'all'>[] = ['topic', 'session']
 const SEARCH_SCOPE_CONTROL_CLASS_NAME =
   'h-7 shrink-0 border-border-subtle bg-muted/40 p-0.5 [&_[role=radio]]:h-6 [&_[role=radio]]:px-2 [&_[role=radio]]:text-xs [&_[role=radio]]:leading-none'
@@ -106,8 +106,7 @@ const FILTER_LABEL_KEYS: Record<GlobalSearchFilter, string> = {
   topic: 'globalSearch.filters.topic',
   session: 'globalSearch.filters.session',
   assistant: 'globalSearch.filters.assistant',
-  agent: 'globalSearch.filters.agent',
-  knowledge: 'globalSearch.filters.knowledge'
+  agent: 'globalSearch.filters.agent'
 }
 const MESSAGE_SOURCE_FILTER_LABEL_KEYS: Record<GlobalMessageSearchSourceFilter, string> = {
   all: 'globalSearch.messageSearch.sources.all',
@@ -153,10 +152,6 @@ function getTopicTargetId(target: EntitySearchItem['target']) {
 
 function getSessionTargetId(target: EntitySearchItem['target']) {
   return 'sessionId' in target && typeof target.sessionId === 'string' ? target.sessionId : undefined
-}
-
-function getKnowledgeBaseTargetId(target: EntitySearchItem['target']) {
-  return 'knowledgeBaseId' in target && typeof target.knowledgeBaseId === 'string' ? target.knowledgeBaseId : undefined
 }
 
 type GlobalSearchMessageJumpTarget =
@@ -620,20 +615,6 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
     [invalidateCache, onClose, agentNav]
   )
 
-  const openKnowledgeBase = useCallback(
-    (knowledgeBaseId: string) => {
-      openTab('/app/knowledge')
-      window.requestAnimationFrame(() => {
-        emitGlobalSearchSelection(EVENT_NAMES.GLOBAL_SEARCH_SELECT_KNOWLEDGE_BASE, knowledgeBaseId, {
-          eventName: EVENT_NAMES.GLOBAL_SEARCH_SELECT_KNOWLEDGE_BASE,
-          knowledgeBaseId
-        })
-      })
-      onClose()
-    },
-    [onClose, openTab]
-  )
-
   const jumpToMessage = useCallback(
     (target: GlobalSearchMessageJumpTarget) => {
       if (target.sourceType === 'topic') {
@@ -783,12 +764,6 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
             openSession(sessionId)
             return
           }
-          case 'knowledge-base': {
-            const knowledgeBaseId = getKnowledgeBaseTargetId(result.target)
-            if (!knowledgeBaseId) return
-            openKnowledgeBase(knowledgeBaseId)
-            return
-          }
           default:
             return
         }
@@ -797,7 +772,7 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
         toast.error(t('globalSearch.open_failed'))
       }
     },
-    [onClose, openGlobalSearchFooter, openKnowledgeBase, openMessagePanelItem, openSession, openTab, openTopic, t]
+    [onClose, openGlobalSearchFooter, openMessagePanelItem, openSession, openTab, openTopic, t]
   )
 
   const handleInputKeyDown = useCallback(

@@ -1,9 +1,11 @@
 import { application } from '@application'
+import { t } from '@main/i18n'
 import { ErrorCode, isDataApiError } from '@shared/data/api/errors'
 import { IpcError } from '@shared/ipc/errors/IpcError'
 import { knowledgeErrorCodes } from '@shared/ipc/errors/knowledge'
 import type { knowledgeRequestSchemas } from '@shared/ipc/schemas/knowledge'
 import type { IpcHandlersFor } from '@shared/ipc/types'
+import { isHttpUrl } from '@shared/utils/url'
 
 /**
  * Thin adapters for the knowledge request routes: each one translates a parsed route
@@ -15,13 +17,21 @@ import type { IpcHandlersFor } from '@shared/ipc/types'
  * route's `z.void()` output (see selection.ts hide_toolbar).
  */
 export const knowledgeHandlers: IpcHandlersFor<typeof knowledgeRequestSchemas> = {
+  // The native WebView uploader has no Electron path handle; Electron keeps add_items.
+  'knowledge.import_text': () => {
+    throw new IpcError('KNOWLEDGE_NATIVE_ONLY', 'Text upload is available in EvoStack; use add_items in Electron')
+  },
   'knowledge.create_base': async ({ base }) => application.get('KnowledgeService').createBase(base),
   'knowledge.restore_base': async (dto) => application.get('KnowledgeService').restoreBase(dto),
   'knowledge.delete_base': async ({ baseId }) => {
     await application.get('KnowledgeService').deleteBase(baseId)
   },
-  'knowledge.add_items': async ({ baseId, items, conflictStrategy }) =>
-    application.get('KnowledgeService').addItems(baseId, items, conflictStrategy),
+  'knowledge.add_items': async ({ baseId, items, conflictStrategy }) => {
+    if (items.some((item) => item.type === 'url' && !isHttpUrl(item.data.url))) {
+      throw new IpcError(knowledgeErrorCodes.INVALID_SOURCE_URL, t('knowledge.source.invalid_url'))
+    }
+    return application.get('KnowledgeService').addItems(baseId, items, conflictStrategy)
+  },
   'knowledge.delete_items': async ({ baseId, itemIds }) => {
     await application.get('KnowledgeService').deleteItems(baseId, itemIds)
   },

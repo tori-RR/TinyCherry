@@ -50,8 +50,7 @@ const GROUP_LABEL_KEYS: Record<GlobalSearchGroupId, string> = {
   session: 'globalSearch.groups.session',
   message: 'globalSearch.groups.message',
   assistant: 'globalSearch.groups.assistant',
-  agent: 'globalSearch.groups.agent',
-  'knowledge-base': 'globalSearch.groups.knowledge-base'
+  agent: 'globalSearch.groups.agent'
 }
 
 const RESULT_TYPE_LABEL_KEYS: Record<EntitySearchItem['type'], string> = {
@@ -192,8 +191,7 @@ export function GlobalSearchRow({
       ? item.result.target.sessionId
       : undefined
   const Icon = isRecent ? RECENT_ICONS[item.recent.kind] : RESULT_ICONS[item.result.type]
-  const emoji =
-    !isRecent && ['assistant', 'agent', 'knowledge-base'].includes(item.result.type) ? item.result.emoji : undefined
+  const emoji = !isRecent && ['assistant', 'agent'].includes(item.result.type) ? item.result.emoji : undefined
   const displayTimestamp = isRecent ? undefined : (item.result.lastActivityAt ?? item.result.updatedAt)
   const timestampLabel = displayTimestamp ? formatRelativeTime(displayTimestamp, language) : undefined
 

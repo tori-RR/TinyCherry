@@ -2,7 +2,7 @@
 
 The `BootConfigMigrator` migrates early-boot configuration from legacy storage into `bootConfigService` — the synchronous, file-based config used by code that runs before the lifecycle system takes over (e.g. Chromium flags, custom userData directory).
 
-Unlike other migrators, it writes to a **file-based store** (`{cherryHome}/boot-config.json`) rather than a SQLite table. `{cherryHome}` defaults to `~/.cherrystudio`; unpackaged runs with `CS_DEV_PROFILE_ROOT` use `{profileRoot}/.cherrystudio`. See [Boot Config Overview](../../../../../../docs/dev/references/data/boot-config-overview.md) for why this system exists.
+Unlike other migrators, it writes to a **file-based store** (`{cherryHome}/boot-config.json`) rather than a SQLite table. `{cherryHome}` is `~/.tinycherry` by default, `{profileRoot}/.tinycherry` with `CS_DEV_PROFILE_ROOT`, or the launcher directory's `home/` for packaged Windows portable runs. See [Boot Config Overview](../../../../../../docs/dev/references/data/boot-config-overview.md) for why this system exists.
 
 ## Data Sources
 
@@ -74,7 +74,7 @@ Returns `null` (not `{}`) when no data is present (missing file / parse error / 
 On AppImage Linux and Windows portable builds, v1's `init.ts:51-60` writes a **special** `executablePath` into `config.json`:
 
 - AppImage: `path.dirname(APPIMAGE) + '/cherry-studio.appimage'`
-- Windows portable: `PORTABLE_EXECUTABLE_DIR + '/cherry-studio-portable.exe'`
+- Windows portable: upstream v1 used `PORTABLE_EXECUTABLE_DIR + '/cherry-studio-portable.exe'`. TinyCherry uses `tinycherry-portable.exe` as its own lookup key.
 
 These differ from `app.getPath('exe')`. `LegacyHomeConfigReader` does NOT reproduce this normalization — array entries are migrated verbatim with their original `executablePath` key, and the legacy-string fallback uses raw `app.getPath('exe')`.
 

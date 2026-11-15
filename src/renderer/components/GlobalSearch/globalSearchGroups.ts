@@ -2,6 +2,7 @@ import dayjs from 'dayjs'
 
 import { cacheService } from '@data/CacheService'
 import type { Topic } from '@renderer/types/topic'
+import { parseAppRouteUrl } from '@renderer/utils/appRouteUrl'
 import type { AgentSessionEntity } from '@shared/data/api/schemas/agentSessions'
 import type {
   EntitySearchItem,
@@ -18,14 +19,14 @@ export const GLOBAL_MESSAGE_SEARCH_GROUP_COLLAPSED_LIMIT = 3
 export const GLOBAL_SEARCH_ENTITY_GROUP_COLLAPSED_LIMIT = 5
 export const GLOBAL_SEARCH_MESSAGE_PREVIEW_LIMIT = 5
 
-export type GlobalSearchFilter = 'all' | 'topic' | 'session' | 'assistant' | 'agent' | 'knowledge'
+export type GlobalSearchFilter = 'all' | 'topic' | 'session' | 'assistant' | 'agent'
 export type GlobalMessageSearchSourceFilter = 'all' | 'topic' | 'session'
 type GlobalTopicMessageSearchResult = TopicMessageContentSearchItem & { sourceType: 'topic' }
 type GlobalSessionMessageSearchResult = SessionMessageContentSearchItem & { sourceType: 'session' }
 export type GlobalMessageSearchResult = GlobalTopicMessageSearchResult | GlobalSessionMessageSearchResult
 type GlobalMessageSearchSource = GlobalMessageSearchResult['sourceType']
 
-export type GlobalSearchGroupId = 'recent' | 'topic' | 'session' | 'message' | 'assistant' | 'agent' | 'knowledge-base'
+export type GlobalSearchGroupId = 'recent' | 'topic' | 'session' | 'message' | 'assistant' | 'agent'
 
 export type GlobalMessageSearchPanelItem =
   | {
@@ -90,17 +91,23 @@ export type GlobalSearchPanelGroup = {
 }
 
 const FILTER_TYPES: Record<GlobalSearchFilter, EntitySearchType[]> = {
-  all: ['topic', 'session', 'assistant', 'agent', 'knowledge-base'],
+  all: ['topic', 'session', 'assistant', 'agent'],
   topic: ['topic'],
   session: ['session'],
   assistant: ['assistant'],
-  agent: ['agent'],
-  knowledge: ['knowledge-base']
+  agent: ['agent']
 }
 
 const INTERNAL_ROUTE_PREFIXES = ['/app/', '/settings']
 const COARSE_ENTITY_ROUTE_PATHS = new Set(['/app/chat', '/app/agents'])
-const LEGACY_ROUTE_PATHS = new Set(['/app/library'])
+const LEGACY_ROUTE_PATHS = new Set([
+  '/app/library',
+  '/app/translate',
+  '/app/knowledge',
+  '/settings/local-models',
+  '/settings/notifications',
+  '/settings/ocr'
+])
 
 export function getGlobalSearchTypes(filter: GlobalSearchFilter): EntitySearchType[] {
   return FILTER_TYPES[filter]
@@ -142,7 +149,7 @@ export function areGlobalSearchRecentEntriesEqual(a: GlobalSearchRecentEntry, b:
 }
 
 function getRoutePathname(url: string) {
-  return new URL(url, 'https://www.cherry-ai.com').pathname
+  return parseAppRouteUrl(url)?.pathname ?? ''
 }
 
 function isLegacyRouteRecentEntry(entry: GlobalSearchRecentEntry) {
@@ -212,7 +219,8 @@ export function createRecentRouteEntryFromTab(
   if (tab.type !== 'route') return null
   if (!lastAccessTime) return null
 
-  const pathname = new URL(tab.url, 'https://www.cherry-ai.com').pathname
+  const pathname = parseAppRouteUrl(tab.url)?.pathname
+  if (pathname === undefined) return null
   if (LEGACY_ROUTE_PATHS.has(pathname)) return null
   if (COARSE_ENTITY_ROUTE_PATHS.has(pathname)) return null
 
@@ -331,7 +339,6 @@ export function buildGlobalSearchGroups({
   const includeSession = filter === 'all' || filter === 'session'
   const includeAssistant = filter === 'all' || filter === 'assistant'
   const includeAgent = filter === 'all' || filter === 'agent'
-  const includeKnowledge = filter === 'all' || filter === 'knowledge'
   const shouldCollapseEntityGroup = (groupId: GlobalSearchGroupId) =>
     filter === 'all' && (groupId === 'topic' || groupId === 'session') && !expandedGroupIds.has(groupId)
   const toPanelGroup = (groupId: GlobalSearchGroupId, items: GlobalSearchPanelItem[]): GlobalSearchPanelGroup => {
@@ -396,15 +403,6 @@ export function buildGlobalSearchGroups({
       result
     }))
     if (items.length > 0) groups.push({ id: 'agent', items })
-  }
-
-  if (includeKnowledge) {
-    const items = (itemsByType.get('knowledge-base') ?? []).map((result) => ({
-      kind: 'result' as const,
-      id: `${result.type}:${result.id}`,
-      result
-    }))
-    if (items.length > 0) groups.push({ id: 'knowledge-base', items })
   }
 
   return groups

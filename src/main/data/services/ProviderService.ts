@@ -34,6 +34,7 @@ import { DataApiError, DataApiErrorFactory, ErrorCode } from '@shared/data/api/e
 import type { OrderBatchRequest, OrderRequest } from '@shared/data/api/schemas/_endpointHelpers'
 import type { CreateProviderDto, ListProvidersQuery, UpdateProviderDto } from '@shared/data/api/schemas/providers'
 import { isManagedCherryProviderId } from '@shared/data/presets/cherryai'
+import { isExcludedProviderPreset } from '@shared/data/presets/providerCatalog'
 import type { EndpointType } from '@shared/data/types/model'
 import type {
   ApiKeyEntry,
@@ -393,7 +394,27 @@ class ProviderService {
     const providers: Provider[] = []
     for (const row of rows) {
       const metadata = getAvailableProviderMetadata(row)
-      if (metadata) providers.push(rowToRuntimeProvider(row, metadata))
+      if (!metadata) continue
+
+      const provider = rowToRuntimeProvider(row, metadata)
+      // Earlier versions seeded empty catalog rows. Keep configured providers and any saved models.
+      const isUnusedExcludedPreset =
+        isExcludedProviderPreset(row.providerId) &&
+        row.providerId === row.presetProviderId &&
+        !row.isEnabled &&
+        !row.apiKeys?.length &&
+        !row.authConfig &&
+        !row.defaultChatEndpoint &&
+        !Object.keys(row.endpointConfigs ?? {}).length &&
+        !Object.keys(row.providerSettings ?? {}).length &&
+        !row.logoKey &&
+        !provider.logoSrc &&
+        !db
+          .select({ id: userModelTable.id })
+          .from(userModelTable)
+          .where(eq(userModelTable.providerId, row.providerId))
+          .get()
+      if (!isUnusedExcludedPreset) providers.push(provider)
     }
     return providers
   }

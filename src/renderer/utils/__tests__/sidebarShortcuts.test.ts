@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createSidebarShortcutId, type SidebarShortcutItem } from '@shared/data/preference/preferenceTypes'
 
@@ -6,6 +6,7 @@ import {
   addSidebarShortcut,
   createSidebarShortcutTarget,
   getSidebarDefaultLandingUrl,
+  getOrderedLaunchpadApps,
   getSidebarShortcutResourceIds,
   getVisibleSidebarShortcutItems,
   normalizeSidebarShortcutItems,
@@ -13,12 +14,45 @@ import {
   reorderSidebarShortcuts
 } from '../sidebar'
 
+const runtime = vi.hoisted(() => ({ isEvoStack: false }))
+vi.mock('@renderer/utils/platform', () => ({
+  get isEvoStack() {
+    return runtime.isEvoStack
+  }
+}))
+
+beforeEach(() => {
+  runtime.isEvoStack = false
+})
+
 const shortcut = (providerId: string, resourceId: string, activationId?: string): SidebarShortcutItem => {
   const target = createSidebarShortcutTarget(providerId, resourceId, activationId)
   return { type: 'shortcut', id: createSidebarShortcutId(target), target }
 }
 
 describe('sidebar shortcut storage transforms', () => {
+  it('inserts a new marketplace after paintings without resetting a saved launchpad order', () => {
+    const order = getOrderedLaunchpadApps(['files', 'paintings', 'translate', 'agents'])
+    expect(order.slice(0, 4)).toEqual(['files', 'paintings', 'marketplace', 'agents'])
+    expect(order).not.toContain('translate')
+    expect(getOrderedLaunchpadApps(['marketplace', ...order]).slice(0, 4)).toEqual([
+      'marketplace',
+      'files',
+      'paintings',
+      'agents'
+    ])
+  })
+  it('pins scheduled tasks directly below chat without moving existing shortcuts', () => {
+    const chat = shortcut('core.app', 'assistants')
+    const tasks = shortcut('core.app', 'scheduled_tasks')
+    const notes = shortcut('core.app', 'notes')
+    const agent = shortcut('core.agent', 'agent-1')
+
+    expect(addSidebarShortcut([agent, chat, notes], tasks.target)).toEqual([agent, chat, tasks, notes])
+    expect(addSidebarShortcut([notes, tasks, chat], tasks.target)).toEqual([notes, tasks, chat])
+    expect(addSidebarShortcut([agent, notes], tasks.target)).toEqual([agent, notes, tasks])
+  })
+
   it('preserves prototype-named future items without treating them as legacy resource types', () => {
     const future = ['constructor', 'toString', '__proto__'].map((type) => ({ type, id: `future-${type}` }))
     expect(normalizeSidebarShortcutItems(future)).toEqual(future)
@@ -55,13 +89,32 @@ describe('sidebar shortcut storage transforms', () => {
 
     expect(
       normalizeSidebarShortcutItems([
+        shortcut('core.app', 'translate'),
+        shortcut('core.app', 'knowledge'),
+        shortcut('core.knowledge-base', 'base-1'),
         shortcut('core.skill', 'skill-1'),
         shortcut('core.mcp-server', 'server-1'),
         shortcut('core.provider', 'provider-1'),
         agent
       ])
-    ).toEqual([agent])
+    ).toEqual([shortcut('core.app', 'knowledge'), shortcut('core.knowledge-base', 'base-1'), agent])
   })
+
+  it.each([false, true])(
+    'filters unavailable marketplace entries without removing saved shortcuts (native=%s)',
+    (native) => {
+      runtime.isEvoStack = native
+      const market = shortcut('core.app', 'marketplace')
+      const chat = shortcut('core.app', 'assistants')
+      const stored = [market, chat]
+
+      expect(getVisibleSidebarShortcutItems(stored)).toEqual(native ? [chat] : stored)
+      expect(getOrderedLaunchpadApps(['marketplace', 'assistants']).includes('marketplace')).toBe(!native)
+      expect(getOrderedLaunchpadApps(undefined).includes('marketplace')).toBe(!native)
+      expect(getSidebarDefaultLandingUrl(stored, '')).toBe(native ? '/app/chat' : '/app/marketplace')
+      expect(normalizeSidebarShortcutItems(stored)).toEqual(stored)
+    }
+  )
 
   it('removes the last built-in app and preserves other resource and future slots', () => {
     const assistant = shortcut('core.app', 'assistants')

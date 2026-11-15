@@ -1,4 +1,4 @@
-import { FileSearch, Settings2 } from 'lucide-react'
+import { FileSearch } from 'lucide-react'
 import type { FC } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -8,7 +8,6 @@ import {
   getQuickPanelSearchAliases,
   prepareComposerQuickPanelSearch
 } from '@renderer/components/composer/quickPanel'
-import type { ComposerToolFooterAction } from '@renderer/components/composer/toolLauncher'
 import { KNOWLEDGE_BASE_TOOLBAR_MANIFEST } from '@renderer/components/composer/tools/toolbarManifests'
 import type { ToolLauncherApi } from '@renderer/components/composer/tools/types'
 import {
@@ -19,7 +18,6 @@ import {
   useQuickPanel
 } from '@renderer/components/QuickPanel'
 import { useKnowledgeBases } from '@renderer/hooks/useKnowledgeBase'
-import { openRoute } from '@renderer/services/mainWindowNavigation'
 import type { KnowledgeBase } from '@shared/data/types/knowledge'
 
 interface Props {
@@ -148,20 +146,6 @@ const useKnowledgeBaseToolController = ({
       })),
     [knowledgeBaseItems]
   )
-  const manageKnowledgeBaseAction = useMemo<ComposerToolFooterAction>(() => {
-    const label = t('chat.input.knowledge_base_manage')
-    return {
-      id: 'knowledge-base:manage',
-      panelSymbol: ComposerPanelSymbol.KnowledgeBase,
-      order: 10,
-      label,
-      ariaLabel: label,
-      tooltip: label,
-      icon: <Settings2 />,
-      action: () => openRoute('/app/knowledge')
-    }
-  }, [t])
-
   useEffect(() => {
     if (isQuickPanelVisible && quickPanelSymbol === ComposerPanelSymbol.KnowledgeBase) {
       updateQuickPanelList(knowledgeBaseItems)
@@ -205,40 +189,28 @@ const useKnowledgeBaseToolController = ({
   }, [disposeCloseOnInputAfterSelection])
 
   useEffect(() => {
-    const disposeLauncher = launcher.registerLaunchers(
-      [
-        {
-          ...KNOWLEDGE_BASE_TOOLBAR_MANIFEST.toolbar,
-          sources: ['popover', 'root-panel'],
-          label: t('chat.input.knowledge_base'),
-          description: resolvedDisabledReason ?? '',
-          searchAliases: getQuickPanelSearchAliases(t, 'chat.input.knowledge_base', ['knowledge base']),
-          disabledReason: resolvedDisabledReason,
-          active: isEnabled,
-          showInActiveControls: false,
-          disabled: isDisabled,
-          rootSearchItems: knowledgeBaseRootSearchItems,
-          // action opens the '#' knowledge-base panel, whose symbol differs from the launcher id.
-          panelSymbol: ComposerPanelSymbol.KnowledgeBase,
-          action: openKnowledgeBasePanel
-        }
-      ],
-      [manageKnowledgeBaseAction]
-    )
+    const disposeLauncher = launcher.registerLaunchers([
+      {
+        ...KNOWLEDGE_BASE_TOOLBAR_MANIFEST.toolbar,
+        sources: ['popover', 'root-panel'],
+        label: t('chat.input.knowledge_base'),
+        description: resolvedDisabledReason ?? '',
+        searchAliases: getQuickPanelSearchAliases(t, 'chat.input.knowledge_base', ['knowledge base']),
+        disabledReason: resolvedDisabledReason,
+        active: isEnabled,
+        showInActiveControls: false,
+        disabled: isDisabled,
+        rootSearchItems: knowledgeBaseRootSearchItems,
+        // action opens the '#' knowledge-base panel, whose symbol differs from the launcher id.
+        panelSymbol: ComposerPanelSymbol.KnowledgeBase,
+        action: openKnowledgeBasePanel
+      }
+    ])
 
     return () => {
       disposeLauncher()
     }
-  }, [
-    isDisabled,
-    isEnabled,
-    knowledgeBaseRootSearchItems,
-    launcher,
-    manageKnowledgeBaseAction,
-    openKnowledgeBasePanel,
-    resolvedDisabledReason,
-    t
-  ])
+  }, [isDisabled, isEnabled, knowledgeBaseRootSearchItems, launcher, openKnowledgeBasePanel, resolvedDisabledReason, t])
 }
 
 export const KnowledgeBaseToolRuntime: FC<Props> = (props) => {

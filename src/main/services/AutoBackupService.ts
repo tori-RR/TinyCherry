@@ -4,6 +4,7 @@ import { application } from '@application'
 import { loggerService } from '@logger'
 import { BaseService, DependsOn, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 import { WindowType } from '@main/core/window/types'
+import { publishBackupResult } from '@main/services/backupNotifications'
 import { isSameOrInside } from '@main/utils/file'
 import { hasWritePermission, untildify } from '@main/utils/legacyFile'
 import type { UnifiedPreferenceKeyType } from '@shared/data/preference/preferenceTypes'
@@ -17,10 +18,8 @@ import {
   type S3Config,
   type WebDavConfig
 } from '@shared/types/backup'
-import { NUTSTORE_HOST } from '@shared/utils/nutstore'
 
 import { BackupActiveWritersError, BackupOperationBusyError, legacyBackupManager } from './LegacyBackupManager'
-import { decryptToken } from './nutstore/NutstoreService'
 
 const logger = loggerService.withContext('AutoBackupService')
 
@@ -34,8 +33,7 @@ const ACTIVE_WRITERS_POLL_MS = 30_000
 const WATCHED_PREFERENCES: Record<AutoBackupType, UnifiedPreferenceKeyType[]> = {
   webdav: ['data.backup.webdav.auto_sync', 'data.backup.webdav.host', 'data.backup.webdav.sync_interval'],
   s3: ['data.backup.s3.auto_sync', 'data.backup.s3.endpoint', 'data.backup.s3.sync_interval'],
-  local: ['data.backup.local.auto_sync', 'data.backup.local.dir', 'data.backup.local.sync_interval'],
-  nutstore: ['data.backup.nutstore.auto_sync', 'data.backup.nutstore.token', 'data.backup.nutstore.sync_interval']
+  local: ['data.backup.local.auto_sync', 'data.backup.local.dir', 'data.backup.local.sync_interval']
 }
 
 type ScheduleMode = 'immediate' | 'startup' | 'fromLastSyncTime' | 'fromNow'
@@ -67,7 +65,8 @@ const createScheduleState = (): ScheduleState => ({
   'ChannelManager',
   'AiStreamManager',
   'AgentSessionRuntimeService',
-  'JobManager'
+  'JobManager',
+  'NotificationService'
 ])
 export class AutoBackupService extends BaseService {
   private active = false
@@ -80,8 +79,7 @@ export class AutoBackupService extends BaseService {
   private readonly schedules: Record<AutoBackupType, ScheduleState> = {
     webdav: createScheduleState(),
     s3: createScheduleState(),
-    local: createScheduleState(),
-    nutstore: createScheduleState()
+    local: createScheduleState()
   }
 
   protected override onInit(): void {
@@ -334,35 +332,18 @@ export class AutoBackupService extends BaseService {
       return cleanupError
     }
 
-    if (type === 'local') {
-      const directory = path.resolve(untildify(preferenceService.get('data.backup.local.dir')))
-      await this.validateLocalBackupDirectory(directory)
-      const { cleanupError } = await legacyBackupManager.backupToLocalDir(
-        null,
-        undefined,
-        {
-          localBackupDir: directory,
-          maxBackups: preferenceService.get('data.backup.local.max_backups'),
-          skipBackupFile: preferenceService.get('data.backup.local.skip_backup_file')
-        },
-        signal
-      )
-      return cleanupError
-    }
-
-    const credentials = await decryptToken(preferenceService.get('data.backup.nutstore.token'))
-    if (!credentials) throw new Error('Nutstore credentials are unavailable')
-
-    const config: WebDavConfig = {
-      webdavHost: NUTSTORE_HOST,
-      webdavUser: credentials.username,
-      webdavPass: credentials.access_token,
-      webdavPath: preferenceService.get('data.backup.nutstore.path'),
-      maxBackups: preferenceService.get('data.backup.nutstore.max_backups'),
-      skipBackupFile: preferenceService.get('data.backup.nutstore.skip_backup_file')
-    }
-    const { result: success, cleanupError } = await legacyBackupManager.backupToWebdav(null, config, signal)
-    if (success === false) throw new Error('Nutstore automatic backup failed')
+    const directory = path.resolve(untildify(preferenceService.get('data.backup.local.dir')))
+    await this.validateLocalBackupDirectory(directory)
+    const { cleanupError } = await legacyBackupManager.backupToLocalDir(
+      null,
+      undefined,
+      {
+        localBackupDir: directory,
+        maxBackups: preferenceService.get('data.backup.local.max_backups'),
+        skipBackupFile: preferenceService.get('data.backup.local.skip_backup_file')
+      },
+      signal
+    )
     return cleanupError
   }
 
@@ -397,19 +378,10 @@ export class AutoBackupService extends BaseService {
         intervalMs: preferenceService.get('data.backup.s3.sync_interval') * 60_000
       }
     }
-    if (type === 'local') {
-      return {
-        enabled:
-          preferenceService.get('data.backup.local.auto_sync') &&
-          Boolean(preferenceService.get('data.backup.local.dir')),
-        intervalMs: preferenceService.get('data.backup.local.sync_interval') * 60_000
-      }
-    }
     return {
       enabled:
-        preferenceService.get('data.backup.nutstore.auto_sync') &&
-        Boolean(preferenceService.get('data.backup.nutstore.token')),
-      intervalMs: preferenceService.get('data.backup.nutstore.sync_interval') * 60_000
+        preferenceService.get('data.backup.local.auto_sync') && Boolean(preferenceService.get('data.backup.local.dir')),
+      intervalMs: preferenceService.get('data.backup.local.sync_interval') * 60_000
     }
   }
 
@@ -434,6 +406,9 @@ export class AutoBackupService extends BaseService {
 
   private emit(event: AutoBackupEventInput): void {
     if (!this.active) return
+    if (event.status === 'succeeded' || event.status === 'warning' || event.status === 'failed') {
+      publishBackupResult(`backup:auto:${event.type}:${event.timestamp}`, event.status, event.timestamp)
+    }
     const emittedEvent = { ...event, id: ++this.nextEventId }
     application.get('CacheService').setShared(`backup.auto_sync.state.${event.type}`, emittedEvent)
     if (event.status === 'warning' || event.status === 'failed') {

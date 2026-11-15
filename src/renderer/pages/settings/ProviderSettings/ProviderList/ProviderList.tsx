@@ -14,6 +14,7 @@ import {
 } from '@renderer/pages/settings/ProviderSettings/utils/providerDisplay'
 import { toast } from '@renderer/services/toast'
 import { isProviderSettingsListVisibleProvider } from '@renderer/utils/providerSettings'
+import { isExcludedProviderPreset } from '@shared/data/presets/providerCatalog'
 import type { Provider } from '@shared/data/types/provider'
 import { canManageProvider } from '@shared/utils/provider'
 
@@ -180,7 +181,10 @@ export default function ProviderList({
   const presetSources = useMemo(
     () =>
       providers.filter(
-        (provider) => isProviderPresetInstanceSource(provider) && isProviderSettingsListVisibleProvider(provider)
+        (provider) =>
+          !isExcludedProviderPreset(provider.id) &&
+          isProviderPresetInstanceSource(provider) &&
+          isProviderSettingsListVisibleProvider(provider)
       ),
     [providers]
   )

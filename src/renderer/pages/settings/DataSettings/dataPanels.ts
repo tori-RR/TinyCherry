@@ -5,16 +5,11 @@ export const DATA_PANEL_KEYS = [
   'data',
   'local_backup',
   'webdav',
-  'nutstore',
   's3',
   'import_settings',
   'export_menu',
   'markdown_export',
-  'notion',
-  'yuque',
-  'joplin',
-  'obsidian',
-  'siyuan'
+  'obsidian'
 ] as const
 
 export type DataPanelKey = (typeof DATA_PANEL_KEYS)[number]

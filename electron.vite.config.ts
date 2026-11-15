@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'fs'
+import { readdirSync } from 'fs'
 import { createRequire } from 'node:module'
 import { join, resolve } from 'path'
 
@@ -10,45 +10,24 @@ import { CodeInspectorPlugin } from 'code-inspector-plugin'
 import { defineConfig } from 'electron-vite'
 import { visualizer } from 'rollup-plugin-visualizer'
 import type { Plugin } from 'vite'
-import { parse } from 'yaml'
 
-// Import attributes are not supported by the current Electron config loader.
-// import pkg from './package.json' assert { type: 'json' }
+import { rendererAliases, rendererDefines, resolveRendererEdition } from './build/renderer.config'
 import pkg from './package.json'
 import { buildFlatContractCss } from './packages/ui/scripts/build-theme-css'
 import { chunkExportGuardPlugin } from './scripts/checkChunkExports'
 import { claudeCodeBinaryManifest } from './scripts/claudeCodeBinaryManifest'
 import { uiContractPlugin } from './scripts/uiContract/vitePlugin'
-import { APP_EDITIONS, type AppEdition } from './src/shared/types/appEdition'
-import { parseReleaseHistory, validateCurrentReleaseHistory } from './src/shared/utils/releaseNotes'
 import { getSentryBuildContext } from './src/shared/utils/sentry'
 
+export { resolveRendererEdition } from './build/renderer.config'
+
 const { buildSelectionPanel, sourcePath: selectionPanelSource } = createRequire(import.meta.url)(
-  './native/darwin/build'
+  './native/selection-panel/build'
 )
 
 const { buildExternalApp, sourceFiles: externalAppSources } = createRequire(import.meta.url)(
   './native/external-app/build.cjs'
 )
-
-type ElectronBuilderConfig = {
-  releaseInfo?: {
-    releaseNotes?: unknown
-  }
-}
-
-const electronBuilderConfig = parse(
-  readFileSync(resolve(__dirname, 'electron-builder.yml'), 'utf8')
-) as ElectronBuilderConfig
-const bundledReleaseNotes = electronBuilderConfig.releaseInfo?.releaseNotes
-const bundledReleaseHistory = parseReleaseHistory(
-  readFileSync(resolve(__dirname, 'resources/cherry-studio/release-history.json'), 'utf8')
-)
-
-if (typeof bundledReleaseNotes !== 'string' || !bundledReleaseNotes.trim()) {
-  throw new Error('electron-builder.yml must define non-empty releaseInfo.releaseNotes')
-}
-validateCurrentReleaseHistory({ releaseNotes: bundledReleaseNotes, version: pkg.version }, bundledReleaseHistory)
 
 const visualizerPlugin = (type: 'renderer' | 'main') => {
   return process.env[`VISUALIZER_${type.toUpperCase()}`] ? [visualizer({ open: true })] : []
@@ -68,12 +47,6 @@ export function resolveSentryBuildSettings(env: NodeJS.ProcessEnv) {
   }
 
   return { sourceMapUploadEnabled }
-}
-
-export function resolveRendererEdition(value: string | undefined): AppEdition {
-  const edition = value?.trim().toLowerCase() || 'global'
-  if (APP_EDITIONS.includes(edition as AppEdition)) return edition as AppEdition
-  throw new Error(`Unsupported renderer edition: ${edition}`)
 }
 
 const rendererEdition = resolveRendererEdition(process.env.CHERRY_EDITION)
@@ -99,14 +72,8 @@ const sentrySourceMapPlugins = (outputDirectory: 'main' | 'preload' | 'renderer'
       })
     : []
 
-// Bundle/externalize split for the main process: everything in `dependencies` is
-// externalized below (kept in node_modules of the packaged app), and everything
-// NOT in `dependencies` (i.e. in `devDependencies`) is bundled into the main bundle by
-// Rolldown. The API gateway's Elysia stack (`elysia`, `@elysia/*`) is intentionally in
-// `devDependencies` for exactly this reason — it is pure JS and bundles cleanly. Do NOT
-// move it to `dependencies`: that would externalize it, and since devDependencies are
-// pruned from production packages, the packaged app would fail at runtime with
-// MODULE_NOT_FOUND (no test catches this). See docs/dev/references/api-gateway/README.md.
+// `dependencies` stay external and ship whole; everything else is bundled. Only R1–R4 packages
+// belong there: see "Main-Process Dependencies" in CLAUDE.md.
 const mainExternalDependencies = [
   ...Object.keys(pkg.dependencies),
   // optionalDependencies too: platform-gated natives (e.g. node-mac-permissions) are real import
@@ -163,6 +130,7 @@ export const mainResolveAlias = {
   '@cherrystudio/web-search/providers/exa': resolve('packages/web-search/src/providers/exa.ts'),
   '@cherrystudio/web-search/providers/exa-mcp': resolve('packages/web-search/src/providers/exaMcp.ts'),
   '@cherrystudio/web-search/providers/bocha': resolve('packages/web-search/src/providers/bocha.ts'),
+  '@cherrystudio/web-search/providers/stepfun': resolve('packages/web-search/src/providers/stepfun.ts'),
   '@cherrystudio/web-search/providers/querit': resolve('packages/web-search/src/providers/querit.ts'),
   '@cherrystudio/web-search/providers/jina': resolve('packages/web-search/src/providers/jina.ts'),
   '@cherrystudio/web-search/providers/firecrawl': resolve('packages/web-search/src/providers/firecrawl.ts'),
@@ -173,6 +141,7 @@ export const mainResolveAlias = {
   '@cherrystudio/web-search/providers/deepseek': resolve('packages/web-search/src/providers/deepseek.ts'),
   '@cherrystudio/web-search/providers/desearch': resolve('packages/web-search/src/providers/desearch.ts'),
   '@cherrystudio/web-search/providers/searchapi': resolve('packages/web-search/src/providers/searchapi.ts'),
+  '@cherrystudio/web-search/providers/serpkite': resolve('packages/web-search/src/providers/serpkite.ts'),
   '@cherrystudio/web-search/tools/config': resolve('packages/web-search/src/tools/config.ts'),
   '@cherrystudio/web-search/tools/url-filter': resolve('packages/web-search/src/tools/urlFilter.ts'),
   '@cherrystudio/web-search/tools/content': resolve('packages/web-search/src/tools/content.ts'),
@@ -253,6 +222,8 @@ export default defineConfig({
       }
     },
     build: {
+      externalizeDeps: false,
+      isolatedEntries: true,
       sourcemap: sentrySourceMap,
       rolldownOptions: {
         // Unlike renderer which auto-discovers entries from HTML files,
@@ -272,12 +243,7 @@ export default defineConfig({
     }
   },
   renderer: {
-    define: {
-      __APP_EDITION__: JSON.stringify(rendererEdition),
-      __APP_RELEASE_HISTORY__: JSON.stringify(bundledReleaseHistory),
-      __APP_RELEASE_NOTES__: JSON.stringify(bundledReleaseNotes),
-      __APP_RELEASE_VERSION__: JSON.stringify(pkg.version)
-    },
+    define: rendererDefines(pkg.version, rendererEdition),
     plugins: [
       uiContractPlugin(),
       tanstackRouter({
@@ -294,43 +260,7 @@ export default defineConfig({
     ],
     resolve: {
       alias: {
-        '@renderer': resolve('src/renderer'),
-        '@shared': resolve('src/shared'),
-        '@logger': resolve('src/renderer/services/LoggerService'),
-        '@data': resolve('src/renderer/data'),
-        '@cherrystudio/ai-core/provider': resolve('packages/aiCore/src/core/providers'),
-        '@cherrystudio/ai-core/built-in/plugins': resolve('packages/aiCore/src/core/plugins/built-in'),
-        '@cherrystudio/ai-core': resolve('packages/aiCore/src'),
-        '@cherrystudio/extension-table-plus': resolve('packages/extension-table-plus/src'),
-        '@cherrystudio/ai-sdk-provider': resolve('packages/ai-sdk-provider/src'),
-        '@cherrystudio/provider-registry/node': resolve('packages/provider-registry/src/registry-loader'),
-        '@cherrystudio/provider-registry': resolve('packages/provider-registry/src'),
-        '@cherrystudio/web-search/catalog': resolve('packages/web-search/src/catalog.ts'),
-        '@cherrystudio/web-search/providers/zhipu': resolve('packages/web-search/src/providers/zhipu.ts'),
-        '@cherrystudio/web-search/providers/tavily': resolve('packages/web-search/src/providers/tavily.ts'),
-        '@cherrystudio/web-search/providers/searxng': resolve('packages/web-search/src/providers/searxng.ts'),
-        '@cherrystudio/web-search/providers/exa': resolve('packages/web-search/src/providers/exa.ts'),
-        '@cherrystudio/web-search/providers/exa-mcp': resolve('packages/web-search/src/providers/exaMcp.ts'),
-        '@cherrystudio/web-search/providers/bocha': resolve('packages/web-search/src/providers/bocha.ts'),
-        '@cherrystudio/web-search/providers/querit': resolve('packages/web-search/src/providers/querit.ts'),
-        '@cherrystudio/web-search/providers/jina': resolve('packages/web-search/src/providers/jina.ts'),
-        '@cherrystudio/web-search/providers/firecrawl': resolve('packages/web-search/src/providers/firecrawl.ts'),
-        '@cherrystudio/web-search/providers/crawl4ai': resolve('packages/web-search/src/providers/crawl4ai.ts'),
-        '@cherrystudio/web-search/providers/parallel': resolve('packages/web-search/src/providers/parallel.ts'),
-        '@cherrystudio/web-search/providers/serply': resolve('packages/web-search/src/providers/serply.ts'),
-        '@cherrystudio/web-search/providers/deepseek': resolve('packages/web-search/src/providers/deepseek.ts'),
-        '@cherrystudio/web-search/providers/desearch': resolve('packages/web-search/src/providers/desearch.ts'),
-        '@cherrystudio/web-search/providers/searchapi': resolve('packages/web-search/src/providers/searchapi.ts'),
-        '@cherrystudio/web-search/tools/config': resolve('packages/web-search/src/tools/config.ts'),
-        '@cherrystudio/web-search/tools/url-filter': resolve('packages/web-search/src/tools/urlFilter.ts'),
-        '@cherrystudio/web-search/tools/content': resolve('packages/web-search/src/tools/content.ts'),
-        '@cherrystudio/web-search': resolve('packages/web-search/src/index.ts'),
-        '@cherrystudio/file-preview/core': resolve('packages/file-preview/src/core.ts'),
-        '@cherrystudio/file-preview/react': resolve('packages/file-preview/src/react.ts'),
-        '@cherrystudio/ui/icons/providers': resolve('packages/ui/src/components/icons/providers'),
-        '@cherrystudio/ui/icons': resolve('packages/ui/src/components/icons'),
-        '@cherrystudio/ui': resolve('packages/ui/src'),
-        '@test-mocks': resolve('tests/__mocks__')
+        ...rendererAliases
       }
     },
     optimizeDeps: {
@@ -358,8 +288,7 @@ export default defineConfig({
           selectionCapsule: resolve(__dirname, 'src/renderer/windows/selection/capsule/index.html'),
           migrationV2: resolve(__dirname, 'src/renderer/windows/migrationV2/index.html'),
           userDataRelocation: resolve(__dirname, 'src/renderer/windows/userDataRelocation/index.html'),
-          subWindow: resolve(__dirname, 'src/renderer/windows/subWindow/index.html'),
-          screenshot: resolve(__dirname, 'src/renderer/windows/screenshot/index.html')
+          subWindow: resolve(__dirname, 'src/renderer/windows/subWindow/index.html')
         },
         onwarn(warning, warn) {
           if (warning.code === 'COMMONJS_VARIABLE_IN_ESM') return

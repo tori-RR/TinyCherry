@@ -10,6 +10,7 @@
  */
 
 import { createHash } from 'node:crypto'
+import { createRequire } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -54,12 +55,11 @@ export function buildPathRegistry() {
   const appUserDataToolchainMise = path.join(appUserDataToolchain, 'mise')
   const appSession = app.getPath('sessionData')
   const sysTemp = app.getPath('temp')
-  const appTemp = path.join(sysTemp, 'CherryStudio')
+  const appTemp = path.join(sysTemp, 'TinyCherry')
   // electron-builder `extraResources` output — distinct from appRootResources
   const appExtraResources = process.resourcesPath
   // `resources/` inside asar (bundled assets) — distinct from appExtraResources
   const appRootResources = path.join(app.getAppPath(), 'resources')
-  const voiceHelperFilename = process.platform === 'win32' ? 'cherry-system-speech.exe' : 'cherry-system-speech'
 
   return Object.freeze({
     // -- A. cherry.* — CHERRY_HOME infrastructure --
@@ -119,13 +119,21 @@ export function buildPathRegistry() {
     // Plaintext fallback (0600) used only when no OS key store is available
     'feature.remote_access.plain_identity_file': path.join(appUserDataRuntime, 'remote-identity.key'),
 
-    'feature.computer_use.runtime': app.isPackaged
-      ? path.join(
-          appExtraResources,
-          'computer-use',
-          isMac ? 'Cherry Computer Use.app' : isWin ? 'open-computer-use.exe' : 'open-computer-use'
-        )
-      : path.join(app.getAppPath(), '.context', isWin ? 'computer-use-runtime.exe' : 'computer-use-runtime'),
+    get 'feature.computer_use.runtime'() {
+      const name =
+        process.platform === 'darwin'
+          ? 'Cherry Computer Use.app'
+          : process.platform === 'win32'
+            ? 'open-computer-use.exe'
+            : 'open-computer-use'
+      if (app.isPackaged) return path.join(appExtraResources, 'computer-use', name)
+      // Resolve on demand so an absent optional native package cannot prevent application startup.
+      const sdkEntry = createRequire(path.join(app.getAppPath(), 'package.json')).resolve('@cherrystudio/computer-use')
+      const nativeManifest = createRequire(sdkEntry).resolve(
+        `@cherrystudio/computer-use-${process.platform}-${process.arch}/package.json`
+      )
+      return path.join(path.dirname(nativeManifest), 'runtime', name)
+    },
 
     // Provider registry data (models.json, providers.json, etc.)
     'feature.provider_registry.data': app.isPackaged
@@ -139,30 +147,14 @@ export function buildPathRegistry() {
     // Isolated preload for site `<webview>` guests. Local mini apps keep their capability bridge.
     'feature.webview.preload_file': path.join(app.getAppPath(), 'out/preload/webview.js'),
 
-    // Local embedding model cache (transformers.js HF cache root, downloaded on first use)
-    'feature.embedding.models': path.join(appUserDataRuntime, 'models', 'qwen3-embedding'),
-
     'feature.claude_code.binary': path.join(appUserDataToolchain, 'claude-agent-sdk'),
 
-    // onnxruntime-node native binary (napi addon + shared lib), downloaded on first
-    // use of local embedding or local OCR — see ai/localModel's shared artifacts.
-    'feature.onnxruntime.binary': path.join(appUserDataToolchain, 'onnxruntime'),
-
-    // sherpa-onnx native binding and its private onnxruntime, downloaded on demand.
-    'feature.sherpa_onnx.binary': path.join(appUserDataToolchain, 'sherpa-onnx'),
-
-    // ASR model files, downloaded on demand.
-    'feature.asr.qwen3': path.join(appUserDataRuntime, 'models', 'qwen3-asr-1.7b-8bit'),
-    'feature.asr.funasr': path.join(appUserDataRuntime, 'models', 'funasr-nano'),
-    'feature.mlx.binary': path.join(appUserDataToolchain, 'mlx-node'),
-    'feature.tts.qwen3': path.join(appUserDataRuntime, 'models', 'qwen3-tts-0.6b-customvoice-8bit'),
-    'feature.tts.kokoro': path.join(appUserDataRuntime, 'models', 'kokoro-multi-lang-v1.1'),
-
-    // BabelDOC runtime cache (layout model, fonts, CMap/tiktoken assets)
-    'feature.pdf_translation.babeldoc': path.join(appUserDataRuntime, 'models', 'babeldoc'),
-
-    'feature.pdfjs.cmaps': path.join(app.getAppPath(), 'node_modules', 'pdfjs-dist', 'cmaps'),
-    'feature.pdfjs.standard_fonts': path.join(app.getAppPath(), 'node_modules', 'pdfjs-dist', 'standard_fonts'),
+    'feature.pdfjs.cmaps': app.isPackaged
+      ? path.join(appExtraResources, 'pdfjs', 'cmaps')
+      : path.join(app.getAppPath(), 'node_modules', 'pdfjs-dist', 'cmaps'),
+    'feature.pdfjs.standard_fonts': app.isPackaged
+      ? path.join(appExtraResources, 'pdfjs', 'standard_fonts')
+      : path.join(app.getAppPath(), 'node_modules', 'pdfjs-dist', 'standard_fonts'),
 
     // BinaryManager (tool manager)
     'feature.binary.data': appUserDataToolchainMise,
@@ -226,7 +218,6 @@ export function buildPathRegistry() {
     'feature.ovms': path.join(CHERRY_HOME, 'ovms'),
     'feature.ovms.ovms': path.join(CHERRY_HOME, 'ovms', 'ovms'),
     'feature.ovms.patch': path.join(CHERRY_HOME, 'ovms', 'patch'),
-    'feature.ovms.ovocr': path.join(CHERRY_HOME, 'ovms', 'ovocr'),
 
     // Agents
     'feature.code_cli.skills.builtin': path.join(appRootResources, 'code-cli-skills'), // conditional Code Mate skill templates (read-only)
@@ -278,9 +269,6 @@ export function buildPathRegistry() {
     'feature.mini_app.logs': path.join(LOGS_DIR, 'mini-apps'),
 
     // OCR
-    'feature.ocr.tesseract': path.join(appUserData, 'tesseract'),
-    // Local OCR model files (PaddleOCR / ppu-paddle-ocr, downloaded on demand)
-    'feature.ocr.paddleocr': path.join(appUserDataRuntime, 'models', 'pp-ocrv6'),
 
     // Version log
     'feature.version_log.file': path.join(appUserData, 'version.log'),
@@ -299,7 +287,7 @@ export function buildPathRegistry() {
     // Stored in the profile it authorizes for reset.
     'feature.data_reset.marker_file': path.join(appUserData, 'data-reset.pending.json'),
 
-    // Protocol deep-link (Linux .desktop entry for cherrystudio:// scheme)
+    // Protocol deep-link (Linux .desktop entry for tinycherry:// scheme)
     'feature.protocol.desktop_entries': path.join(os.homedir(), '.local', 'share', 'applications'),
 
     // Feature-owned temp dirs (all under app.temp)
@@ -310,26 +298,7 @@ export function buildPathRegistry() {
     'feature.file_processing.temp': path.join(appTemp, 'file-processing'),
     'feature.mcp.resource_results.temp': path.join(appTemp, 'mcp-resource-results'),
     'feature.preprocess.temp': path.join(appTemp, 'preprocess'),
-    'feature.pdf_translation.temp': path.join(appTemp, 'pdf-translation'),
     'feature.files.intakes': path.join(appUserDataData, 'FileIntakes'),
-    'feature.voice.temp': path.join(
-      appTemp,
-      'voice',
-      createHash('sha256').update(path.resolve(appUserData)).digest('hex')
-    ),
-    'feature.voice.helper_file': app.isPackaged
-      ? process.platform === 'darwin'
-        ? path.join(appExtraResources, '..', 'Helpers', voiceHelperFilename)
-        : path.join(appExtraResources, 'system-speech', voiceHelperFilename)
-      : path.join(
-          app.getAppPath(),
-          'packages',
-          'system-speech',
-          'dist',
-          'native',
-          `${process.platform}-${process.arch}`,
-          voiceHelperFilename
-        ),
     // FileManager's `withTempCopy` escape hatch parent dir; each call mkdtemps a
     // unique sub-directory under here.
     'feature.files.tempcopy.temp': path.join(appTemp, 'files-tempcopy'),
@@ -388,6 +357,7 @@ export function buildPathRegistry() {
     'external.openclaw.config': path.join(sysHome, '.openclaw'),
     'external.deepseek_harness.config': path.join(sysHome, '.dsh'),
     'external.pi.settings_file': path.join(sysHome, '.pi', 'agent', 'settings.json'),
+    'external.grok.version_file': path.join(sysHome, '.grok', 'version.json'),
     'external.hermes.default_home': isWin
       ? path.join(process.env.LOCALAPPDATA?.trim() || path.join(sysHome, 'AppData', 'Local'), 'hermes')
       : path.join(sysHome, '.hermes'),
@@ -435,7 +405,6 @@ const NO_ENSURE = [
   'app.install',
   'app.exe_file',
   'app.extra_resources',
-  'feature.voice.helper_file',
   'feature.external_app.native_file',
   'app.root.resources',
   'app.root.resources.scripts',

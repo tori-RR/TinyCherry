@@ -69,10 +69,9 @@ related definitions as needed. Untracked files have no diff — review their
 full contents as new code.
 
 If the branch has an associated GitHub PR, inspect its checks with `gh pr
-checks` and include failing or pending CI in the review. Do not run `pnpm lint`,
-`pnpm test`, or `pnpm format` locally during review. If no associated PR exists,
-state that CI validation is unavailable and keep the result explicitly limited
-to static review.
+checks` and include relevant CI results. If CI is unavailable or misses an
+affected behavior, use focused read-only local checks where they add useful
+evidence. Report what was actually checked.
 
 For each issue found:
 - Provide a code citation (file:line + snippet) from the current tree.

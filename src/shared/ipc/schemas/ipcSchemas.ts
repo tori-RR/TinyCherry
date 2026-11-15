@@ -1,7 +1,9 @@
 import type { RouteDef } from '../define'
+import { agentRequestSchemas } from './agent'
 import { type AiEventSchemas, aiRequestSchemas } from './ai'
 import { type ApiGatewayEventSchemas, apiGatewayRequestSchemas } from './apiGateway'
 import { type AppEventSchemas, appRequestSchemas } from './app'
+import { assistantRequestSchemas } from './assistant'
 import { type BackupEventSchemas, backupRequestSchemas } from './backup'
 import { type BinaryEventSchemas, binaryRequestSchemas } from './binary'
 import { type BrowserEventSchemas, browserRequestSchemas } from './browser'
@@ -10,7 +12,7 @@ import { type CherryCloudEventSchemas, cherryCloudRequestSchemas } from './cherr
 import { cherryinRequestSchemas } from './cherryin'
 import { citationRequestSchemas } from './citation'
 import { codeCliRequestSchemas } from './codeCli'
-import { computerUseRequestSchemas } from './computerUse'
+import { type ComputerUseEventSchemas, computerUseRequestSchemas } from './computerUse'
 import { deepSeekHarnessRequestSchemas } from './deepSeekHarness'
 import { diagnosticsRequestSchemas } from './diagnostics'
 import { doctorRequestSchemas } from './doctor'
@@ -18,10 +20,8 @@ import { doctorAgentRequestSchemas } from './doctorAgent'
 import { exportRequestSchemas } from './export'
 import { externalAppRequestSchemas } from './externalApp'
 import { type FileEventSchemas, fileRequestSchemas } from './file'
-import { fileProcessingRequestSchemas } from './fileProcessing'
 import { hermesDashboardRequestSchemas } from './hermesDashboard'
 import { knowledgeRequestSchemas } from './knowledge'
-import { localModelRequestSchemas } from './localModel'
 import { type McpEventSchemas, mcpRequestSchemas } from './mcp'
 import { type MiniAppEventSchemas, miniAppRequestSchemas } from './miniApp'
 import { type NavigationEventSchemas, navigationRequestSchemas } from './navigation'
@@ -42,9 +42,8 @@ import { skillRequestSchemas } from './skill'
 import { type SystemEventSchemas, systemRequestSchemas } from './system'
 import { type TabEventSchemas, tabRequestSchemas } from './tab'
 import { toolResultRequestSchemas } from './toolResult'
-import { type TranslateEventSchemas, translateRequestSchemas } from './translate'
+import { translateRequestSchemas } from './translate'
 import { trashRequestSchemas } from './trash'
-import { type VoiceEventSchemas, voiceRequestSchemas } from './voice'
 import { type WebSearchEventSchemas, webSearchRequestSchemas } from './webSearch'
 import { type WebviewEventSchemas, webviewRequestSchemas } from './webview'
 import { type WindowEventSchemas, windowRequestSchemas } from './window'
@@ -58,7 +57,7 @@ import { type WindowEventSchemas, windowRequestSchemas } from './window'
  */
 export const ipcRequestSchemas = {
   ...aiRequestSchemas,
-  ...voiceRequestSchemas,
+  ...agentRequestSchemas,
   ...apiGatewayRequestSchemas,
   ...appRequestSchemas,
   ...backupRequestSchemas,
@@ -78,9 +77,7 @@ export const ipcRequestSchemas = {
   ...externalAppRequestSchemas,
   ...hermesDashboardRequestSchemas,
   ...fileRequestSchemas,
-  ...fileProcessingRequestSchemas,
   ...knowledgeRequestSchemas,
-  ...localModelRequestSchemas,
   ...mcpRequestSchemas,
   ...miniAppRequestSchemas,
   ...navigationRequestSchemas,
@@ -90,6 +87,7 @@ export const ipcRequestSchemas = {
   ...ovmsRequestSchemas,
   ...pdfjsRequestSchemas,
   ...printRequestSchemas,
+  ...assistantRequestSchemas,
   ...profileRequestSchemas,
   ...proxyRequestSchemas,
   ...providerRequestSchemas,
@@ -125,6 +123,7 @@ export type IpcEventSchemas = AiEventSchemas &
   BrowserEventSchemas &
   ChannelEventSchemas &
   CherryCloudEventSchemas &
+  ComputerUseEventSchemas &
   FileEventSchemas &
   McpEventSchemas &
   MiniAppEventSchemas &
@@ -136,8 +135,6 @@ export type IpcEventSchemas = AiEventSchemas &
   SelectionEventSchemas &
   SystemEventSchemas &
   TabEventSchemas &
-  TranslateEventSchemas &
-  VoiceEventSchemas &
   WebSearchEventSchemas &
   WebviewEventSchemas &
   WindowEventSchemas

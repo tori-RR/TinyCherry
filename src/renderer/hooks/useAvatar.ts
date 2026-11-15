@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react'
 import { usePreference } from '@data/hooks/usePreference'
 import UserAvatar from '@renderer/assets/images/avatar.svg'
 import { ipcApi } from '@renderer/ipc'
+import { type AvatarObjectUrl, loadAvatarObjectUrl } from '@renderer/services/avatarSources'
+import { isEvoStack } from '@renderer/utils/platform'
 import type { FileEntryId } from '@shared/data/types/file'
 import { STORED_FILE_REF_PREFIX } from '@shared/data/types/file'
 import { toFileUrl } from '@shared/utils/file'
@@ -14,8 +16,8 @@ function avatarStoredId(avatar: string | undefined): FileEntryId | undefined {
 }
 
 /**
- * The user avatar as a render-ready value: a `file://` URL for an uploaded
- * image, the emoji glyph verbatim, or the bundled default.
+ * The user avatar as a render-ready value: a native blob URL or Electron file
+ * URL for an uploaded image, the emoji glyph verbatim, or the bundled default.
  *
  * An uploaded avatar is stored in the `app.user.avatar` preference as a
  * `file:<id>` ref. Unlike a provider / mini-app logo (resolved main-side onto
@@ -25,30 +27,50 @@ function avatarStoredId(avatar: string | undefined): FileEntryId | undefined {
  */
 export default function useAvatar(): string {
   const [avatar] = usePreference('app.user.avatar')
-  const [resolvedSrc, setResolvedSrc] = useState<string>()
+  const [resolved, setResolved] = useState<{ id: FileEntryId; src: string }>()
 
   const storedId = avatarStoredId(avatar)
   useEffect(() => {
     if (!storedId) {
-      setResolvedSrc(undefined)
+      setResolved(undefined)
       return
     }
     let active = true
+    let ownedUrl: AvatarObjectUrl | undefined
+    if (isEvoStack) {
+      void loadAvatarObjectUrl(storedId)
+        .then((source) => {
+          if (!active) {
+            source.dispose()
+            return
+          }
+          ownedUrl = source
+          setResolved({ id: storedId, src: source.src })
+        })
+        .catch(() => {
+          if (active) setResolved(undefined)
+        })
+      return () => {
+        active = false
+        ownedUrl?.dispose()
+      }
+    }
     ipcApi
       .request('file.batch_get_physical_paths', { ids: [storedId] })
       .then((paths) => {
         if (!active) return
         const path = paths[storedId]
-        setResolvedSrc(path ? toFileUrl(path) : undefined)
+        setResolved(path ? { id: storedId, src: toFileUrl(path) } : undefined)
       })
       .catch(() => {
-        if (active) setResolvedSrc(undefined)
+        if (active) setResolved(undefined)
       })
     return () => {
       active = false
     }
   }, [storedId])
 
-  if (storedId) return resolvedSrc ?? UserAvatar
+  if (storedId) return (resolved?.id === storedId ? resolved.src : undefined) ?? UserAvatar
+  if (isEvoStack && avatar?.startsWith('file://')) return UserAvatar
   return avatar || UserAvatar
 }

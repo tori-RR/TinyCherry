@@ -4,12 +4,8 @@
  *   - **native** for the target provider/model (image→vision, pdf→native
  *     provider, audio/video→model + endpoint capable) → left in place and
  *     materialized as the real file via `materializeNativeFilePart`; or
- *   - **non-native** → replaced with its extracted text (office/pdf/text via
- *     `extractDocumentText`, image via OCR, audio/video/binary → a note),
- *     inlined and capped. Over the cap, the head is inlined + a `read_file`
- *     pointer. A non-vision image whose OCR yields no text (or whose OCR is
- *     unconfigured/failed) stops before the provider call with a user-facing
- *     error.
+ *   - **non-native** documents and text are extracted and inlined. Audio and
+ *     video get a note. Images require a vision-capable model.
  *
  * Content is always inlined, so visibility never depends on the model choosing
  * to call `read_file` — weak and non-tool models see it too. Other failures
@@ -38,51 +34,20 @@ import { readCherryMeta } from '@shared/data/types/uiParts'
 import { FILE_TYPE, type FileType } from '@shared/types/file'
 import { getFileTypeByExt } from '@shared/utils/file'
 
-import { allocateInlineCaps, type AttachmentBudget } from './attachmentBudget'
+import type { AttachmentBudget } from './attachmentBudget'
 import { extractDocumentText, noExtractableTextNote } from './attachmentTextExtraction'
+import { runAttachmentWorker } from './attachmentWorkerClient'
 import { collectComposerFileTokenIds, isActiveManagedFilePart } from './composerFileParts'
 import { materializeNativeFilePart } from './fileProcessor'
 
 const logger = loggerService.withContext('ai:attachmentRouting')
 
-const NON_VISION_IMAGE_OCR_ERROR_MESSAGE =
-  "The selected model isn't configured for image input, and Cherry Studio couldn't extract readable text from the attachment. Enable Vision for this model in Provider Settings, choose another vision-capable model, or remove the image and try again."
-
-/**
- * Why the OCR fallback did not produce text — surfaced through the localized
- * detail keys so the user can tell a no-text image apart from a
- * misconfigured/failing OCR processor (#20343). The reason never rides on
- * `message`: provider diagnostics can carry auth-flavored tokens that would
- * hand the error to the chat provider's auth classifier, which routes users
- * to the wrong settings page.
- */
-type NonVisionImageOcrDetail = { kind: 'empty' } | { kind: 'failed'; reason: string }
-
-/** i18n keys under the `error.` namespace, rendered by ErrorBlock / ErrorDetailModal. */
-const NON_VISION_IMAGE_OCR_DETAIL_KEYS = {
-  empty: 'ocr_detail_empty',
-  failed: 'ocr_detail_failed'
-} as const
-
-/** A pathological provider body must not flood the error surfaces. */
-const MAX_OCR_FAILURE_REASON_LENGTH = 500
-
-class NonVisionImageOcrError extends Error {
+class NonVisionImageError extends Error {
   readonly i18nKey = 'image_unreadable_for_non_vision_model'
-  /** Classifier ownership: an OCR fallback failure is never a chat-provider auth error. */
-  readonly providerErrorCategory = 'ocr' as const
-  readonly detailI18nKey?: string
-  readonly detailI18nValues?: Record<string, string>
 
-  constructor(detail?: NonVisionImageOcrDetail) {
-    super(NON_VISION_IMAGE_OCR_ERROR_MESSAGE)
-    this.name = 'NonVisionImageOcrError'
-    if (detail) {
-      this.detailI18nKey = NON_VISION_IMAGE_OCR_DETAIL_KEYS[detail.kind]
-      if (detail.kind === 'failed') {
-        this.detailI18nValues = { reason: detail.reason.slice(0, MAX_OCR_FAILURE_REASON_LENGTH) }
-      }
-    }
+  constructor() {
+    super('The selected model does not accept images. Choose a vision-capable model or remove the image.')
+    this.name = 'NonVisionImageError'
   }
 }
 
@@ -143,26 +108,6 @@ function isNative(ext: string, fileType: FileType, ns: NativeFileSupport): boole
   if (fileType === FILE_TYPE.VIDEO) return ns.video
   if (ext === 'pdf') return ns.pdf
   return false
-}
-
-/**
- * OCR a non-vision image. Returns extracted text, or why no text came back —
- * `{ kind: 'empty' }` when the OCR ran but found nothing readable,
- * `{ kind: 'failed', reason }` when the configured OCR path itself errored.
- * Abort rethrows.
- */
-async function ocrNonVisionImage(
-  entryId: string,
-  signal?: AbortSignal
-): Promise<NonVisionImageOcrDetail | { kind: 'text'; text: string }> {
-  try {
-    const text = (await application.get('FileProcessingService').ocrImage({ kind: 'entry', entryId }, signal)).trim()
-    return text ? { kind: 'text', text } : { kind: 'empty' }
-  } catch (error) {
-    if (signal?.aborted || isAbortError(error)) throw error
-    logger.warn('OCR unavailable or failed for a non-vision model', { error })
-    return { kind: 'failed', reason: error instanceof Error ? error.message : String(error) }
-  }
 }
 
 /** Extract a non-native attachment's model-visible text by file type. `handle`
@@ -283,24 +228,7 @@ async function prepareChatMessage<T extends UIMessage>(
         continue
       }
 
-      // Non-vision image → OCR text when available; otherwise stop before the
-      // provider request, carrying why the fallback produced nothing. Gateway-
-      // backed models can explicitly enable Vision.
-      if (fileType === FILE_TYPE.IMAGE) {
-        const outcome = await ocrNonVisionImage(fileEntryId, ctx.signal)
-        if (outcome.kind !== 'text') {
-          logger.warn('Non-vision image OCR produced no readable text', {
-            messageId: message.id,
-            displayName,
-            fileEntryId,
-            outcome: outcome.kind,
-            ...(outcome.kind === 'failed' ? { reason: outcome.reason } : {})
-          })
-          throw new NonVisionImageOcrError(outcome)
-        }
-        defer(kept, pending, handle, outcome.text)
-        continue
-      }
+      if (fileType === FILE_TYPE.IMAGE) throw new NonVisionImageError()
 
       // The caller forwards the file by local path (agent runtime), and the note below would
       // drop the only usable reference to it.
@@ -314,7 +242,7 @@ async function prepareChatMessage<T extends UIMessage>(
       defer(kept, pending, handle, body)
     } catch (error) {
       if (ctx.signal?.aborted || isAbortError(error)) throw error
-      if (error instanceof NonVisionImageOcrError) throw error
+      if (error instanceof NonVisionImageError) throw error
       logger.error('Failed to prepare attached file', error as Error, { messageId: message.id, displayName })
       kept.push(noteOf(handle))
     }
@@ -334,7 +262,7 @@ export async function prepareChatMessages<T extends UIMessage = UIMessage>(
 ): Promise<T[]> {
   const pending: PendingInline[] = []
   const prepared = await Promise.all(messages.map((message) => prepareChatMessage(message, ctx, pending)))
-  applyInlineCaps(pending, ctx)
+  await applyInlineCaps(pending, ctx)
   return prepared
 }
 
@@ -354,11 +282,13 @@ function defer(parts: UIMessage['parts'], pending: PendingInline[], handle: stri
   parts.push({ type: 'text', text: '' })
 }
 
-function applyInlineCaps(pending: PendingInline[], ctx: PrepareChatContext): void {
+async function applyInlineCaps(pending: PendingInline[], ctx: PrepareChatContext): Promise<void> {
+  if (pending.length === 0) return
   const caps = ctx.budget
-    ? allocateInlineCaps(
-        pending.map((entry) => entry.body),
-        ctx.budget
+    ? await runAttachmentWorker(
+        'allocate',
+        { bodies: pending.map((entry) => entry.body), tokens: ctx.budget.tokens },
+        ctx.signal
       )
     : pending.map(() => READ_FILE_PAGE_SIZE)
 

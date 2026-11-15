@@ -3,9 +3,11 @@ import { type KeyboardEvent, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge, Button, Label, Switch, Tooltip } from '@cherrystudio/ui'
+import { AssistantAvatarImage } from '@renderer/components/Avatar/AssistantAvatarImage'
 import { useSkillMutationsById } from '@renderer/hooks/resourceCatalog'
 import { toast } from '@renderer/services/toast'
 import type { ResourceItem } from '@renderer/types/resourceCatalog'
+import { isEvoStack } from '@renderer/utils/platform'
 import { RESOURCE_TYPE_META } from '@renderer/utils/resourceCatalog'
 import { cn } from '@renderer/utils/style'
 import type { Group } from '@shared/data/types/group'
@@ -115,7 +117,16 @@ export function ResourceCard({
               isSkillGrid && 'self-center',
               showTypeIcon ? cfg.color : 'bg-secondary text-secondary-foreground'
             )}>
-            {showTypeIcon ? <TypeIcon size={20} aria-hidden className="lucide-custom" /> : r.avatar}
+            {showTypeIcon ? (
+              <TypeIcon size={20} aria-hidden className="lucide-custom" />
+            ) : (
+              <AssistantAvatarImage
+                src={r.avatarSrc}
+                alt={r.name}
+                className="size-10 rounded-lg object-cover"
+                fallback={r.avatar}
+              />
+            )}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-1.5">
@@ -163,6 +174,8 @@ export function ResourceCard({
                     variant="ghost"
                     size="sm"
                     onClick={() => onLaunchSkill(r)}
+                    disabled={isEvoStack}
+                    title={isEvoStack ? t('settings.skills.evostack.execution_unavailable') : undefined}
                     className={cn('gap-1.5', isSkillGrid && 'mr-auto -ml-2.5 pl-1.5')}>
                     <Play size={12} aria-hidden />
                     {t('settings.skills.tryNow')}

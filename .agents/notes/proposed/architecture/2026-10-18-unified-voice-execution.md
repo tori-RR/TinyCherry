@@ -8,7 +8,7 @@ English | [中文](2026-10-18-unified-voice-execution.zh.md)
 
 System speech, MLX, and Sherpa expose different production and cancellation behavior. Putting those differences in playback or dictation callers would couple user flows to engines. Treating generated output, execution cleanup, model residency, and playback completion as one event would either release resources too early or retain them indefinitely. Streaming also needs a consumer acknowledgement path: an unbounded sequence of ordinary process events cannot provide backpressure.
 
-This note owns the revisitable decisions for the six-stage voice plan. The [interface design](2026-10-18-unified-voice-execution.md#detailed-interface-design) and [implementation plan](2026-10-18-unified-voice-execution.md#capability-implementation-plan) retain detailed protocol and file-level proposals. The [adapter README](../../../../src/main/ai/voice/localAdapters/README.md) describes the current private implementation.
+This note owns the revisitable decisions for the six-stage voice plan. The [interface design](2026-10-18-unified-voice-execution.md#detailed-interface-design) and [implementation plan](2026-10-18-unified-voice-execution.md#capability-implementation-plan) retain detailed protocol and file-level proposals. The [adapter README](https://github.com/CherryHQ/cherry-studio/blob/6790b48c9c433a1c9b6321ed951cf2e71c37600d/src/main/ai/voice/localAdapters/README.md) describes the current private implementation.
 
 ## Proposal
 
@@ -101,7 +101,7 @@ The first streaming implementation uses the existing Qwen3-TTS. ASR adds continu
 | `SpeechPlaybackService` | Waits for a complete media URL and plays it through `HTMLAudioElement` | Support finite media and PCM under the same coordinator |
 | `DictationService` | Collects a complete recording with `MediaRecorder` and inserts text after recognition | Add PCM capture and revision previews; continue final insertion through `VoiceTargetManager` |
 
-The existing [aiCore voice APIs](../../../../packages/aiCore/src/core/runtime/voice.ts) wrap complete results. [Model definitions](../../../../src/main/ai/voice/voiceModelTypes.ts) and [playback state](../../../../src/main/ai/voice/playbackState.ts) are the immediate boundaries for this evolution.
+The existing [aiCore voice APIs](../../../../packages/aiCore/src/core/runtime/voice.ts) wrap complete results. [Model definitions](https://github.com/CherryHQ/cherry-studio/blob/6790b48c9c433a1c9b6321ed951cf2e71c37600d/src/main/ai/voice/voiceModelTypes.ts) and [playback state](https://github.com/CherryHQ/cherry-studio/blob/6790b48c9c433a1c9b6321ed951cf2e71c37600d/src/main/ai/voice/playbackState.ts) are the immediate boundaries for this evolution.
 
 ### Service dependencies and lifecycle
 
@@ -801,7 +801,7 @@ For changes only to this note, run `pnpm docs:index`, `pnpm docs:check`, and `gi
 
 This extension adds Apple system speech to the shared streaming playback lifecycle. It adds complete text to PCM output, not incremental text input or system ASR. The existing proposed note remains the owner; formal GitHub Spec approval and remaining ACs are not implied.
 
-`packages/system-speech` owns a request-scoped helper and a bounded, pull-consumed NDJSON output protocol: one format frame, ordered Float32 little-endian PCM frames, then an exact frame-count end marker. Each PCM frame holds at most 1,024 frames in one or two channels; each protocol line is limited to 16 KiB. The synchronous native pipe writer and Node pull reader propagate backpressure without an application audio queue or scratch WAV. Platform callbacks remain exclusively in the helper. Native-engine internal allocation is not covered by these transport budgets.
+`native/system-speech` owns a request-scoped helper and a bounded, pull-consumed NDJSON output protocol: one format frame, ordered Float32 little-endian PCM frames, then an exact frame-count end marker. Each PCM frame holds at most 1,024 frames in one or two channels; each protocol line is limited to 16 KiB. The synchronous native pipe writer and Node pull reader propagate backpressure without an application audio queue or scratch WAV. Platform callbacks remain exclusively in the helper. Native-engine internal allocation is not covered by these transport budgets.
 
 The Apple adapter declares `Text → PcmStream` alongside complete audio and maps errors. Existing VoiceSessionService, VoiceStream, playback credits, waveform and player ownership remain unchanged; no new lifecycle service or dependency is added. The package stream handle owns the process, timeout/listeners and iterator; `completed` requires valid EOF and successful process exit, and `closed` means the child and stdio are closed. Early iterator exit or cancellation terminates the helper and waits for exit. A producer-read timeout applies only while a read is pending; downstream pause does not count as producer inactivity. The existing session retention deadline still applies.
 

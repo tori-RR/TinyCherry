@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Dialog, DialogContent } from '@cherrystudio/ui'
+import { useInvalidateCache } from '@data/hooks/useDataApi'
+import { loggerService } from '@logger'
 import { useAddKnowledgeItems } from '@renderer/hooks/useKnowledgeItems'
+import { ipcApi } from '@renderer/ipc'
 import { toast } from '@renderer/services/toast'
 import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
 import { getFileExtension } from '@renderer/utils/file'
@@ -13,6 +16,7 @@ import {
   resolveKnowledgeFileMetadataEntryData,
   selectKnowledgeFileBatchOutcome
 } from '@renderer/utils/knowledgeFileEntry'
+import { isEvoStack } from '@renderer/utils/platform'
 import type { KnowledgeAddItemConflict, KnowledgeAddItemInput, KnowledgeItemType } from '@shared/data/types/knowledge'
 import { knowledgeSupportedFileExts } from '@shared/utils/file'
 
@@ -25,6 +29,7 @@ import KnowledgeAddConflictDialog from './addKnowledgeItemDialog/KnowledgeAddCon
 import type { NoteDraft, NoteItem, NoteSourceMode } from './addKnowledgeItemDialog/types'
 
 type ConflictResolution = 'rename' | 'replace'
+const logger = loggerService.withContext('AddKnowledgeItemDialog')
 
 interface PendingConflictState {
   items: KnowledgeAddItemInput[]
@@ -40,14 +45,36 @@ interface AddKnowledgeItemDialogProps {
 // picker directly and submits the selection. Only `note` / `url` still render the dialog panel.
 const isDirectPickSource = (source: KnowledgeItemType) => source === 'file' || source === 'directory'
 
+const nativeTextExtensions = ['.txt', '.md', '.csv', '.json', '.html']
 const knowledgeSupportedFileExtSet = new Set<string>(knowledgeSupportedFileExts)
 // Electron's open-dialog `filters` want bare extensions (no leading dot); the set above keeps the
 // dots for the post-pick safety filter.
 const knowledgeFilePickerExtensions = knowledgeSupportedFileExts.map((ext) => ext.replace(/^\./, ''))
 
-const isSupportedKnowledgeFile = (fileName: string) => knowledgeSupportedFileExtSet.has(getFileExtension(fileName))
+const isSupportedKnowledgeFile = (fileName: string) =>
+  isEvoStack
+    ? nativeTextExtensions.includes(getFileExtension(fileName))
+    : knowledgeSupportedFileExtSet.has(getFileExtension(fileName))
 
 const describeFileMetadata = (file: { origin_name?: string; name?: string }) => file.origin_name || file.name
+
+function pickNativeTextFiles(): Promise<File[] | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = nativeTextExtensions.join(',')
+    input.multiple = true
+    input.hidden = true
+    const complete = (files: File[] | null) => {
+      input.remove()
+      resolve(files)
+    }
+    input.addEventListener('change', () => complete(input.files ? Array.from(input.files) : null), { once: true })
+    input.addEventListener('cancel', () => complete(null), { once: true })
+    document.body.append(input)
+    input.click()
+  })
+}
 
 const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogProps) => {
   const { t } = useTranslation()
@@ -57,7 +84,7 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
   const activeSource = pendingAddSource ?? DEFAULT_SOURCE_TYPE
   const directPick = isDirectPickSource(activeSource)
 
-  const [noteMode, setNoteMode] = useState<NoteSourceMode>('import')
+  const [noteMode, setNoteMode] = useState<NoteSourceMode>(isEvoStack ? 'create' : 'import')
   const [selectedNotes, setSelectedNotes] = useState<NoteItem[]>([])
   const [noteDraft, setNoteDraft] = useState<NoteDraft>({ title: '', content: '' })
   const [urlValue, setUrlValue] = useState('')
@@ -66,6 +93,7 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
   const [pendingConflict, setPendingConflict] = useState<PendingConflictState | null>(null)
   const [pendingResolution, setPendingResolution] = useState<ConflictResolution | null>(null)
   const { submit: submitKnowledgeItems, isSubmitting: isSubmittingItems } = useAddKnowledgeItems(selectedBaseId)
+  const invalidateCache = useInvalidateCache()
 
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
@@ -252,7 +280,33 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
 
     const run = async () => {
       setIsResolvingSubmit(true)
+      let nativeImportStarted = false
       try {
+        if (isEvoStack && (activeSource === 'file' || activeSource === 'directory')) {
+          if (activeSource === 'directory' || pendingAddDirectoryPaths?.length) {
+            throw new Error(t('knowledge.evostack.text_sources_only'))
+          }
+          const files = pendingAddFiles?.length ? pendingAddFiles : await pickNativeTextFiles()
+          if (files?.length) {
+            if (!selectedBaseId) throw new Error(t('knowledge.name_required'))
+            for (const file of files) {
+              if (!isSupportedKnowledgeFile(file.name) || file.size > 1_000_000) {
+                throw new Error(`${file.name}: ${t('knowledge.evostack.text_sources_only')}`)
+              }
+            }
+            for (const file of files) {
+              const content = await file.text()
+              nativeImportStarted = true
+              await ipcApi.request('knowledge.import_text', {
+                baseId: selectedBaseId,
+                name: file.name,
+                content
+              })
+            }
+          }
+          handleOpenChange(false)
+          return
+        }
         let items: KnowledgeAddItemInput[] | null
         if (pendingAddDirectoryPaths?.length) {
           const fileInputs = pendingAddFiles?.length ? await collectFileInputs() : []
@@ -273,6 +327,17 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
         toast.error(formatErrorMessageWithPrefix(error, t('knowledge.data_source.add_dialog.submit.error')))
         handleOpenChange(false)
       } finally {
+        if (nativeImportStarted && selectedBaseId) {
+          try {
+            await invalidateCache([`/knowledge-bases/${selectedBaseId}/items`, '/knowledge-bases'])
+          } catch (error) {
+            logger.error(
+              'Failed to refresh knowledge source list after text import',
+              error instanceof Error ? error : new Error(String(error)),
+              { baseId: selectedBaseId }
+            )
+          }
+        }
         setIsResolvingSubmit(false)
       }
     }
@@ -284,9 +349,11 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
     collectFileInputs,
     directPick,
     handleOpenChange,
+    invalidateCache,
     open,
     pendingAddDirectoryPaths,
     pendingAddFiles,
+    selectedBaseId,
     submitWithStrategy,
     t
   ])

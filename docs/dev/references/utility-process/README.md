@@ -20,14 +20,14 @@ The design rationale, ownership boundaries, and historical experiment evidence l
 
 ## What V1 is not
 
-No pooling, no keyed instances, no reverse RPC (child → main), no raw byte channel, no runtime schema validation, and no automatic restart. One live process per definition, spawned on the first request. Three processes are registered today — `inference.embedding`, `inference.ocr`, and `inference.asr` (local embedding, OCR, and speech recognition).
+No pooling, no keyed instances, no reverse RPC (child → main), no raw byte channel, no runtime schema validation, and no automatic restart. One live process per definition, spawned on the first request.
 
 ## Declaring a process
 
 A definition is a frozen, validated description of one utility process. It carries the contract only as a phantom type — main and child come from the same signed build, so there is no runtime validation of method payloads.
 
 ```typescript
-// src/main/ai/localModel/runtime/inferenceProcess.ts
+// Illustrative definition
 export type EmbeddingInferenceContract = {
   methods: {
     embed: UtilityProcessMethod<{ modelDir: string; dtype: string; texts: string[] }, number[][]>
@@ -55,7 +55,7 @@ Register the definition from the consumer service's `onInit` — `application.ge
 Entries live in a `utilityEntries/` directory next to their consumer and end with `serveUtilityProcess()`:
 
 ```typescript
-// src/main/ai/localModel/runtime/utilityEntries/inferenceEmbedding.ts
+// Illustrative child entry
 serveUtilityProcess<EmbeddingInferenceContract, InferenceInitData>({
   id: 'inference.embedding',
   initialize: (initData, { logger }) => applyInitData(initData, logger),

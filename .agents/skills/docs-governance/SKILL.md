@@ -12,14 +12,14 @@ Require an explicit scope. Read the applicable `AGENTS.md`, then the owning sour
 - Cross-cutting and multi-module behavior belongs under `docs/dev/references/<domain>/`.
 - Repository process belongs under `docs/dev/contrib/`.
 - Module-private behavior belongs beside the module.
-- Durable rationale and rejected alternatives belong in Agent Notes.
+- Record durable rationale and rejected alternatives in the owning document or an optional Agent Note.
 - Standing agent orders belong in the narrowest applicable `AGENTS.md` and link their rationale.
 
 Keep one home per fact. A domain README owns its subject and summarizes children with links; it does not copy their implementation detail. A tutorial leads through ordered actions to an observable result. A reference supports lookup and states current behavior.
 
 ## Inspect code impact
 
-Run `pnpm change:scope --base <verified-ref>` and `pnpm docs:affected --base <verified-ref>`. Inspect every returned document against the changed behavior. A source-prefix match is a mandatory review prompt, not proof that prose needs a diff.
+When documented behavior or a contract changes, inspect the owning docs. Use `pnpm change:scope --base <verified-ref>` or `pnpm docs:affected --base <verified-ref>` when the affected scope is unclear. Review suggested documents against actual behavior before editing.
 
 Reference docs describe current reality. Preserve behavior, failure, timing, ownership, modality, exceptions, and consequences. Remove implementation narration, reasoning transcripts, review history, duplicated rationale, status inventories, and catalogs whose source or generator already owns them.
 
@@ -31,4 +31,4 @@ For an in-scope pair, read [the pairing contract](../../../docs/dev/i18n/README.
 
 ## Validation
 
-Documentation-only work runs `pnpm docs:check`. Script, hook, code-comment, or skill changes also run focused tests, `pnpm lint`, `pnpm test:lint`, and `git diff --check` as applicable.
+Check changed text, links, and formatting. Run `pnpm docs:check` when edits affect repository documentation checks, and `pnpm skills:check` for skill metadata or links. Run focused checks for any executable behavior changed.

@@ -2,6 +2,10 @@
 description: Per-attachment routing to native file parts or capped extracted text, with read_file paging for truncated overflow
 sources:
   - src/main/ai/messages/attachmentRouting.ts
+  - src/main/ai/messages/attachmentBudget.ts
+  - src/main/ai/messages/attachmentInlineBudget.ts
+  - src/main/ai/messages/attachmentWorkerClient.ts
+  - src/main/ai/messages/attachmentTextExtraction.ts
   - src/main/ai/messages/fileProcessor.ts
   - src/main/ai/tools/adapters/aiSdk/builtin/ReadFileTool.ts
   - src/shared/utils/file/fileExtensions.ts
@@ -13,14 +17,11 @@ sources:
 How a user's attached files reach the model on a chat turn.
 
 **One rule, per attachment:** if the provider+model can take it as a native
-input, send the **native file**; otherwise send its **extracted text**, inlined
-and capped. The `read_file` tool only exists to page the overflow of large
+input, send the **native file**; extract and inline text for supported documents and text files. The `read_file` tool only exists to page the overflow of large
 text — it is never the *only* way the model sees content.
 
 This is deliberate: visibility must not depend on the model choosing to call a
-tool. A weak (or non-tool-calling) model still sees every attachment, and a
-provider that handles a modality natively keeps doing so — no capability
-regression.
+tool. Models without tools still receive the inline document text.
 
 ## Routing matrix
 
@@ -30,8 +31,7 @@ Decided per file part in `prepareChatMessages`
 | Attachment | Native when | What the model receives |
 |---|---|---|
 | image | model is vision | native image part (inline) |
-| image | non-vision, OCR finds text | OCR text, inline (capped) |
-| image | non-vision, no OCR text (or OCR unconfigured/failed) | user-facing error; no provider request |
+| managed image | model lacks vision support | localized error before the provider request |
 | pdf | provider+model native PDF | native PDF part (inline) |
 | pdf | otherwise | extracted text, inline (capped) |
 | office (`docx/xlsx/pptx/odf`) | — | extracted text, inline (capped) |
@@ -48,23 +48,26 @@ Decided per file part in `prepareChatMessages`
   also normalizes the `mediaType` to the on-disk MIME. The provider gets the real
   file as a user-message part. (The function is named for the boundary: provider
   File-API upload for large files would slot in behind the same signature.)
+  Locally decoded PNG, JPEG, WebP, and GIF images with a short edge below the
+  15 px attachment compatibility target are padded with opaque white before
+  the request bytes leave the main process; stored FileEntry and persisted message
+  part bytes remain unchanged. Compliant images and inputs outside the strict
+  decoder, including remote URLs and AVIF/HEIC, pass through unchanged; images
+  that cannot be padded are also sent unchanged. This prevents providers such as
+  Volcengine Ark from rejecting the whole request and aborting the turn when an
+  image edge is below their minimum.
 - Unknown extensions undergo a conservative content sniff (binary detection +
   encoding confidence). Binary bytes or ambiguous legacy encodings get a short
   unsupported note instead of being decoded into mojibake.
-- A non-vision image only degrades to OCR text when OCR actually finds text.
-  Otherwise (empty OCR result, unconfigured or failed OCR) attachment routing
-  raises a localized error before opening the provider request. A gateway-backed
-  model that accepts images must have **Vision** enabled under Provider Settings
-  → model input modalities; that user override takes precedence over the catalog
-  and sends the native image without running OCR.
+- Managed images require vision. For gateway-backed models that accept images,
+  enable **Vision** under Provider Settings → model input modalities.
 - Any other per-file failure (missing entry, parse error, failed materialization)
   degrades to a `[could not read this file].` note rather than dropping the
   file or failing the request.
 - **Non-native** → the file part is replaced by its extracted text (see the
   cap below). The internal `fileEntryId` is never written into the prompt.
 
-Only `fileEntryId`-backed (first-party chat) images enter the OCR path. Gateway /
-external file parts (no `fileEntryId`) are still eagerly materialized, but
+Gateway and external file parts without `fileEntryId` are still eagerly materialized, but
 image/audio/video parts are omitted when native support is false. Other
 gateway/external file types keep their existing behavior.
 
@@ -95,7 +98,14 @@ Extracted text is bounded so multi-turn context stays in control:
   - tool-capable model: `[truncated N/total — call read_file("name", offset=N) for more]`
   - otherwise: `[truncated N/total]`
 
-Default cap ≈ 8k chars/file (tunable).
+When a context window is known, system text, tools, history, and native media
+are priced first. Attachments share the remaining request budget. A worker
+prices attachment bodies by UTF-8 byte length as a conservative token bound;
+small files fit whole and larger files share the remainder. It selects a
+Unicode-safe fitting prefix without whole-body BPE or repeated prefix counting.
+This can inline less text than exact token counting, especially for ASCII.
+
+Without a computable request budget, the fallback cap is 8k characters per file.
 
 ## `read_file` — text-only overflow tool
 
@@ -106,7 +116,7 @@ per-request attachment allow-list from the tool-call context.
   **handle** (unique, normalized — see `collectFileAttachments`), resolved to an
   entry id against a per-request allow-list. The model never sees or guesses
   entry ids, and can only read files attached to the current conversation.
-- Returns **text only** (extracted / OCR), paginated. Errors are sanitized to
+- Returns **text only**, paginated. Errors are sanitized to
   filename-level messages; details are logged, not returned.
 - Exposed to tool-capable models whenever the request carries first-party file
   attachments (`applies: scope.hasFileAttachments`). It pages over-cap text; when
@@ -126,24 +136,24 @@ session-scoped server. It writes only new paths inside the session workspace and
 never overwrites an existing file. No attachment state or write tools are added
 to the shared chat runtime or to ordinary Agents.
 
-## Extraction & OCR
+## Document text extraction
 
-| Concern | Owner |
-|---|---|
-| office/pdf/text → text | `extractDocumentText` (`src/main/ai/messages/attachmentTextExtraction.ts`) |
-| image → text (non-vision) | `FileProcessingService.ocrImage` (`src/main/features/fileProcessing/`) |
-
-`ai/` reaches OCR through the `FileProcessingService` rather than deep-importing
-the feature, keeping processor/handler internals in that domain. Both
-`extractDocumentText` and the OCR path are path-free and cache their result by
-content version (30 min), so the eager every-turn pass over history doesn't
-re-extract or re-OCR the same file. `extractDocumentText` reads bytes through
+`extractDocumentText` caches text by content version for 30 minutes and reads bytes through
 `FileManager.read` (PDF via `pdf-parse`, office via
 `officeparser`/`word-extractor`, known text extensions via
 `decodeTextWithAutoEncoding`, and files with no extension or an unrecognized
 extension (`FILE_TYPE.OTHER`) via `decodeTextBufferIfText`) and dispatches on
 the `FileEntry` canonical `ext`. The conservative decoder returns `null` when
 the bytes are binary or their legacy encoding is too ambiguous to decode safely.
+
+Plain-text decoding and inline-budget allocation run in short-lived worker
+threads, with at most two active workers across requests. FileManager owns file
+access and main retains the version cache. Queued cancellation skips worker
+creation; active cancellation terminates its worker, and the concurrency slot
+remains occupied until termination finishes. Worker errors propagate to the
+existing attachment-routing error handling. PDF/Office parsing keeps its
+existing path.
+
 
 ## Capability resolution
 

@@ -1,4 +1,3 @@
-import { useChat } from '@ai-sdk/react'
 import { ChevronDown, Loader2 } from 'lucide-react'
 import type { FC } from 'react'
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
@@ -10,9 +9,9 @@ import { toMessageListItem } from '@renderer/components/chat/messages/utils/mess
 import CopyButton from '@renderer/components/CopyButton'
 import { useAssistant } from '@renderer/hooks/useAssistant'
 import { useExecutionOverlay } from '@renderer/hooks/useExecutionOverlay'
+import { useStreamCommands } from '@renderer/hooks/useStreamCommands'
 import { useTemporaryTopic } from '@renderer/hooks/useTemporaryTopic'
 import { useTopicStreamStatus } from '@renderer/hooks/useTopicStreamStatus'
-import { ipcChatTransport } from '@renderer/services/aiTransport'
 import { getTextFromParts } from '@renderer/utils/message/partsHelpers'
 import { expandSelectionPrompt } from '@renderer/utils/selectionAction'
 import { cn } from '@renderer/utils/style'
@@ -21,7 +20,6 @@ import type { CherryMessagePart, CherryUIMessage } from '@shared/data/types/mess
 import { SELECTION_BUILTIN_ACTION_ID, type SelectionAction } from '@shared/types/selection'
 
 import { getSelectionActionErrorMessage } from '../errorMessage'
-import { ResultReadAloudButton } from './ResultReadAloudButton'
 import WindowFooter from './WindowFooter'
 
 // Lazy boundary (S6b): keeps the heavy message-content chain out of the action
@@ -33,15 +31,12 @@ const ActionResultContent = React.lazy(importActionResultContent)
 
 const logger = loggerService.withContext('ActionGeneral')
 
-// Stable empty array — temp-topic has no DB-backed uiMessages to seed from.
-const EMPTY_UI_MESSAGES: CherryUIMessage[] = []
 interface Props {
   action: SelectionAction
-  sourceEntityId: string
   scrollToBottom?: () => void
 }
 
-const ActionGeneral: FC<Props> = React.memo(({ action, sourceEntityId, scrollToBottom }) => {
+const ActionGeneral: FC<Props> = React.memo(({ action, scrollToBottom }) => {
   const { t } = useTranslation()
   const [language] = usePreference('app.language')
   const [showOriginal, setShowOriginal] = useState(false)
@@ -84,26 +79,14 @@ const ActionGeneral: FC<Props> = React.memo(({ action, sourceEntityId, scrollToB
   const [completionError, setCompletionError] = useState<string | null>(null)
   const [requestStartedAt, setRequestStartedAt] = useState('')
 
-  const { sendMessage, stop: stopChat } = useChat<CherryUIMessage>({
-    // Once the temporary topic id arrives, the chat reinitializes with it.
-    // Before that we use a stable placeholder so `useChat` doesn't thrash across renders.
-    id: temporaryTopicId ?? 'pending-temp',
-    transport: ipcChatTransport,
-    experimental_throttle: 50,
-    onError: (err) => {
-      setIsPreparing(false)
-      setCompletionError(getSelectionActionErrorMessage(err, t))
-    }
+  const { sendMessage, stop: stopChat } = useStreamCommands(temporaryTopicId ?? 'pending-temp', undefined, (err) => {
+    setIsPreparing(false)
+    setCompletionError(getSelectionActionErrorMessage(err, t))
   })
 
-  // Temp-topic: no pre-allocated DB row, so the reader keys overlay by the
-  // start-chunk id; `liveAssistants` is the streamed snapshot list.
+  // Temporary topics use the message identities assigned by Main.
   const { activeExecutions, isPending } = useTopicStreamStatus(temporaryTopicId ?? 'pending-temp')
-  const { liveAssistants } = useExecutionOverlay(
-    temporaryTopicId ?? 'pending-temp',
-    activeExecutions,
-    EMPTY_UI_MESSAGES
-  )
+  const { liveAssistants } = useExecutionOverlay(temporaryTopicId ?? 'pending-temp', activeExecutions)
 
   useEffect(() => {
     if (isPending) {
@@ -148,8 +131,7 @@ const ActionGeneral: FC<Props> = React.memo(({ action, sourceEntityId, scrollToB
     setCompletionError(null)
     setRequestStartedAt(new Date().toISOString())
     setIsPreparing(true)
-    // topicId comes from useChat id; Main resolves assistant/model from topic.assistantId.
-    // No body fields are read by IpcChatTransport for this codepath.
+    // topicId is captured by the command hook; Main resolves assistant/model from topic.assistantId.
     void sendMessage({ text: promptContent })
   }, [chosenAssistantId, promptContent, ready, sendMessage, temporaryTopicId, waitingForConfiguredAssistant])
 
@@ -219,11 +201,7 @@ const ActionGeneral: FC<Props> = React.memo(({ action, sourceEntityId, scrollToB
         )}
       </div>
       <div className="min-h-3" />
-      <WindowFooter loading={isStreaming} onPause={handlePause} onRegenerate={handleRegenerate} content={content}>
-        {!isStreaming && !isPreparing && !error && content.trim() && (
-          <ResultReadAloudButton text={content} sourceEntityId={sourceEntityId} />
-        )}
-      </WindowFooter>
+      <WindowFooter loading={isStreaming} onPause={handlePause} onRegenerate={handleRegenerate} content={content} />
     </>
   )
 })

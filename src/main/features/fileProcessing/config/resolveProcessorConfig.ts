@@ -1,13 +1,8 @@
 import { application } from '@application'
 import type { FileProcessorFeature, FileProcessorId, PreferenceKeyType } from '@shared/data/preference/preferenceTypes'
-import {
-  FILE_PROCESSOR_LOCAL_MODEL,
-  type FileProcessorMerged,
-  PRESETS_FILE_PROCESSORS
-} from '@shared/data/presets/fileProcessing'
+import { type FileProcessorMerged, PRESETS_FILE_PROCESSORS } from '@shared/data/presets/fileProcessing'
 
 import { processorRegistry } from '../processors/registry'
-import { resolveDefaultImageToTextProcessor } from './defaultImageToTextProcessor'
 
 const DEFAULT_PROCESSOR_KEY_BY_FEATURE = {
   document_to_markdown: 'feature.file_processing.default_document_to_markdown',
@@ -37,7 +32,11 @@ export function getFileProcessorConfigById(processorId: FileProcessorId): FilePr
       return {
         ...capability,
         ...(capabilityOverride?.apiHost !== undefined ? { apiHost: capabilityOverride.apiHost } : {}),
-        ...(capabilityOverride?.modelId !== undefined ? { modelId: capabilityOverride.modelId } : {})
+        ...(capabilityOverride?.modelId !== undefined ? { modelId: capabilityOverride.modelId } : {}),
+        ...(capabilityOverride?.formulaLevel !== undefined ? { formulaLevel: capabilityOverride.formulaLevel } : {}),
+        ...(capabilityOverride?.mergeCrossPageForms !== undefined
+          ? { mergeCrossPageForms: capabilityOverride.mergeCrossPageForms }
+          : {})
       }
     }),
     apiKeys: override?.apiKeys,
@@ -53,33 +52,21 @@ function assertProcessorUsable(config: FileProcessorMerged, feature: FileProcess
   if (!processorRegistry[config.id].isSupported()) {
     throw new Error(`File processor ${config.id} is not available on this platform`)
   }
-
-  // Distinct message on purpose: this one reaches the user verbatim (a failed
-  // knowledge-base item, a translation toast), and "not available on this
-  // platform" sent people hunting for an OS problem when all they had to do was
-  // download the model.
-  const requiredModel = FILE_PROCESSOR_LOCAL_MODEL[config.id]
-  if (requiredModel && !application.get('LocalModelService').isDefaultModelReady(requiredModel)) {
-    throw new Error(`File processor ${config.id} needs the local ${requiredModel} model to be downloaded first`)
-  }
 }
 
 export function resolveProcessorConfigByFeature(
   feature: FileProcessorFeature,
   processorId?: FileProcessorId
 ): FileProcessorMerged {
+  if (feature === 'image_to_text') throw new Error('OCR is unavailable in TinyCherry')
+
   if (processorId) {
     const config = getFileProcessorConfigById(processorId)
     assertProcessorUsable(config, feature)
     return config
   }
 
-  // `image_to_text` has a self-healing platform default (system OCR on macOS/Windows,
-  // tesseract on Linux) resolved here instead of persisted on startup, so a profile
-  // created on one OS and restored on another never carries an unavailable processor id.
-  const defaultProcessorId =
-    application.get('PreferenceService').get(DEFAULT_PROCESSOR_KEY_BY_FEATURE[feature]) ??
-    (feature === 'image_to_text' ? resolveDefaultImageToTextProcessor() : null)
+  const defaultProcessorId = application.get('PreferenceService').get(DEFAULT_PROCESSOR_KEY_BY_FEATURE[feature])
 
   if (defaultProcessorId) {
     const config = getFileProcessorConfigById(defaultProcessorId)

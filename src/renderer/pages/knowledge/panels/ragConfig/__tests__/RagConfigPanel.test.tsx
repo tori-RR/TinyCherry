@@ -101,7 +101,7 @@ vi.mock('@cherrystudio/ui', async () => {
     Label: ({ children, ...props }: { children: ReactNode; [key: string]: unknown }) => (
       <label {...props}>{children}</label>
     ),
-    Scrollbar: ({ children, ...props }: { children: ReactNode; [key: string]: unknown }) => (
+    ScrollArea: ({ children, ...props }: { children: ReactNode; [key: string]: unknown }) => (
       <div {...props}>{children}</div>
     ),
     Input: (props: Record<string, unknown>) => <input {...props} />,
@@ -394,7 +394,7 @@ describe('RagConfigPanel', () => {
 
     expect(screen.queryByText('separatorRule')).not.toBeInTheDocument()
     expect(screen.queryByText('分隔符规则')).not.toBeInTheDocument()
-    expect(screen.getByText('文档处理')).toBeInTheDocument()
+    expect(screen.queryByText('文档处理')).not.toBeInTheDocument()
     expect(screen.getByText('Top K')).toBeInTheDocument()
     expect(screen.getByText('重排模型')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: '不使用' })).toHaveLength(2)

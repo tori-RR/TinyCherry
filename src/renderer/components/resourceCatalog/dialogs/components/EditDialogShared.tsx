@@ -1,4 +1,4 @@
-import { ArrowUpRight, ChevronDown, Database, HelpCircle, Trash2, X } from 'lucide-react'
+import { ChevronDown, Database, HelpCircle, Trash2, X } from 'lucide-react'
 import { type ComponentProps, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type FieldValues, type Path, type UseFormReturn, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -22,7 +22,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-  Scrollbar,
+  ScrollArea,
   Tabs,
   TabsList,
   TabsTrigger,
@@ -30,7 +30,8 @@ import {
 } from '@cherrystudio/ui'
 import { cn } from '@cherrystudio/ui/lib/utils'
 import { loggerService } from '@logger'
-import { ModelSelector, type ModelSelectorFilter } from '@renderer/components/ModelSelector'
+import { CherryCloudModelSelector as ModelSelector } from '@renderer/components/cherryCloud/CherryCloudModelSelector'
+import { type ModelSelectorFilter } from '@renderer/components/ModelSelector'
 import { useKnowledgeBases } from '@renderer/hooks/useKnowledgeBase'
 import { useModelById } from '@renderer/hooks/useModel'
 import { toast } from '@renderer/services/toast'
@@ -263,15 +264,13 @@ export function KnowledgeBaseField<TValues extends KnowledgeBaseFieldValues>({
   portalContainer,
   formLabel = true,
   labelClassName,
-  disabled = false,
-  onOpenKnowledgePage
+  disabled = false
 }: {
   form: UseFormReturn<TValues>
   portalContainer: HTMLElement | null
   formLabel?: boolean
   labelClassName?: string
   disabled?: boolean
-  onOpenKnowledgePage?: () => void
 }) {
   const { t } = useTranslation()
   const { bases, isLoading } = useKnowledgeBases({ revalidateOnFocus: true })
@@ -328,18 +327,6 @@ export function KnowledgeBaseField<TValues extends KnowledgeBaseFieldValues>({
               triggerPosition="end"
               triggerClassName="border border-border bg-transparent"
               portalContainer={portalContainer}
-              footer={
-                onOpenKnowledgePage ? (
-                  <button
-                    type="button"
-                    disabled={disabled}
-                    className="relative flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-muted-foreground text-xs transition-colors hover:bg-accent/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
-                    onClick={onOpenKnowledgePage}>
-                    <ArrowUpRight size={14} className="shrink-0" />
-                    <span className="min-w-0 flex-1 truncate">{t('library.config.knowledge.create_first')}</span>
-                  </button>
-                ) : null
-              }
             />
           </div>
           {linkedItems.length === 0 ? (
@@ -541,9 +528,14 @@ export function EditDialogShell<TValues extends FieldValues>({
               </div>
 
               <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-                <Scrollbar ref={scrollContainerRef} className="min-h-0 min-w-0 flex-1 px-6 pt-5 pb-3">
+                <ScrollArea
+                  viewportProps={{ ref: scrollContainerRef }}
+                  contentProps={{
+                    className: cn('px-6 pt-5 pb-3', (activeTab === 'prompt' || activeTab === 'memory') && 'h-full')
+                  }}
+                  className="min-h-0 min-w-0 flex-1">
                   {children}
-                </Scrollbar>
+                </ScrollArea>
                 {/* Always-present bottom band: insets scrolling lists from the dialog's
                     rounded-3xl corners so content never clips into them mid-scroll, and
                     surfaces the save error inline when present. */}

@@ -1,9 +1,9 @@
 import type { LucideIcon } from 'lucide-react'
 import { FileText, Folder, Link2, StickyNote } from 'lucide-react'
 
+import { getKnowledgeDisplayTitle } from '@renderer/pages/knowledge/utils/itemTitle'
 import { formatRelativeTime } from '@renderer/utils/time'
 import {
-  getKnowledgeItemDisplayTitle,
   getKnowledgePathBasename,
   type KnowledgeItemOf,
   type KnowledgeItemStatus,
@@ -130,7 +130,7 @@ export const dataSourceTypeDisplayConfig: DataSourceTypeDisplayConfigMap = {
       icon: FileText,
       iconClassName: 'text-blue-500'
     },
-    getTitle: (item) => getKnowledgeItemDisplayTitle(item),
+    getTitle: (item) => getKnowledgeDisplayTitle(item),
     getSuffix: (item) => getFileSuffix(item),
     getMetaParts: (item, { language }) => getRelativeMetaParts(item.updatedAt, language),
     getStatus: resolveDataSourceStatusViewModel
@@ -141,7 +141,7 @@ export const dataSourceTypeDisplayConfig: DataSourceTypeDisplayConfigMap = {
       icon: StickyNote,
       iconClassName: 'text-amber-500'
     },
-    getTitle: (item) => getKnowledgeItemDisplayTitle(item),
+    getTitle: (item) => getKnowledgeDisplayTitle(item),
     getSuffix: () => '',
     getMetaParts: (item, { language }) => getRelativeMetaParts(item.updatedAt, language),
     getStatus: resolveDataSourceStatusViewModel
@@ -152,7 +152,7 @@ export const dataSourceTypeDisplayConfig: DataSourceTypeDisplayConfigMap = {
       icon: Folder,
       iconClassName: 'text-violet-500'
     },
-    getTitle: (item) => getKnowledgeItemDisplayTitle(item),
+    getTitle: (item) => getKnowledgeDisplayTitle(item),
     getSuffix: () => '',
     getMetaParts: (item, { language }) => getRelativeMetaParts(item.updatedAt, language),
     getStatus: resolveDataSourceStatusViewModel
@@ -163,7 +163,7 @@ export const dataSourceTypeDisplayConfig: DataSourceTypeDisplayConfigMap = {
       icon: Link2,
       iconClassName: 'text-cyan-500'
     },
-    getTitle: (item) => getKnowledgeItemDisplayTitle(item),
+    getTitle: (item) => getKnowledgeDisplayTitle(item),
     getSuffix: () => '',
     getMetaParts: (item, { language }) => getRelativeMetaParts(item.updatedAt, language),
     getStatus: resolveDataSourceStatusViewModel

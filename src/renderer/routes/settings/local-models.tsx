@@ -1,14 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router'
-
-import { SettingsContentColumn } from '@renderer/components/SettingsPrimitives'
-import LocalModelsSection from '@renderer/pages/settings/DependenciesSettings/LocalModelsSection'
-
-const LocalModelsSettings = () => (
-  <SettingsContentColumn className="bg-transparent">
-    <LocalModelsSection />
-  </SettingsContentColumn>
-)
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/settings/local-models')({
-  component: LocalModelsSettings
+  beforeLoad: () => {
+    throw redirect({ to: '/settings/provider', replace: true })
+  }
 })

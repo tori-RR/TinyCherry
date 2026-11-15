@@ -1,5 +1,5 @@
 import type { PropsWithChildren } from 'react'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 
 import { usePreference } from '@data/hooks/usePreference'
 import { loggerService } from '@logger'
@@ -36,9 +36,13 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     settedTheme === ThemeMode.light || settedTheme === ThemeMode.dark ? settedTheme : getSystemTheme()
   )
   const { initUserTheme } = useUserTheme()
+  const systemThemeVersion = useRef(0)
 
   // listen for theme updates from main process
-  useIpcOn('system.native_theme_updated', (actualTheme) => setActualTheme(actualTheme))
+  useIpcOn('system.native_theme_updated', (actualTheme) => {
+    systemThemeVersion.current++
+    if (settedTheme === ThemeMode.system) setActualTheme(actualTheme)
+  })
 
   const toggleTheme = () => {
     const nextTheme = {
@@ -85,10 +89,11 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     }
 
     let active = true
+    const version = systemThemeVersion.current
     void ipcApi
       .request('system.get_native_theme')
       .then((theme) => {
-        if (active) {
+        if (active && version === systemThemeVersion.current) {
           setActualTheme(theme)
         }
       })

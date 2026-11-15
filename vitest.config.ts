@@ -185,14 +185,6 @@ export default defineConfig({
           ]
         }
       },
-      {
-        extends: true,
-        test: {
-          name: 'system-speech',
-          environment: 'node',
-          include: ['packages/system-speech/tests/**/*.test.ts']
-        }
-      },
       // packages/ui 单元测试配置
       {
         extends: true,
@@ -224,6 +216,8 @@ export default defineConfig({
         ['agent-runtime', 'tests'],
         ['agent-runtime-pi', 'tests'],
         ['agent-runtime-pi-durable', 'tests'],
+        ['agent-runtime-acp', 'tests'],
+        ['agent-runtime-claude-code', 'tests'],
         ['ai-sdk-provider', 'src'],
         ['remote-protocol', 'tests'],
         ['remote-transport', 'tests']

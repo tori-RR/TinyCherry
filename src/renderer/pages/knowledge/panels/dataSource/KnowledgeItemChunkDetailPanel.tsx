@@ -3,13 +3,14 @@ import type { ReactNode } from 'react'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button, EmptyState, Scrollbar } from '@cherrystudio/ui'
+import { Button, EmptyState, ScrollArea } from '@cherrystudio/ui'
 import { cn } from '@cherrystudio/ui/lib/utils'
 import { useQuery } from '@data/hooks/useDataApi'
 import { loggerService } from '@logger'
 import { DynamicVirtualList } from '@renderer/components/VirtualList'
 import { ipcApi } from '@renderer/ipc'
 import { normalizeKnowledgeError } from '@renderer/pages/knowledge/utils/error'
+import { isEvoStack } from '@renderer/utils/platform'
 import type { KnowledgeItem, KnowledgeItemChunk } from '@shared/data/types/knowledge'
 
 import { toKnowledgeItemRowViewModel } from './utils/selectors'
@@ -36,7 +37,7 @@ const KnowledgeItemChunkCard = ({ chunk }: { chunk: KnowledgeItemChunk }) => {
           {chunk.metadata.chunkIndex + 1}
         </span>
         <span className="flex-1 text-xs leading-4 text-foreground-tertiary">
-          {chunk.metadata.tokenCount} {t('knowledge.rag.tokens_unit')}
+          {chunk.metadata.tokenCount} {t(isEvoStack ? 'knowledge.rag.characters_unit' : 'knowledge.rag.tokens_unit')}
         </span>
       </div>
       <div className="px-3 pb-3">
@@ -156,7 +157,7 @@ const KnowledgeItemChunkDetailPanel = ({
           {renderChunk}
         </DynamicVirtualList>
       ) : (
-        <Scrollbar autoHideScrollbar={false} className="min-h-0 flex-1 px-4 py-3">
+        <ScrollArea type="always" className="min-h-0 flex-1 px-4 py-3">
           {isItemLoading || isLoading ? <KnowledgeItemChunkState>{t('common.loading')}</KnowledgeItemChunkState> : null}
           {!isItemLoading && itemError ? <KnowledgeItemChunkState>{itemError.message}</KnowledgeItemChunkState> : null}
           {!isItemLoading && !isLoading && !itemError && error ? (
@@ -170,7 +171,7 @@ const KnowledgeItemChunkDetailPanel = ({
               className="h-full"
             />
           ) : null}
-        </Scrollbar>
+        </ScrollArea>
       )}
     </div>
   )

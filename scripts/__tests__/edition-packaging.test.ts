@@ -75,7 +75,7 @@ describe('edition packaging', () => {
     expect(script).toContain(`--${arch}`)
   })
 
-  it('keeps the existing global product and update identity', () => {
+  it('packages TinyCherry with an independent Windows identity and no upstream feed', () => {
     const config = parse(readFileSync(path.join(projectRoot, 'electron-builder.yml'), 'utf8'))
 
     expect({
@@ -87,43 +87,34 @@ describe('edition packaging', () => {
       publish: config.publish,
       windowsArtifactName: config.win.artifactName
     }).toEqual({
-      appId: 'com.kangfenmao.CherryStudio',
+      appId: 'io.github.torirr.TinyCherry',
       edition: GLOBAL_EDITION,
-      nsisGuid: '41a4ccd8-bcc0-5710-9eee-0e164da68057',
-      productName: 'Cherry Studio',
-      protocol: 'cherrystudio',
-      publish: expect.objectContaining({ provider: 'generic', url: 'https://releases.cherry-ai.com' }),
+      nsisGuid: 'ffabf2cf-4435-5674-a38e-905ffe32f48e',
+      productName: 'TinyCherry',
+      protocol: 'tinycherry',
+      publish: null,
       windowsArtifactName: '${productName}-${version}-${arch}-setup.${ext}'
     })
   })
 
-  it('changes only the package identity, edition marker, and update channel for the China edition', async () => {
-    const config = await createChinaEditionConfig({
-      packageMetadata: { value: Promise.resolve({ version: '2.1.0' }) }
-    })
+  it('keeps the China edition in the TinyCherry identity namespace', () => {
+    const config = createChinaEditionConfig()
 
     expect(config).toEqual({
       extends: './electron-builder.yml',
-      appId: 'com.cherryai.cherrystudio.cn',
+      appId: 'io.github.torirr.TinyCherry.cn',
       extraMetadata: {
         cherryEdition: CHINA_EDITION
-      },
-      publish: expect.objectContaining({
-        provider: 'generic',
-        url: 'https://releases.cherry-ai.com',
-        channel: 'latest-cn'
-      })
+      }
     })
   })
 
-  it('shares the global Electron application name used for userData', async () => {
-    const config = await createChinaEditionConfig({
-      packageMetadata: { value: Promise.resolve(packageMetadata) }
-    })
+  it('shares the TinyCherry Electron application name used for userData', () => {
+    const config = createChinaEditionConfig()
     const chinaPackageMetadata = { ...packageMetadata, ...config.extraMetadata }
 
-    expect(packageMetadata.productName ?? packageMetadata.name).toBe('CherryStudio')
-    expect(chinaPackageMetadata.productName ?? chinaPackageMetadata.name).toBe('CherryStudio')
+    expect(packageMetadata.productName ?? packageMetadata.name).toBe('TinyCherry')
+    expect(chinaPackageMetadata.productName ?? chinaPackageMetadata.name).toBe('TinyCherry')
   })
 
   it.each([

@@ -18,7 +18,7 @@ import path from 'node:path'
 import { app } from 'electron'
 
 import { loggerService } from '@logger'
-import { CHERRY_HOME, DEV_PROFILE_ROOT } from '@main/core/paths/constants'
+import { CHERRY_HOME, DEV_PROFILE_ROOT, PORTABLE_EXECUTABLE_NAME } from '@main/core/paths/constants'
 import { getNormalizedExecutablePath, isUsableDataDir } from '@main/core/preboot/userDataLocation'
 import { bootConfigService } from '@main/data/bootConfig'
 
@@ -41,7 +41,7 @@ export interface MigrationPaths {
 
   /** Resolved v1 userData directory (accounts for legacy config.json custom path). */
   readonly userData: string
-  /** Cherry home directory (`~/.cherrystudio` by default). */
+  /** TinyCherry's startup and tools directory, separate from the original profile. */
   readonly cherryHome: string
 
   // ── Derived from userData (pre-computed, consumers use directly) ──
@@ -458,7 +458,8 @@ export function readLegacyEntries(configFile: string, currentExe: string): Legac
 
 function isWindowsPortableExecutable(executablePath: string): boolean {
   const normalized = executablePath.replaceAll('\\', '/')
-  return normalized.slice(normalized.lastIndexOf('/') + 1).toLowerCase() === 'cherry-studio-portable.exe'
+  const filename = normalized.slice(normalized.lastIndexOf('/') + 1).toLowerCase()
+  return filename === PORTABLE_EXECUTABLE_NAME || filename === 'cherry-studio-portable.exe'
 }
 
 /**

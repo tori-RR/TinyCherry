@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type * as PlatformModule from '@renderer/utils/platform'
 import type { Group } from '@shared/data/types/group'
 import type { KnowledgeBase } from '@shared/data/types/knowledge'
 
@@ -10,6 +11,14 @@ import CreateKnowledgeBaseDialog from '../CreateKnowledgeBaseDialog'
 
 const mockIpcRequest = vi.fn()
 const mockSettingsNavigate = vi.fn()
+
+const runtime = vi.hoisted(() => ({ isEvoStack: false }))
+vi.mock('@renderer/utils/platform', async (importOriginal) => ({
+  ...(await importOriginal<typeof PlatformModule>()),
+  get isEvoStack() {
+    return runtime.isEvoStack
+  }
+}))
 
 vi.mock('@renderer/ipc', () => ({
   ipcApi: {
@@ -187,8 +196,32 @@ const createGroup = (overrides: Partial<Group> = {}): Group => ({
 describe('CreateKnowledgeBaseDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    runtime.isEvoStack = false
     // The embedding dimensions probe goes through ipcApi.request('ai.embedding.embed_many', …).
     mockIpcRequest.mockResolvedValue({ embeddings: [new Array(1536).fill(0)] })
+  })
+
+  it('creates native bases ungrouped even when an existing group was supplied', async () => {
+    runtime.isEvoStack = true
+    const createBase = vi.fn().mockResolvedValue(createKnowledgeBase())
+    const user = userEvent.setup()
+    render(
+      <CreateKnowledgeBaseDialog
+        open
+        groups={[createGroup()]}
+        initialGroupId="group-1"
+        isCreating={false}
+        createBase={createBase}
+        onOpenChange={vi.fn()}
+        onCreated={vi.fn()}
+      />
+    )
+
+    expect(screen.queryByText('分组')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Research' })).not.toBeInTheDocument()
+    await user.type(screen.getByLabelText('名称'), 'Native Base')
+    await user.click(screen.getByRole('button', { name: '创建' }))
+    await waitFor(() => expect(createBase).toHaveBeenCalledWith({ name: 'Native Base' }))
   })
 
   it('does not submit when the name is empty', async () => {

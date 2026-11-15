@@ -4,8 +4,7 @@ import type { FileProcessingOutputTarget, FileProcessingTask } from '@shared/dat
 export type {
   FileProcessingArtifact,
   FileProcessingTask,
-  FileProcessingTaskId,
-  ListAvailableFileProcessorsResult
+  FileProcessingTaskId
 } from '@shared/data/types/fileProcessing'
 
 export type SettledFileProcessingTask = Extract<FileProcessingTask, { status: 'completed' | 'failed' | 'cancelled' }>

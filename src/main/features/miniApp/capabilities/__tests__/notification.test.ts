@@ -33,24 +33,7 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers())
 
 describe('cherry.notification.show', () => {
-  it('prefixes the title with the calling app so it cannot pose as Cherry', async () => {
-    await notificationCapability.show(A, { title: 'Saved', body: 'Level 3' })
-    const sent = sendNotification.mock.calls[0][0]
-    expect(sent.title).toContain('My Game')
-    expect(sent.title).toContain('Saved')
-    expect(sent.title).not.toBe('Saved')
-    expect(sent.message).toBe('Level 3')
-  })
-
-  it('declares its own source, so the user can silence mini apps alone', async () => {
-    // Borrowing 'assistant' would put mini apps behind the conversation-completion
-    // switch — silencing one would silence the other.
-    await notificationCapability.show(A, { title: 'Saved', body: 'Level 3' })
-
-    expect(sendNotification.mock.calls[0][0].source).toBe('mini-app')
-  })
-
-  it('sends nothing when the user has turned the category off', async () => {
+  it('sends nothing for a valid call', async () => {
     // The gate lives HERE, mirroring `deliverConversationNotification`: main-side
     // `sendNotification` shows unconditionally, so an ungated caller ignores the switch.
     MockMainPreferenceServiceUtils.setPreferenceValue('app.notification.mini_app.enabled', false)
@@ -59,34 +42,12 @@ describe('cherry.notification.show', () => {
     expect(sendNotification).not.toHaveBeenCalled()
   })
 
-  it('carries the appId, so a renamed app cannot pose as another one', async () => {
-    // The bug this guards: attributing by manifest `name`. An app holding the
-    // notification grant can rename itself to "Cherry Studio" in a routine update.
-    await notificationCapability.show(A, { title: 'Sign in again', body: 'Session expired' })
-
-    expect(sendNotification.mock.calls[0][0].title).toContain(A)
-  })
-
-  it('ignores any source the app tries to supply', async () => {
-    await notificationCapability.show(A, { title: 'x', body: 'y', sourceAppId: 'com.cherry.system' })
-    expect(JSON.stringify(sendNotification.mock.calls[0][0])).not.toContain('com.cherry.system')
-  })
-
   it('rejects an over-long title', async () => {
     await expect(notificationCapability.show(A, { title: 'x'.repeat(500), body: 'y' })).rejects.toThrow()
   })
 
   it('rate limits bursts', async () => {
     for (let i = 0; i < 5; i++) await notificationCapability.show(A, { title: 't', body: 'b' })
-    await expect(notificationCapability.show(A, { title: 't', body: 'b' })).rejects.toThrow(QuotaExceededError)
-  })
-
-  it('counts a suppressed notification against the rate limit too', async () => {
-    // Otherwise the switch becomes a way to reset the budget: turn it off, burn the
-    // window for free, turn it on.
-    MockMainPreferenceServiceUtils.setPreferenceValue('app.notification.mini_app.enabled', false)
-    for (let i = 0; i < 5; i++) await notificationCapability.show(A, { title: 't', body: 'b' })
-
     await expect(notificationCapability.show(A, { title: 't', body: 'b' })).rejects.toThrow(QuotaExceededError)
   })
 

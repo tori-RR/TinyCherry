@@ -15,7 +15,6 @@ import {
 import { getTriggerSummary } from '@renderer/components/ScheduledTask/scheduleForm'
 import { TaskRunSummaryLine } from '@renderer/components/ScheduledTask/TaskRunSummaryLine'
 import { useAgent } from '@renderer/hooks/agent/useAgent'
-import { useChannels } from '@renderer/hooks/agent/useChannels'
 import { useDeleteTask, useRunTask, useSetTaskEnabled, useTask, useUpdateTask } from '@renderer/hooks/agent/useTasks'
 import { ErrorCode, toDataApiError } from '@shared/data/api/errors'
 import type { ScheduledTaskListItem } from '@shared/data/api/schemas/agents'
@@ -78,7 +77,6 @@ function ScheduledTaskCard({ task }: { task: ScheduledTaskListItem }) {
   const { t } = useTranslation()
   const actions = useOptionalMessageListActions()
   const { agent } = useAgent(task.agentId)
-  const { channels } = useChannels()
   const { updateTask } = useUpdateTask()
   const { setTaskEnabled } = useSetTaskEnabled()
   const { runTask } = useRunTask()
@@ -90,9 +88,6 @@ function ScheduledTaskCard({ task }: { task: ScheduledTaskListItem }) {
   const [busy, setBusy] = useState(false)
 
   const agents = useMemo(() => [{ id: task.agentId, name: agent?.name ?? task.agentId }], [agent?.name, task])
-  const channelNames = (task.channelIds ?? []).map(
-    (channelId) => channels.find((channel) => channel.id === channelId)?.name || channelId
-  )
   const isCompleted = task.status === 'completed'
   const canToggle = task.status === 'active' || task.status === 'paused'
   const isRunning = lastRun?.status === 'running' || lastRun?.status === 'queued'
@@ -179,11 +174,6 @@ function ScheduledTaskCard({ task }: { task: ScheduledTaskListItem }) {
             {schedule}
             {nextRun ? ` · ${t('agent.tasks.nextRun')} ${nextRun}` : null}
           </div>
-          {channelNames.length > 0 ? (
-            <div className="truncate text-muted-foreground text-xs" title={channelNames.join(', ')}>
-              {t('agent.tasks.channels.label')}: {channelNames.join(', ')}
-            </div>
-          ) : null}
           {lastRun ? (
             <div className="text-xs" role="status">
               <TaskRunSummaryLine summary={lastRun} />
@@ -196,7 +186,9 @@ function ScheduledTaskCard({ task }: { task: ScheduledTaskListItem }) {
             variant="ghost"
             size="sm"
             className="ms-auto text-muted-foreground"
-            onClick={() => void actions.navigateToRoute?.({ path: `/settings/scheduled-tasks/${task.id}` })}>
+            onClick={() =>
+              void actions.navigateToRoute?.({ path: '/app/scheduled-tasks', query: { taskId: task.id } })
+            }>
             {t('agent.tasks.card.viewTask')}
             <ChevronRight aria-hidden="true" size={14} />
           </Button>

@@ -10,19 +10,19 @@ import { application } from '@application'
 import { mcpServerService } from '@data/services/McpServerService'
 import { loggerService } from '@logger'
 import { BaseService, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
+import { DEV_PROFILE_ROOT } from '@main/core/paths/constants'
 import { isLinux, isPortable, isWin } from '@main/core/platform'
 import { WindowType } from '@main/core/window/types'
 import { openSettingsInMainWindow } from '@main/services/mainWindowNavigation'
 import type { ProtocolMcpInstallRequest } from '@shared/data/types/mcpProtocolInstall'
 import type { McpServer } from '@shared/data/types/mcpServer'
+import { APP_NAME, APP_PROTOCOL } from '@shared/utils/constants'
 
 import { parseMcpInstallProtocolUrl } from './handlers/mcpInstall'
 import { handleNavigateProtocolUrl } from './handlers/navigate'
 import { handleProvidersProtocolUrl } from './handlers/providersImport'
 
-export const CHERRY_STUDIO_PROTOCOL = 'cherrystudio'
-
-const DESKTOP_FILE_NAME = 'cherrystudio-url-handler.desktop'
+const DESKTOP_FILE_NAME = `${APP_PROTOCOL}-url-handler.desktop`
 const execAsync = promisify(exec)
 const logger = loggerService.withContext('ProtocolService')
 
@@ -69,14 +69,14 @@ export class ProtocolService extends BaseService {
     this.registerDisposable(() => app.removeListener('open-url', openUrlHandler))
 
     // 3) Windows/Linux second-instance: sole owner.
-    //    - argv carries `cherrystudio://...` → dispatch to URL handler; each handler
+    //    - argv carries `tinycherry://...` → dispatch to URL handler; each handler
     //      self-routes focus (mcp / navigate raise Main, providers / oauth do not),
     //      so we never raise Main behind their backs.
     //    - argv carries no URL → plain re-launch (user double-clicked the icon while
     //      the app is running); surface the main window. MainWindowService is
     //      WhenReady, fully alive by the time any 'second-instance' can fire.
     const secondInstanceHandler = (_event: Electron.Event, argv: string[]) => {
-      const url = argv.find((arg) => arg.startsWith(`${CHERRY_STUDIO_PROTOCOL}://`))
+      const url = argv.find((arg) => arg.startsWith(`${APP_PROTOCOL}://`))
       if (url) {
         this.handleProtocolUrl(url)
       } else {
@@ -142,6 +142,8 @@ export class ProtocolService extends BaseService {
   }
 
   private registerProtocolScheme() {
+    if (DEV_PROFILE_ROOT) return
+
     // In dev, Electron needs the app entry as an absolute path; launchers often
     // pass "." as argv[1], which becomes invalid when the OS invokes the
     // protocol handler from a different cwd.
@@ -149,17 +151,17 @@ export class ProtocolService extends BaseService {
       if (process.argv.length >= 2) {
         const entry = process.argv[1]
         const absoluteEntry = path.isAbsolute(entry) ? entry : path.resolve(process.cwd(), entry)
-        app.setAsDefaultProtocolClient(CHERRY_STUDIO_PROTOCOL, process.execPath, [absoluteEntry])
+        app.setAsDefaultProtocolClient(APP_PROTOCOL, process.execPath, [absoluteEntry])
       }
     } else if (isWin && isPortable && process.env.PORTABLE_EXECUTABLE_FILE) {
-      app.setAsDefaultProtocolClient(CHERRY_STUDIO_PROTOCOL, process.env.PORTABLE_EXECUTABLE_FILE, [])
+      app.setAsDefaultProtocolClient(APP_PROTOCOL, process.env.PORTABLE_EXECUTABLE_FILE, [])
     } else {
-      app.setAsDefaultProtocolClient(CHERRY_STUDIO_PROTOCOL)
+      app.setAsDefaultProtocolClient(APP_PROTOCOL)
     }
   }
 
   private handleProtocolUrl(url: string) {
-    if (!url) return
+    if (!url.startsWith(`${APP_PROTOCOL}://`)) return
 
     if (!this.areServicesReady || !this.isMainRendererReady) {
       this.pendingProtocolUrls.push(url)
@@ -204,7 +206,7 @@ export class ProtocolService extends BaseService {
 
       // Default branch: deep link with no main-process handler. Fan out to every
       // managed renderer (Main / SubWindow / pooled tool surfaces);
-      // consumers (oauth.ts, useNutstoreSso, ...) filter by urlObj.hostname/pathname.
+      // consumers (oauth.ts and similar consumers) filter by urlObj.hostname/pathname.
       // broadcast() — not broadcastToType(Main) — because the flow-initiating
       // window is not necessarily Main. Trade-off: the payload reaches renderers that don't need it; if
       // selective routing is required (e.g. to confine OAuth `code`), promote
@@ -240,17 +242,17 @@ export class ProtocolService extends BaseService {
   }
 
   private handleArgvForUrl(args: string[]) {
-    const url = args.find((arg) => arg.startsWith(CHERRY_STUDIO_PROTOCOL + '://'))
+    const url = args.find((arg) => arg.startsWith(APP_PROTOCOL + '://'))
     if (url) this.handleProtocolUrl(url)
   }
 
   /**
    * Sets up deep linking for the AppImage build on Linux by creating a .desktop file.
-   * This allows the OS to open cherrystudio:// URLs with this App.
+   * This allows the OS to open tinycherry:// URLs with this app.
    */
   private async setupAppImageDeepLink(): Promise<void> {
     // Only run on Linux and when packaged as an AppImage
-    if (!isLinux || !process.env.APPIMAGE) {
+    if (DEV_PROFILE_ROOT || !isLinux || !process.env.APPIMAGE) {
       return
     }
 
@@ -264,11 +266,11 @@ export class ProtocolService extends BaseService {
       }
 
       const desktopFileContent = `[Desktop Entry]
-Name=Cherry Studio
+Name=${APP_NAME}
 Exec=${escapePathForExec(appPath)} %U
 Terminal=false
 Type=Application
-MimeType=x-scheme-handler/${CHERRY_STUDIO_PROTOCOL};
+MimeType=x-scheme-handler/${APP_PROTOCOL};
 NoDisplay=true
 `
 

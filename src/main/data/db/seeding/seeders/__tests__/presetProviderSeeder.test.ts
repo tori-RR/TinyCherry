@@ -24,6 +24,7 @@ vi.mock('@cherrystudio/provider-registry/node', () => {
       return [
         { id: 'openai', name: 'OpenAI', endpointConfigs: {}, defaultChatEndpoint: null },
         { id: 'anthropic', name: 'Anthropic', endpointConfigs: {}, defaultChatEndpoint: null },
+        { id: 'qiniu', name: 'Qiniu', endpointConfigs: {}, defaultChatEndpoint: null },
         { id: 'azure-openai', name: 'Azure OpenAI', endpointConfigs: {}, defaultChatEndpoint: null },
         { id: 'vertexai', name: 'Vertex AI', endpointConfigs: {}, defaultChatEndpoint: null },
         { id: 'aws-bedrock', name: 'AWS Bedrock', endpointConfigs: {}, defaultChatEndpoint: null }
@@ -45,7 +46,7 @@ vi.mock('@cherrystudio/provider-registry/node', () => {
 describe('PresetProviderSeeder.run — insert-only behavior', () => {
   const dbh = setupTestDatabase()
 
-  it('should insert all preset providers when DB is empty', async () => {
+  it('seeds the supported catalog and omits excluded presets', async () => {
     const seed = new PresetProviderSeeder()
     seed.run(dbh.db)
 
@@ -56,6 +57,7 @@ describe('PresetProviderSeeder.run — insert-only behavior', () => {
     expect(ids).toContain('azure-openai')
     expect(ids).toContain('vertexai')
     expect(ids).toContain('aws-bedrock')
+    expect(ids).not.toContain('qiniu')
     expect(ids).not.toContain('cherryai')
   })
 
@@ -92,10 +94,6 @@ describe('PresetProviderSeeder.run — insert-only behavior', () => {
     const openai = rows.find((r) => r.providerId === 'openai')
     // User customization must be preserved
     expect(openai?.name).toBe('User-renamed OpenAI')
-
-    const ids = rows.map((r) => r.providerId)
-    expect(ids).toContain('anthropic')
-    expect(ids).not.toContain('cherryai')
   })
 
   it('repairs a legacy provider order key before appending preset providers', async () => {

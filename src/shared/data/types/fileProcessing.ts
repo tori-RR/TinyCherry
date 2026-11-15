@@ -57,10 +57,3 @@ export const FileProcessingTaskSchema = z.discriminatedUnion('status', [
   z.object({ ...fileProcessingTaskFields, status: z.literal('cancelled'), error: z.string() }).strict()
 ])
 export type FileProcessingTask = z.infer<typeof FileProcessingTaskSchema>
-
-export const ListAvailableFileProcessorsResultSchema = z
-  .object({
-    processorIds: z.array(z.enum(FILE_PROCESSOR_IDS))
-  })
-  .strict()
-export type ListAvailableFileProcessorsResult = z.infer<typeof ListAvailableFileProcessorsResultSchema>

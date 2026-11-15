@@ -86,16 +86,9 @@ If an open PR exists, collect the complete accessible conversation state using
 and visibility boundaries. When this engine was entered through `pr-review.md`,
 reuse the wrapper's already collected data.
 
-Also inspect its CI checks with `gh pr checks`. Record failing, pending, and
-successful checks as review evidence. Do not run local lint, test, or format
-commands during review.
-
 ### CI baseline
 
-When an associated PR exists, use `gh pr checks` as the validation baseline and
-record failing or pending jobs. If no PR exists, state that CI validation is
-unavailable and continue with static review only. Never substitute a local
-`pnpm lint`, `pnpm test`, or `pnpm format` run.
+When an associated PR exists, use `gh pr checks` to collect CI results for the reviewed revision. Use focused read-only local checks if CI is unavailable or misses a relevant risk. Report gaps and the checks actually run.
 
 ### Module partition
 
@@ -339,8 +332,8 @@ Fix rules:
 Fixers leave all edits uncommitted. The review workflow never stages or
 commits fixes even when fixing is authorized. Hand verified patches to a
 separate user-authorized publish/commit workflow; that workflow owns the
-Conventional Commit with a specific kebab-case scope and `--signoff`. Never
-stage pre-existing user changes.
+Conventional Commit with a specific kebab-case scope. Never stage
+pre-existing user changes.
 
 ### Verify fixes (coordinator)
 

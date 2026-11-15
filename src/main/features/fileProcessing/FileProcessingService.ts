@@ -2,12 +2,8 @@ import { application } from '@application'
 import { loggerService } from '@logger'
 import { BaseService, DependsOn, Emitter, type Event, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 import type { TerminalJobStatus } from '@shared/data/api/schemas/jobs'
-import type { FileProcessorId } from '@shared/data/preference/preferenceTypes'
-import type { FileHandle } from '@shared/data/types/file'
-import { ListAvailableFileProcessorsResultSchema } from '@shared/data/types/fileProcessing'
 
 import { getFileProcessorConfigById, resolveProcessorConfigByFeature } from './config/resolveProcessorConfig'
-import { ocrImageToText } from './ocrImageToText'
 import { probeOpenMineru } from './processors/openMineru/protocol'
 import { processorRegistry } from './processors/registry'
 import { backgroundJobHandler, localBackgroundJobHandler } from './tasks/backgroundJobHandler'
@@ -26,7 +22,6 @@ import type {
   FileProcessingTask,
   FileProcessingTaskCancelOutcome,
   FileProcessingTaskId,
-  ListAvailableFileProcessorsResult,
   StartedFileProcessingTask,
   StartFileProcessingTaskInput
 } from './types'
@@ -146,32 +141,6 @@ export class FileProcessingService extends BaseService {
     const settled = task.status !== 'queued' && task.status !== 'processing'
     application.get('CacheService').setShared(taskCacheKey(task.id), task, settled ? SETTLED_TASK_TTL_MS : undefined)
     this._onDidChangeTask.fire(task)
-  }
-
-  /**
-   * OCR an image into plain text using the user's configured `image_to_text`
-   * processor — the synchronous, content-version-cached path used by the AI chat
-   * attachment flow (`attachmentRouting` / `read_file`). Keeps OCR processor /
-   * handler internals owned by this domain instead of being deep-imported from
-   * `ai/`. Throws on failure / no configured processor; callers turn that into a
-   * model-facing note.
-   */
-  ocrImage(file: FileHandle, signal?: AbortSignal): Promise<string> {
-    return ocrImageToText(file, signal)
-  }
-
-  /**
-   * Processors this machine could run — the settings pages list exactly these.
-   *
-   * Filters on platform support only. A processor whose local model is not
-   * downloaded yet still belongs in the list: hiding it strands the user, since
-   * its settings entry is where the download button lives.
-   */
-  listAvailableProcessors(): ListAvailableFileProcessorsResult {
-    const processorIds = Object.entries(processorRegistry)
-      .filter(([, processor]) => processor.isSupported())
-      .map(([processorId]) => processorId as FileProcessorId)
-    return ListAvailableFileProcessorsResultSchema.parse({ processorIds })
   }
 
   /** Reachability is distinct from a successful protocol or authentication check. */

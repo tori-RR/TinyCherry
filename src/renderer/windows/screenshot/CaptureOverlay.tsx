@@ -11,8 +11,6 @@ import { AnnotationCanvas } from './components/AnnotationCanvas'
 import { CaptureCanvas } from './components/CaptureCanvas'
 import { DimensionLabel } from './components/DimensionLabel'
 import { Magnifier } from './components/Magnifier'
-import { OcrStatusIcon } from './components/OcrStatusIcon'
-import { OcrTextOverlay } from './components/OcrTextOverlay'
 import { PropertyPanel } from './components/PropertyPanel'
 import { SelectionHandles } from './components/SelectionHandles'
 import { TextInput } from './components/TextInput'
@@ -20,7 +18,6 @@ import { Toolbar } from './components/Toolbar'
 import { BORDER_WIDTH } from './constants'
 import { useAnnotation } from './hooks/useAnnotation'
 import { useMagnifierFocus } from './hooks/useMagnifierFocus'
-import { useOcr } from './hooks/useOcr'
 import { useTextInput } from './hooks/useTextInput'
 import { initialState, overlayReducer } from './reducer'
 import type { OverlayAction, OverlayState, SelectionRect } from './types'
@@ -45,6 +42,7 @@ const CaptureOverlay: FC = () => {
   const objectUrlRef = useRef<string | null>(null)
   const annotationCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const readyReportedRef = useRef(false)
+  const exportRef = useRef<{ mediaId: string } | null>(null)
 
   const [state, dispatch] = useReducer(overlayReducer, initialState)
   const annotation = useAnnotation()
@@ -52,19 +50,6 @@ const CaptureOverlay: FC = () => {
   const mediaId = initData?.mediaId
   const imageUrl = initData?.imageUrl
   const { resetAnnotations } = annotation
-
-  // Suppressed while annotating: the text layer would otherwise take the pointer
-  // events the annotation tools need.
-  const annotationActive = annotation.state.activeTool !== null || annotation.state.annotations.length > 0
-  const ocrBounds = state.phase === 'selected' && !annotationActive ? state.selection : null
-  const ocr = useOcr(
-    mediaId ?? null,
-    ocrBounds,
-    initData?.display.scaleFactor ?? 1,
-    initData?.ocrAvailable ?? false,
-    initData?.autoOcr ?? false
-  )
-  const { resetOcr } = ocr
 
   // Fetch and decode share one effect so a session change disposes both in a single step;
   // split across two, the previous capture could win its decode race and paint the wrong bitmap.
@@ -124,6 +109,7 @@ const CaptureOverlay: FC = () => {
    * display — stay resident until then or until the pool decays.
    */
   useIpcOn('screenshot.session_ended', () => {
+    exportRef.current = null
     if (objectUrlRef.current) {
       URL.revokeObjectURL(objectUrlRef.current)
       objectUrlRef.current = null
@@ -133,7 +119,6 @@ const CaptureOverlay: FC = () => {
     setImageLoaded(false)
     dispatch({ type: 'RESET' })
     resetAnnotations()
-    resetOcr()
   })
 
   /**
@@ -145,6 +130,7 @@ const CaptureOverlay: FC = () => {
    */
   useEffect(() => {
     if (!mediaId) return
+    exportRef.current = null
     dispatch({ type: 'RESET' }) // selection + drag state
     resetAnnotations() // shapes, active tool, and the undo/redo history
     imageRef.current = null
@@ -152,8 +138,7 @@ const CaptureOverlay: FC = () => {
     setMouseInWindow(true)
     setSnapTargets([]) // the previous session's targets are stale the moment it ends
     readyReportedRef.current = false
-    resetOcr() // result state + the request generation, so no late result lands here
-  }, [mediaId, resetAnnotations, resetOcr])
+  }, [mediaId, resetAnnotations])
 
   // Dropping imageLoaded unmounts the whole overlay body, which is what disposes the
   // toolbar's transient state (active panel, measured layout) and the text editor.
@@ -163,6 +148,7 @@ const CaptureOverlay: FC = () => {
 
   // Another display's overlay took over; drop our selection but keep the capture.
   useIpcOn('screenshot.reset_overlay', () => {
+    exportRef.current = null
     dispatch({ type: 'RESET' })
     resetAnnotations()
   })
@@ -213,6 +199,12 @@ const CaptureOverlay: FC = () => {
   const handleExport = useCallback(
     async (action: 'commit' | 'copy' | 'save' | 'result', text = '') => {
       if (!imageRef.current || !state.selection || !initData) return
+      if (exportRef.current?.mediaId === initData.mediaId) {
+        if (action === 'result') throw new Error('A screenshot export is already pending')
+        return
+      }
+      const token = { mediaId: initData.mediaId }
+      exportRef.current = token
       try {
         const pngBytes = await generateSelectionPng(
           imageRef.current,
@@ -220,15 +212,19 @@ const CaptureOverlay: FC = () => {
           initData.display.scaleFactor,
           annotationCanvasRef.current
         )
-        if (action === 'result') await ipcApi.request('screenshot.submit_result', { pngBytes, text })
+        if (exportRef.current !== token) return
+        const result = { pngBytes, mediaId: token.mediaId }
+        if (action === 'result') await ipcApi.request('screenshot.submit_result', { ...result, text })
         else {
           const route =
             action === 'commit' ? 'screenshot.commit' : action === 'copy' ? 'screenshot.copy' : 'screenshot.save'
-          await ipcApi.request(route, { pngBytes })
+          await ipcApi.request(route, result)
         }
       } catch (error) {
         logger.error('Failed to export the selection', error as Error)
         if (action === 'result') throw error
+      } finally {
+        if (exportRef.current === token) exportRef.current = null
       }
     },
     [state.selection, initData]
@@ -247,7 +243,7 @@ const CaptureOverlay: FC = () => {
    * screenshot tool follows.
    *
    * On the root rather than the capture canvas, so a double-click landing on a layer
-   * above it — the OCR text, a rendered annotation — confirms too instead of being
+   * above it — a rendered annotation — confirms too instead of being
    * swallowed. Controls that overlap the selection stop the event themselves, the way
    * they already do for pointerdown. Suppressed while a tool is active: a double-click
    * there is part of drawing, not an intent to confirm.
@@ -293,8 +289,7 @@ const CaptureOverlay: FC = () => {
           windows={snapTargets}
           annotation={annotation}
           annotationCanvasRef={annotationCanvasRef}
-          ocr={ocr}
-          autoOcr={initData.autoOcr}
+
           onFirstPaint={handleFirstPaint}
           onOk={handleOk}
           onSave={handleSave}
@@ -319,8 +314,7 @@ function OverlayContent({
   windows,
   annotation,
   annotationCanvasRef,
-  ocr,
-  autoOcr,
+
   onFirstPaint,
   onOk,
   onSave,
@@ -338,8 +332,7 @@ function OverlayContent({
   windows: DetectedWindow[]
   annotation: ReturnType<typeof useAnnotation>
   annotationCanvasRef: RefObject<HTMLCanvasElement | null>
-  ocr: ReturnType<typeof useOcr>
-  autoOcr: boolean
+
   onFirstPaint: () => void
   onOk: () => void
   onSave: () => void
@@ -405,7 +398,6 @@ function OverlayContent({
 
   const { activeTool } = annotation.state
   const hasAnnotationTool = activeTool !== null
-  const hasAnnotations = hasAnnotationTool || annotation.state.annotations.length > 0
   const settled = state.phase === 'selected' || state.phase === 'moving' || state.phase === 'resizing'
 
   return (
@@ -489,20 +481,6 @@ function OverlayContent({
           onSubmitResult={onSubmitResult}
           onCancel={onCancel}
           onLayout={setToolbarLayout}
-          ocrSlot={
-            // Nothing to say while idle — but the greyed-out annotating state still
-            // has to be shown, so it cannot be folded into the status check.
-            ocr.status !== 'idle' || hasAnnotations ? (
-              <OcrStatusIcon
-                status={ocr.status}
-                errorMessage={ocr.errorMessage}
-                onCopyText={ocr.copyText}
-                onTriggerOcr={ocr.triggerOcr}
-                disabled={hasAnnotations}
-                autoOcr={autoOcr}
-              />
-            ) : undefined
-          }
         />
       )}
 
@@ -549,15 +527,6 @@ function OverlayContent({
           visible
           showHints={state.phase !== 'resizing'}
           selection={state.selection}
-        />
-      )}
-
-      {ocr.status === 'done' && state.selection && ocr.lines.length > 0 && (
-        <OcrTextOverlay
-          bounds={state.selection}
-          lines={ocr.lines}
-          scaleFactor={scaleFactor}
-          interactive={!hasAnnotationTool}
         />
       )}
     </>

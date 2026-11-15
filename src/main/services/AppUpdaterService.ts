@@ -1,16 +1,21 @@
+import { existsSync } from 'node:fs'
+
 import type { ProgressInfo, UpdateInfo } from 'builder-util-runtime'
 import { CancellationToken } from 'builder-util-runtime'
+import { eq } from 'drizzle-orm'
 import { app, net } from 'electron'
 import type { Logger, NsisUpdater, UpdateCheckResult } from 'electron-updater'
 import { AppUpdater, autoUpdater } from 'electron-updater'
 import semver from 'semver'
 
 import { application } from '@application'
+import { appStateTable } from '@data/db/schemas/appState'
 import { loggerService } from '@logger'
 import { computeBackoff } from '@main/core/job/runtime/backoff'
 import { BaseService, DependsOn, Injectable, Phase, ServicePhase } from '@main/core/lifecycle'
 import { isWin } from '@main/core/platform'
 import { WindowType } from '@main/core/window/types'
+import { getAppLanguage, t } from '@main/i18n'
 import { regionService } from '@main/services/RegionService'
 import { getAppEdition } from '@main/utils/appEdition'
 import { generateUserAgent, getClientId } from '@main/utils/systemInfo'
@@ -34,9 +39,17 @@ const logger = loggerService.withContext('AppUpdaterService')
 
 type ReleaseRegion = 'cn' | 'global'
 
-export const RELEASE_HISTORY_URL = 'https://releases.cherry-ai.com/release-history.json'
+export const RELEASE_HISTORY_URL = 'https://github.com/tori-RR/TinyCherry/releases/latest/download/release-history.json'
 const RELEASE_HISTORY_TIMEOUT_MS = 10_000
 const RELEASE_HISTORY_MAX_BYTES = 1024 * 1024
+
+export function canCheckForAppUpdates(): boolean {
+  return (
+    app.isPackaged &&
+    !(isWin && 'PORTABLE_EXECUTABLE_DIR' in process.env) &&
+    existsSync(application.getPath('app.extra_resources', 'app-update.yml'))
+  )
+}
 
 function getEditionUpdateChannel(channel: UpgradeChannel, edition: AppEdition): string {
   return edition === 'cn' ? `${channel}-cn` : channel
@@ -93,18 +106,18 @@ const CHECK_RETRY_POLICY: RetryPolicy = {
 
 @Injectable('AppUpdaterService')
 @ServicePhase(Phase.WhenReady)
-@DependsOn(['WindowManager', 'SchedulerService'])
+@DependsOn(['WindowManager', 'SchedulerService', 'NotificationService'])
 export class AppUpdaterService extends BaseService {
+  private readonly pendingReleaseNotifications = new Set<string>()
   private cancellationToken: CancellationToken = new CancellationToken()
   private updateCheckResult: UpdateCheckResult | null = null
   // Consecutive scheduled-check failures, drives backoff; reset on success.
   private updateCheckFailures = 0
 
   protected async onInit(): Promise<void> {
+    if (!canCheckForAppUpdates()) return
+
     autoUpdater.logger = logger as Logger
-    // Packaged builds use app-update.yml generated from electron-builder.yml;
-    // development uses the repository's dev-app-update.yml.
-    autoUpdater.forceDevUpdateConfig = !app.isPackaged
     autoUpdater.autoDownload = application.get('PreferenceService').get('app.dist.auto_update.enabled')
     // Never auto-install on quit - user must explicitly click "Install Now"
     // Auto-install on quit can cause issues: unexpected updates on restart,
@@ -135,16 +148,55 @@ export class AppUpdaterService extends BaseService {
   }
 
   protected async onAllReady(): Promise<void> {
+    if (!canCheckForAppUpdates()) return
+
     application.get('PowerService').registerShutdownHandler(() => {
       autoUpdater.autoDownload = false
     })
 
-    // Development builds skip automatic checks but still support manual checks.
-    // Portable builds do not perform update checks.
-    if (!app.isPackaged || this.isPortable()) {
-      return
-    }
     this.scheduleNextUpdateCheck(INITIAL_CHECK_DELAY_MS)
+  }
+
+  private async publishReleaseNotification(releaseInfo: UpdateInfo): Promise<void> {
+    if (this.pendingReleaseNotifications.has(releaseInfo.version)) return
+    this.pendingReleaseNotifications.add(releaseInfo.version)
+    try {
+      const db = application.get('DbService').getDb()
+      const key = `appUpdater:notification:${releaseInfo.version}`
+      if (db.select().from(appStateTable).where(eq(appStateTable.key, key)).get()) return
+
+      const releaseNotes =
+        typeof releaseInfo.releaseNotes === 'string'
+          ? releaseInfo.releaseNotes
+          : (releaseInfo.releaseNotes
+              ?.map(({ note }) => note)
+              .filter(Boolean)
+              .join('\n\n') ?? '')
+      const title = t('notification.center.version_available', { version: releaseInfo.version })
+      const summary = releaseNotes
+        .split('\n')
+        .find((line) => line.trim() && !/^\s*#/.test(line))
+        ?.replace(/^\s*[-*>]\s*/, '')
+        .trim()
+        .slice(0, 240)
+      const recorded = await application.get('NotificationService').publish(
+        {
+          eventKey: `release:${releaseInfo.version}`,
+          category: 'official',
+          kind: 'release',
+          title,
+          message: summary || title,
+          createdAt: Date.now(),
+          target: { kind: 'release', version: releaseInfo.version, releaseNotes }
+        },
+        { source: 'update' }
+      )
+      if (recorded) db.insert(appStateTable).values({ key, value: true }).onConflictDoNothing().run()
+    } catch (error) {
+      logger.warn('Failed to publish release notification', error as Error)
+    } finally {
+      this.pendingReleaseNotifications.delete(releaseInfo.version)
+    }
   }
 
   private registerAutoUpdaterListeners(): void {
@@ -158,6 +210,7 @@ export class AppUpdaterService extends BaseService {
     const onUpdateAvailable = (releaseInfo: UpdateInfo) => {
       logger.info('update available', releaseInfo)
       const processedReleaseInfo = this.processReleaseInfo(releaseInfo)
+      void this.publishReleaseNotification(processedReleaseInfo)
       application.get('IpcApiService').broadcastToType(WindowType.Main, 'app.updater.available', processedReleaseInfo)
     }
     autoUpdater.on('update-available', onUpdateAvailable)
@@ -229,6 +282,8 @@ export class AppUpdaterService extends BaseService {
   }
 
   private async fetchReleaseHistory(): Promise<ReleaseNotesEntry[] | null> {
+    if (!canCheckForAppUpdates()) return null
+
     try {
       const { updateHeaders } = await this.getUpdateRequest()
       const response = await net.fetch(RELEASE_HISTORY_URL, {
@@ -263,11 +318,10 @@ export class AppUpdaterService extends BaseService {
     | { status: 'current'; currentVersion: string }
     | { status: 'available'; currentVersion: string; version: string }
   > {
-    if (this.isPortable()) return { status: 'unsupported' }
+    if (!canCheckForAppUpdates()) return { status: 'unsupported' }
     const { currentVersion, updateChannel, updateHeaders } = await this.getUpdateRequest()
     const updater = new ReleaseNotesUpdater()
     updater.logger = logger as Logger
-    updater.forceDevUpdateConfig = !app.isPackaged
     updater.autoDownload = false
     updater.autoInstallOnAppQuit = false
     updater.requestHeaders = updateHeaders
@@ -281,11 +335,12 @@ export class AppUpdaterService extends BaseService {
   }
 
   public async getLatestReleaseNotes(): Promise<ReleaseNotesEntry | null> {
+    if (!canCheckForAppUpdates()) return null
+
     try {
       const { updateChannel, updateHeaders } = await this.getUpdateRequest()
       const updater = new ReleaseNotesUpdater()
       updater.logger = logger as Logger
-      updater.forceDevUpdateConfig = !app.isPackaged
       updater.autoDownload = false
       updater.autoInstallOnAppQuit = false
       updater.requestHeaders = updateHeaders
@@ -347,10 +402,6 @@ export class AppUpdaterService extends BaseService {
     }
   }
 
-  private isPortable(): boolean {
-    return isWin && 'PORTABLE_EXECUTABLE_DIR' in process.env
-  }
-
   /**
    * Throwing core of the update check: updater setup → check → (manual) download
    * trigger. A check/network failure REJECTS so callers that need a failure
@@ -360,15 +411,14 @@ export class AppUpdaterService extends BaseService {
    * broadcast (see `registerAutoUpdaterListeners`), not the return value.
    */
   private async performUpdateCheck() {
-    void application.get('AnalyticsService').trackAppUpdate()
-
-    if (this.isPortable()) {
+    if (!canCheckForAppUpdates()) {
       return {
         currentVersion: app.getVersion(),
         updateInfo: null
       }
     }
 
+    void application.get('AnalyticsService').trackAppUpdate()
     await this.configureUpdaterForCheck()
 
     this.updateCheckResult = await autoUpdater.checkForUpdates()
@@ -441,6 +491,8 @@ export class AppUpdaterService extends BaseService {
   }
 
   public quitAndInstall() {
+    if (!canCheckForAppUpdates()) return
+
     application.markQuitting()
     setImmediate(() => autoUpdater.quitAndInstall(true, true))
   }
@@ -482,7 +534,7 @@ export class AppUpdaterService extends BaseService {
     if (releaseInfo.releaseNotes && typeof releaseInfo.releaseNotes === 'string') {
       if (hasMultiLanguageReleaseNotes(releaseInfo.releaseNotes)) {
         try {
-          const language = application.get('PreferenceService').get('app.language')
+          const language = getAppLanguage()
           processedInfo.releaseNotes = localizeReleaseNotes(releaseInfo.releaseNotes, language)
         } catch (error) {
           logger.error('Failed to localize release notes', error as Error)

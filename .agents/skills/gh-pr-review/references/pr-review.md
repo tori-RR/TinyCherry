@@ -166,8 +166,8 @@ Inspect CI with:
 ```bash
 gh pr checks {number} --repo {OWNER_REPO}
 ```
-Record failing, pending, and successful checks as the review's validation
-signal. Do not replace CI with local lint, test, or format runs.
+Record CI results for the reviewed revision. Use focused read-only local
+checks when CI is unavailable or leaves a meaningful gap.
 
 Only after the worktree, `PR_BODY`, complete accessible conversation state, and
 CI state have all been collected, calculate `CHANGED_LINES`, `CHANGED_FILES`,
@@ -182,7 +182,7 @@ When the PR head's `package.json` exposes `change:scope`, collect one versioned 
 pnpm change:scope --base origin/{BASE_BRANCH} --head {HEAD_SHA}
 ```
 
-If it also exposes `docs:affected` and contains `docs/dev/sources-index.json`, run:
+When documented behavior or contracts change and the project exposes `docs:affected`, use it to locate relevant documentation:
 
 ```bash
 pnpm docs:affected --base origin/{BASE_BRANCH} --head {HEAD_SHA} --json
@@ -243,17 +243,9 @@ Coordinator duties around the selected engine:
    draft comment, but never describe that draft as submitted or visible to
    others.
 
-### Agent Note / Spec review
+### Decision records
 
-Read the PR body's `Agent Note`, `Spec PR`, and `Acceptance criteria` fields.
-
-- An `N/A` is valid only for a local/mechanical change with no durable decision. Report qualifying changes that evade the note threshold.
-- For a Spec implementation, query the Spec PR reviews and require an `APPROVED` review whose `commit_id` equals its current head. Verify the implementation PR contains that approved Spec through its base/ancestry.
-- Run `gh stack view --json`. If it exits 2, follow the `gh-stack` skill's remote-discovery procedure; missing local metadata does not prove the PR is standalone. For a stack, inspect every downstack implementation PR and aggregate only ACs backed by actual evidence. Intermediate layers cover only their declared ACs and keep the note proposed; the final layer must cover the complete approved set cumulatively.
-- Check every claimed AC against an observable result and actual evidence. If the PR moves a lifecycle triplet, run `pnpm agent-notes:check-transition --base <verified-spec-ref> --head <reviewed-head>` and report an incomplete or invalid transition.
-- A proposed note is an approved target, not a frozen implementation. A factual implementation detail may differ and must be reflected in the final note. A change to behavior, ownership, ACs, alternatives, or risks belongs on the Spec branch and requires re-approval.
-- Implemented notes describe shipped reality in present tense. Never require a worse implementation merely to preserve stale note prose.
-- Verify every new note searched for existing owners and handled partial/full supersession without erasing unique rationale.
+If a PR links a plan or Agent Note, check the claimed behavior and acceptance criteria against evidence actually available. Review the wording of a changed note against the implementation. For a lifecycle move, run `pnpm agent-notes:check-transition --base <verified-proposal-ref> --head <reviewed-head>` and report invalid transitions.
 
 **Output rule**: only present the final confirmed issues to the user. Do not
 output analysis process, exclusion reasoning, or issues that were considered

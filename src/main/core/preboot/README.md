@@ -139,6 +139,12 @@ preboot/
 The directory is intentionally flat. New domains add a sibling file rather
 than a subdirectory.
 
+### Packaged profile isolation
+
+On Windows, the installer uses `%APPDATA%/TinyCherry` for Electron `userData` and `~/.tinycherry` for startup configuration and managed tools. The portable launcher uses `data/` for `userData`, `data/logs/` for logs, and `home/` for startup configuration and tools, all beside the launcher.
+
+A valid custom `userData` mapping from TinyCherry's own BootConfig takes precedence. TinyCherry does not look for that mapping or legacy profiles in Cherry Studio's home. The resolved `userData` path determines the single-instance lock.
+
 ### Development profile isolation
 
 Unpackaged development runs never read the BootConfig userData mapping

@@ -10,7 +10,7 @@ Notes live at `{lifecycle}/{class}/yyyy-mm-dd-topic.md`.
 
 Lifecycle:
 
-- `proposed/` — a Spec awaiting or carrying approval; implementation is incomplete.
+- `proposed/` — a decision being discussed or implemented.
 - `implemented/` — shipped reality, kept factually current.
 - `rejected/` — an explicitly declined proposal retained only while its rationale prevents a plausible repeated mistake.
 
@@ -29,69 +29,31 @@ There is no `refactor` class. A refactor with a durable removal decision is a si
 
 ### Initial lifecycle selection
 
-The class describes the subject of a decision; it does not force every note to begin as proposed. Choose the initial result from the approval need and delivery state:
-
-| Change shape | Initial result |
-|---|---|
-| Local or mechanical restoration of an existing contract | No note; declare `N/A — <reason>` in the PR. |
-| Durable bug fix delivered and verified in the same PR | Create an implemented `bug-fix` note directly. |
-| Small, completed testing or other durable decision that does not need target approval before implementation | Create an implemented note in its owning class directly. |
-| Substantial feature, architecture, process, or simplification | Create a proposed Spec before implementation. |
-| Any decision whose target behavior, ownership, ACs, alternatives, or risks need human agreement before implementation | Create a proposed Spec, regardless of class. |
-
-`N/A` is a PR classification, not a note lifecycle. `rejected` is never an initial state: it records an explicit human verdict on an existing proposal.
+Use `proposed/` for a decision still being discussed or implemented. Use `implemented/` when the decision has shipped and the evidence is available. Use `rejected/` only to record an explicit rejection of an existing proposal.
 
 ### State transitions
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Classify
-    Classify --> NoNote: mechanical or existing contract
-    Classify --> Proposed: prior target approval required
-    Classify --> Implemented: durable decision already delivered
-
-    NoNote --> [*]: PR records N/A reason
-    Proposed --> Proposed: material edit requires re-approval
-    Proposed --> Implemented: final layer covers every AC
+    [*] --> Proposed: planning record
+    [*] --> Implemented: decision already delivered
+    Proposed --> Proposed: update the proposal
+    Proposed --> Implemented: implementation is verified
     Proposed --> Rejected: explicit human rejection
-    Proposed --> [*]: unmerged exploration has no durable value
-
     Implemented --> Implemented: keep shipped facts current
-    Implemented --> Successor: decision is reversed or fully superseded
+    Implemented --> Successor: decision is reversed or superseded
     Rejected --> Successor: new evidence reopens the question
-    Successor --> Proposed: successor requires prior approval
-    Successor --> Implemented: successor is already delivered
-
-    Implemented --> Archived: future only; no longer an active owner
-    Rejected --> Archived: future only; rationale absorbed by successor
-    Archived --> [*]: historical search only
 ```
 
-`Successor` in the diagram means creating a new, cross-linked note; the old implemented or rejected record does not change back into proposed or implemented.
+`Successor` means a new, cross-linked note that preserves the existing decision record.
 
-## When a note is required
+## When to use a note
 
-Every human-authored PR declares an Agent Note or an explicit `N/A` reason in the PR template. Automation-authored PRs (repository workflows and Dependabot) are exempt from this metadata requirement, not from normal validation. A note is required for architecture choices, cross-module contracts, disk/configuration/wire formats, process policy, substantial features, and alternatives likely to be reconsidered.
+Agent Notes are optional in TinyCherry. Consider one for a durable decision about architecture, compatibility, persistent data, or a repair whose reasoning a maintainer may revisit. Prefer updating the note that already owns the decision.
 
-A simple bug fix uses `N/A` when it restores an existing documented contract without introducing failure semantics, ownership, compatibility, or a durable tradeoff. It writes an implemented `bug-fix` note when the repair chooses among plausible alternatives, changes a persistent contract, protects security/concurrency/atomicity/lifecycle, or could reasonably be reverted by a future maintainer who lacks the root cause.
+## Optional planning and review
 
-Prefer updating the note that already owns the decision. Do not add one note per commit or repeat PR narration.
-
-## Spec-first stack
-
-Substantial feature, architecture, process, and simplification work follows this sequence:
-
-1. Create a bottom Spec PR containing a proposed bilingual Agent Note.
-2. Give every acceptance criterion a stable `AC1`, `AC2`, ... identifier and name its verification owner.
-3. Wait for an explicit human Approval on the current Spec head; merging the Spec first is optional.
-4. Stack implementation PRs on that branch. Each layer links the Spec and lists the AC IDs it covers.
-5. Put material behavior, ownership, AC, alternatives, or risk changes on the Spec branch; rebase the stack and obtain Approval again.
-6. Keep the note proposed through intermediate layers.
-7. The final layer that satisfies all ACs moves and rewrites the note as implemented.
-
-Approval binds one exact Spec head. Silence, `CHANGES_REQUESTED`, and discussion do not mean rejection.
-
-Agents determine the lifecycle from the stack, not from one PR in isolation. Run `gh stack view --json`; exit code 2 means only that the checkout lacks local stack metadata, not that an existing PR is standalone on GitHub. Follow the `gh-stack` skill to discover and hydrate remote topology, then rerun the view before classifying the PR. For a stack, inspect the current layer and every downstack implementation PR, aggregate only ACs backed by actual verification, and transition the note only in the final layer when the cumulative evidence covers the complete approved Spec. Stack synchronization never proves completion: after `gh stack sync`, rerun change scope and the invalidated checks for each live layer.
+A proposal can be discussed in an issue, in the implementation PR, or separately. A dedicated Spec PR and a PR stack are optional. If work spans several PRs, mark a note implemented once the combined verification covers the decision.
 
 ## File format
 
@@ -153,9 +115,9 @@ Status: rejected — <one-line decisive reason>
 
 ## Rejection and deletion
 
-Only an explicit human decision moves `proposed` to `rejected`. A partial rejection amends the proposed note and requires new Approval; a discussion alternative stays inside `Alternatives considered`.
+Only an explicit human decision moves `proposed` to `rejected`. For a partial rejection, update the proposed note to reflect the decision. Keep discussion alternatives in `Alternatives considered`.
 
-If the rejection rationale prevents a likely repeated mistake, convert and merge the rejected note before closing its Spec PR. If the exploration has no durable value, close the unmerged PR without adding repository noise. An implemented decision is never relabeled rejected; a new note supersedes it.
+Keep a rejected note when its rationale can prevent a likely repeated mistake. If the exploration has no durable value, close the unmerged PR without adding repository noise. An implemented decision is never relabeled rejected; a new note supersedes it.
 
 ## Supersession
 

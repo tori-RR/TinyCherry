@@ -12,11 +12,10 @@ interface NavigateToolInput {
 const ROUTE_LABELS: Record<string, { icon: string; labelKey: string }> = {
   // Top-level pages
   '/app/chat': { icon: '💬', labelKey: 'agent.session.group.conversation' },
+  '/app/scheduled-tasks': { icon: '⏰', labelKey: 'settings.scheduledTasks.title' },
   '/app/paintings': { icon: '🎨', labelKey: 'title.paintings' },
-  '/app/translate': { icon: '🌐', labelKey: 'title.translate' },
   '/app/files': { icon: '📁', labelKey: 'title.files' },
   '/app/notes': { icon: '📝', labelKey: 'title.notes' },
-  '/app/knowledge': { icon: '📚', labelKey: 'title.knowledge' },
   '/app/mini-app': { icon: '📦', labelKey: 'title.apps' },
   '/app/code': { icon: '💻', labelKey: 'title.code' },
   '/app/launchpad': { icon: '🚀', labelKey: 'title.launchpad' },
@@ -26,30 +25,18 @@ const ROUTE_LABELS: Record<string, { icon: string; labelKey: string }> = {
   '/settings/general': { icon: '⚙️', labelKey: 'settings.general.common.title' },
   '/settings/provider': { icon: '🔑', labelKey: 'settings.provider.title' },
   '/settings/model': { icon: '🤖', labelKey: 'settings.model' },
-  '/settings/local-models': { icon: '📦', labelKey: 'settings.dependencies.localModels.title' },
   '/settings/appearance': { icon: '🎨', labelKey: 'settings.appearance.title' },
-  '/settings/notifications': { icon: '🔔', labelKey: 'settings.notification.title' },
   '/settings/data': { icon: '💾', labelKey: 'settings.data.title' },
   '/settings/mcp': { icon: '🔌', labelKey: 'agent.settings.toolsMcp.mcp.tab' },
   '/settings/websearch': { icon: '🔍', labelKey: 'settings.tool.websearch.title' },
-  '/settings/api-gateway': { icon: '🌐', labelKey: 'apiGateway.title' },
-  '/settings/device-connections': { icon: '📱', labelKey: 'deviceConnections.title' },
-  '/settings/file-processing': {
-    icon: '📄',
-    labelKey: 'settings.tool.file_processing.features.document_to_markdown.title'
-  },
-  '/settings/ocr': { icon: '🔤', labelKey: 'settings.tool.file_processing.features.image_to_text.title' },
   '/settings/shortcut': { icon: '⌨️', labelKey: 'settings.shortcuts.title' },
   '/settings/quick-assistant': { icon: '🪟', labelKey: 'settings.quickAssistant.title' },
   '/settings/selection-assistant': { icon: '✂️', labelKey: 'selection.name' },
   '/settings/about': { icon: 'ℹ️', labelKey: 'settings.about.label' },
-  '/settings/channels': { icon: '📡', labelKey: 'settings.channels.title' },
   '/settings/code-execution': { icon: '⚙️', labelKey: 'chat.settings.code_execution.title' },
   '/settings/dependencies': { icon: '🛠️', labelKey: 'settings.dependencies.title' },
-  '/settings/scheduled-tasks': { icon: '⏰', labelKey: 'settings.scheduledTasks.title' },
   '/settings/skills': { icon: '🧰', labelKey: 'settings.skills.title' },
   '/settings/usage': { icon: '📊', labelKey: 'settings.usage.title' },
-  '/settings/profile': { icon: '👤', labelKey: 'settings.profile.title' },
 
   // MCP sub-pages
   '/settings/mcp/servers': { icon: '📋', labelKey: 'settings.mcp.title' },

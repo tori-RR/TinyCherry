@@ -32,6 +32,51 @@ function delayedResponse(delay: number, data: unknown) {
 }
 
 describe('DataApiService local read timeouts', () => {
+  it('does not replay a write committed before its delayed response', async () => {
+    const service = await createService()
+    const records: string[] = []
+    request.mockImplementation((req) => {
+      records.push('created-once')
+      return new Promise((resolve) =>
+        setTimeout(() => resolve({ id: req.id, status: 200, data: { id: records[0] } }), 6000)
+      )
+    })
+    const result = expect(service.post('/topics', { body: { name: 'Once' } })).rejects.toMatchObject({
+      outcome: 'unknown',
+      isRetryable: false
+    })
+    await vi.advanceTimersByTimeAsync(12000)
+    await result
+    expect(records).toEqual(['created-once'])
+    expect(request).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it.each(['POST', 'PATCH', 'DELETE'] as const)(
+    'never automatically replays %s after losing its response',
+    async (method) => {
+      const service = await createService()
+      request.mockRejectedValue(new Error('Connection closed after commit'))
+      const operation =
+        method === 'POST'
+          ? service.post('/topics', { body: { name: 'Once' } })
+          : method === 'PATCH'
+            ? service.patch('/topics/topic-1', { body: { name: 'Once' } })
+            : service.delete('/topics/topic-1')
+      await expect(operation).rejects.toThrow('outcome is unknown')
+      await vi.advanceTimersByTimeAsync(12000)
+      expect(request).toHaveBeenCalledTimes(1)
+    }
+  )
+
+  it('does not retry a completed retryable mutation error', async () => {
+    const service = await createService()
+    const error = DataApiErrorFactory.timeout('/topics', 3000)
+    request.mockImplementation(async (req) => ({ id: req.id, status: error.status, error: error.toJSON() }))
+    await expect(service.post('/topics', { body: { name: 'Once' } })).rejects.toMatchObject({ code: 'TIMEOUT' })
+    expect(request).toHaveBeenCalledTimes(1)
+  })
+
   it.each(['/topics', '/topics/topic-1', '/topics/topic-1/messages'] as const)(
     'recovers a delayed %s response without discarding it at three seconds',
     async (path) => {

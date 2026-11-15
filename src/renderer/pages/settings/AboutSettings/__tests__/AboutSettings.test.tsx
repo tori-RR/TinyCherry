@@ -1,10 +1,12 @@
 import '@testing-library/jest-dom/vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type * as ReactI18nextModule from 'react-i18next'
 import type * as StreamdownModule from 'streamdown'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import enUS from '@renderer/i18n/locales/en-us.json'
+import i18n from '@renderer/i18n/resolver'
 
 vi.unmock('@cherrystudio/ui')
 
@@ -39,7 +41,8 @@ vi.mock('@renderer/hooks/useAppUpdateState', () => ({
       downloadProgress: 0,
       info: null
     },
-    updateAppUpdateState: vi.fn()
+    updateAppUpdateState: vi.fn(),
+    checkForUpdate: vi.fn()
   })
 }))
 
@@ -59,7 +62,8 @@ vi.mock('@renderer/components/UpdateDialogPopup', () => ({
   default: { show: vi.fn() }
 }))
 
-vi.mock('react-i18next', () => ({
+vi.mock('react-i18next', async (importOriginal) => ({
+  ...(await importOriginal<typeof ReactI18nextModule>()),
   useTranslation: () => ({
     t: (key: string) =>
       key === 'settings.about.repository.button' ||
@@ -86,6 +90,8 @@ import { AboutSettings } from '..'
 
 const REPOSITORY_URL = 'https://github.com/CherryHQ/cherry-studio'
 
+afterEach(cleanup)
+
 async function renderAboutSettings() {
   render(<AboutSettings />)
   await waitFor(() => expect(mocks.request).toHaveBeenCalledWith('app.get_info'))
@@ -96,7 +102,7 @@ describe('AboutSettings diagnostics entry', () => {
     vi.clearAllMocks()
     mocks.search = {}
     mocks.request.mockImplementation(async (route: string) => {
-      if (route === 'app.get_info') return { isPortable: false, version: '2.0.0' }
+      if (route === 'app.get_info') return { isPortable: false, canCheckForUpdates: true, version: '2.0.0' }
       return undefined
     })
   })
@@ -140,16 +146,12 @@ describe('AboutSettings diagnostics entry', () => {
     expect(updateSearch({ doctor: 'report', focusId: 'support' })).toEqual({ focusId: 'support' })
   })
 
-  it('opens the feedback channel chooser without bypassing it', async () => {
-    const user = userEvent.setup()
+  it('keeps retired About actions out of the page', async () => {
     await renderAboutSettings()
 
-    expect(screen.queryByText('Contact')).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'settings.about.feedback.button' }))
-
-    expect(screen.getByRole('heading', { name: 'settings.about.feedback.dialog.title' })).toBeVisible()
-    expect(screen.getByRole('button', { name: /Contact/ })).toBeVisible()
-    expect(mocks.showDoctor).not.toHaveBeenCalled()
+    for (const key of ['enterprise.title', 'feedback.title', 'website.title', 'releases.title']) {
+      expect(screen.queryByText('settings.about.' + key)).not.toBeInTheDocument()
+    }
   })
 })
 
@@ -158,7 +160,7 @@ describe('AboutSettings repository controls accessibility', () => {
     vi.clearAllMocks()
     mocks.search = {}
     mocks.request.mockImplementation(async (route: string) => {
-      if (route === 'app.get_info') return { isPortable: false, version: '2.0.0' }
+      if (route === 'app.get_info') return { isPortable: false, canCheckForUpdates: true, version: '2.0.0' }
       return undefined
     })
   })
@@ -168,7 +170,8 @@ describe('AboutSettings repository controls accessibility', () => {
     await renderAboutSettings()
 
     const repositoryButton = screen.getByRole('button', { name: 'settings.about.repository' })
-    expect(screen.queryByRole('button', { name: 'Cherry Studio' })).not.toBeInTheDocument()
+    expect(screen.getByText('TinyCherry')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'TinyCherry' })).not.toBeInTheDocument()
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
 
     await user.click(repositoryButton)
@@ -181,7 +184,7 @@ describe('AboutSettings repository entry', () => {
     vi.clearAllMocks()
     mocks.search = {}
     mocks.request.mockImplementation(async (route: string) => {
-      if (route === 'app.get_info') return { isPortable: false, version: '2.0.0' }
+      if (route === 'app.get_info') return { isPortable: false, canCheckForUpdates: true, version: '2.0.0' }
       return undefined
     })
   })
@@ -194,5 +197,27 @@ describe('AboutSettings repository entry', () => {
     await user.click(screen.getByRole('button', { name: 'Support' }))
 
     expect(mocks.request).toHaveBeenCalledWith('system.shell.open_external_website', REPOSITORY_URL)
+  })
+
+  it.each([
+    ['zh-CN', 'https://cherryai.com.cn'],
+    ['zh-TW', 'https://cherryai.com.cn'],
+    ['en-US', 'https://cherryai.com'],
+    ['ja-JP', 'https://cherryai.com']
+  ])('opens the language-specific official website for %s', async (language, expectedUrl) => {
+    const previousLanguage = i18n.language
+    await i18n.changeLanguage(language)
+    try {
+      const user = userEvent.setup()
+      await renderAboutSettings()
+
+      for (const button of screen.getAllByRole('button', { name: 'settings.about.website.button' })) {
+        await user.click(button)
+      }
+
+      expect(mocks.request).toHaveBeenCalledWith('system.shell.open_external_website', expectedUrl)
+    } finally {
+      await i18n.changeLanguage(previousLanguage)
+    }
   })
 })

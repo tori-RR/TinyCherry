@@ -72,7 +72,8 @@ vi.mock('@main/data/bootConfig', () => ({
 
 vi.mock('@main/core/paths/constants', () => ({
   CHERRY_HOME: resolvePath('/mock/home/.cherrystudio'),
-  CHERRY_HOME_DIRNAME: '.cherrystudio',
+  CHERRY_HOME_DIRNAME: '.tinycherry',
+  PORTABLE_EXECUTABLE_NAME: 'tinycherry-portable.exe',
   BOOT_CONFIG_PATH: resolvePath('/mock/home/.cherrystudio/boot-config.json'),
   get DEV_PROFILE_ROOT() {
     return h.devProfileRoot
@@ -208,7 +209,7 @@ describe('selectLegacyUserData', () => {
       entries: [
         { executablePath: 'C:\\Program Files\\CherryStudio\\CherryStudio.exe', dataPath: resolvePath('/setup/data') }
       ],
-      currentExe: 'D:\\Portable\\cherry-studio-portable.exe',
+      currentExe: 'D:\\Portable\\tinycherry-portable.exe',
       probe: probe({ hasV1Data: (d) => d === resolvePath('/setup/data') })
     })
     expect(result).toEqual({ kind: 'default' })
@@ -217,8 +218,8 @@ describe('selectLegacyUserData', () => {
   it('keeps different Windows portable locations isolated without an exact mapping', () => {
     const result = selectLegacyUserData({
       currentUserData: 'D:\\NewPortable\\data',
-      entries: [{ executablePath: 'E:\\OldPortable\\cherry-studio-portable.exe', dataPath: 'E:\\OldPortable\\data' }],
-      currentExe: 'D:\\NewPortable\\cherry-studio-portable.exe',
+      entries: [{ executablePath: 'E:\\OldPortable\\tinycherry-portable.exe', dataPath: 'E:\\OldPortable\\data' }],
+      currentExe: 'D:\\NewPortable\\tinycherry-portable.exe',
       probe: probe({ hasV1Data: (d) => d === 'E:\\OldPortable\\data' })
     })
     expect(result).toEqual({ kind: 'default' })
@@ -227,7 +228,7 @@ describe('selectLegacyUserData', () => {
   it('keeps a fresh Windows setup build isolated from portable data', () => {
     const result = selectLegacyUserData({
       currentUserData: 'C:\\Users\\Alice\\AppData\\Roaming\\CherryStudio',
-      entries: [{ executablePath: 'D:\\Portable\\cherry-studio-portable.exe', dataPath: 'D:\\Portable\\data' }],
+      entries: [{ executablePath: 'D:\\Portable\\tinycherry-portable.exe', dataPath: 'D:\\Portable\\data' }],
       currentExe: 'C:\\Program Files\\CherryStudio\\CherryStudio.exe',
       probe: probe({ hasV1Data: (d) => d === 'D:\\Portable\\data' })
     })

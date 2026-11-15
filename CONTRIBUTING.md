@@ -8,7 +8,7 @@ Welcome to the Cherry Studio contributor community! We are committed to making C
 
 Here are several ways you can participate:
 
-1.  **Contribute Code**: Help us develop new features or optimize existing code. Please ensure your code adheres to our coding standards and passes all tests.
+1.  **Contribute Code**: Help us develop new features or optimize existing code. Follow the repository rules and verify the affected behavior.
 
 2.  **Fix Bugs**: If you find a bug, you are welcome to submit a fix. Please confirm the issue is resolved before submitting and include relevant tests.
 
@@ -38,31 +38,15 @@ To help you get familiar with the codebase, we recommend tackling issues tagged 
 
 ### Testing
 
-Features without tests are considered non-existent. To ensure code is truly effective, relevant processes should be covered by unit tests and functional tests. Therefore, when considering contributions, please also consider testability. All tests can be run locally without dependency on CI. Please refer to the "Testing" section in the [Developer Guide](docs/dev/contrib/development.md).
+Choose checks based on what changed. Check text and links for docs, validate changed assets directly, and run focused tests for changed code and affected consumers. See the "Testing" section in the [Developer Guide](docs/dev/contrib/development.md).
 
 ### Automated Testing for Pull Requests
 
-Automated tests are triggered on pull requests (PRs) opened by members of the Cherry Studio organization, except for draft PRs. PRs opened by new contributors will initially be marked with the `needs-ok-to-test` label and will not be automatically tested. Once a Cherry Studio organization member adds `/ok-to-test` to the PR, the test pipeline will be created.
+When CI is available, confirm which checks ran on the current PR revision. Report actual results and any remaining gaps.
 
 ### Consider Opening Your Pull Request as a Draft
 
-Not all pull requests are ready for review when created. This might be because the author wants to start a discussion, they are not entirely sure if the changes are heading in the right direction, or the changes are not yet complete. Please consider creating these PRs as [draft pull requests](https://github.blog/2019-02-14-introducing-draft-pull-requests/). Draft PRs are skipped by CI, thus saving CI resources. This also means reviewers will not be automatically assigned, and the community will understand that this PR is not yet ready for review.
-Reviewers will be assigned after you mark the draft pull request as ready for review.
-
-### Contributor Compliance with Project Terms
-
-We require every contributor to certify that they have the right to legally contribute to our project. Contributors express this by consciously signing their commits, thereby indicating their compliance with the [LICENSE](LICENSE).
-A signed commit is one where the commit message includes the following:
-
-```
-Signed-off-by: Your Name <your.email@example.com>
-```
-
-You can generate a signed commit using the following command [git commit --signoff](https://git-scm.com/docs/git-commit#Documentation/git-commit.txt---signoff):
-
-```
-git commit --signoff -m "Your commit message"
-```
+Use a [draft pull request](https://github.blog/2019-02-14-introducing-draft-pull-requests/) when a change is still in progress or you want early feedback.
 
 ### Getting Code Reviewed/Merged
 

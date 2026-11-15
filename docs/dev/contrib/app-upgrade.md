@@ -13,6 +13,8 @@ sources:
 
 ## Overview
 
+TinyCherry packages ship with `publish: null`, so they contain no update feed and do not check for or install updates. About links to TinyCherry's GitHub Releases page. The managed release service described below belongs to upstream Cherry Studio.
+
 Cherry Studio clients check for updates through the managed release service at `https://releases.cherry-ai.com`. The client selects an edition-specific update channel and sends application, edition, client, platform, and region metadata. The release service owns target-version selection, regional mirrors, rollout policy, and required upgrade gateways.
 
 The in-app release history follows the same managed path. Stable release preparation updates `resources/cherry-studio/release-history.json`, the release workflow publishes that generated file as a release asset, and clients fetch `/release-history.json` through the managed release service. The service selects GitHub or GitCode according to the request region. Each build also bundles the file as an offline fallback.
@@ -21,7 +23,7 @@ The in-app release history follows the same managed path. Stable release prepara
 
 - Packaged builds use `publish.url` from `electron-builder.yml`. electron-builder writes this value to the packaged `app-update.yml`.
 - Packaged metadata sets `cherryEdition: global` for global packages and `cherryEdition: cn` for China edition packages. Packages built before edition metadata was introduced may omit the marker; the client treats a missing marker as `global` for compatibility.
-- Development builds set `forceDevUpdateConfig = true`, so electron-updater reads `dev-app-update.yml` from the repository root. The default development feed is `http://127.0.0.1:3378`.
+- TinyCherry requires a packaged, non-portable build and a generated `app-update.yml` before its updater enables checks.
 - `CHERRY_EDITION` selects the main-process and renderer edition during development. Use `pnpm dev:cn` for China edition development, or run `pnpm build:cn` followed by `pnpm start:cn` to preview a China renderer build; matching the build and start commands keeps both processes on the same edition.
 - `global` and `cn` are the only supported explicit edition values. For any other `cherryEdition` or development `CHERRY_EDITION` value, the application logs the configuration error and exits during startup instead of falling back to another edition.
 - Production base URL changes take effect through the build configuration in newly produced application builds. The client does not override the packaged feed URL at runtime.
@@ -63,7 +65,7 @@ Both old and new version blockmap URLs must remain available through the existin
 
 ## Check Lifecycle
 
-Manual checks are available in development and packaged, non-portable builds. Portable builds do not perform update checks. Packaged, non-portable builds also schedule automatic checks in the main process. Successful checks return to the normal cadence, while failed scheduled checks use exponential backoff before retrying. Update events and download progress continue to reach the main window through IpcApi.
+When an update feed is configured, a packaged, non-portable build can check manually and schedules automatic checks in the main process. Successful checks return to the normal cadence, while failed scheduled checks use exponential backoff before retrying. Update events and download progress continue to reach the main window through IpcApi.
 
 The main process compares a `not_available` result's feed target with the installed version. When the two differ — a withdrawn or stale feed naming an older target, or a staged rollout not yet offered — the result is treated as withheld rather than current: the main process logs both versions, and a manual check offers the GitHub Releases download instead of the up-to-date message. Only `isCurrent` is sent to the renderer. A prerelease install is treated as current unless the feed advertises a newer version; missing or unparseable feed versions are treated as current. Background checks stay silent.
 

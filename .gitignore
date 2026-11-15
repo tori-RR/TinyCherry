@@ -67,6 +67,8 @@ local
 .zed/*
 !.zed/settings.json.example
 CLAUDE.local.md
+/AGENTS.md
+/WINDOWS-BUILD-DEPENDENCIES.local.md
 AGENTS.override.md
 
 # Local Electron development
@@ -106,3 +108,7 @@ YOUR_MEMORY_FILE_PATH
 .omo/
 
 /native/external-app/build/
+
+/.code_review/
+
+/README_LOG.MD

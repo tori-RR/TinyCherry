@@ -47,6 +47,7 @@ export const appRequestSchemas = {
       logsPath: z.string(),
       arch: z.string(),
       isPortable: z.boolean(),
+      canCheckForUpdates: z.boolean(),
       installPath: z.string()
     })
   }),

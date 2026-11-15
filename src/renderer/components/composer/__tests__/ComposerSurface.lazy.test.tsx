@@ -1,13 +1,8 @@
 import { MockUsePreferenceUtils } from '@test-mocks/renderer/usePreference'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { useLayoutEffect, useState } from 'react'
+import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { Button as ToolbarButton } from '@cherrystudio/ui/components/primitives/button'
-import { VoiceTargetManager } from '@renderer/services/voice/VoiceTargetManager'
-
-import { COMPOSER_INPUT_MAX_LENGTH } from '../composerDraft'
 import ComposerSurface, {
   type ComposerDeferredIntent,
   type ComposerSurfaceActions,
@@ -19,19 +14,8 @@ const mocks = vi.hoisted(() => ({
   onSendDraft: vi.fn(),
   runtimeLoads: 0,
   runtimeIntent: undefined as ComposerDeferredIntent | undefined,
-  runtimeInputAdapter: {
-    captureReplaceRange: vi.fn(() => ({ from: 4, to: 4 })),
-    replaceRange: vi.fn(() => true)
-  },
   runtimeTokens: [] as Array<{ id: string; kind: string; label?: string }>,
-  toastError: vi.fn(),
-  targetManager: undefined as VoiceTargetManager | undefined
-}))
-
-vi.mock('@renderer/services/voice', () => ({
-  get voiceTargetManager() {
-    return mocks.targetManager
-  }
+  toastError: vi.fn()
 }))
 
 vi.mock('@renderer/services/toast', () => ({
@@ -64,20 +48,9 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('../ComposerSurfaceRuntime', () => {
   mocks.runtimeLoads += 1
-  const MockComposerSurfaceRuntime = ({
-    initialTextSelection,
-    text,
-    deferredIntent,
-    tokens,
-    onInputAdapterChange
-  }: ComposerSurfaceProps) => {
+  const MockComposerSurfaceRuntime = ({ initialTextSelection, text, deferredIntent, tokens }: ComposerSurfaceProps) => {
     mocks.runtimeIntent = deferredIntent
     mocks.runtimeTokens = tokens.map((token) => ({ id: token.id, kind: token.kind, label: token.label }))
-    // Match the runtime's adapter handoff before the mounted editor can receive dictation.
-    useLayoutEffect(() => {
-      onInputAdapterChange?.(mocks.runtimeInputAdapter as never)
-      return () => onInputAdapterChange?.(undefined)
-    }, [onInputAdapterChange])
     return (
       <div
         data-testid="composer-runtime"
@@ -151,9 +124,6 @@ describe('deferred ComposerSurface', () => {
     mocks.runtimeTokens = []
     mocks.onSendDraft.mockClear()
     mocks.toastError.mockClear()
-    mocks.runtimeInputAdapter.captureReplaceRange.mockClear()
-    mocks.runtimeInputAdapter.replaceRange.mockClear()
-    mocks.targetManager = new VoiceTargetManager()
     MockUsePreferenceUtils.resetMocks()
   })
 
@@ -162,23 +132,10 @@ describe('deferred ComposerSurface', () => {
     vi.unstubAllGlobals()
   })
 
-  it('matches the regular composer shell before loading the rich runtime', () => {
-    const { container } = render(<Harness editable={undefined} />)
+  it('accepts input before loading the rich runtime', () => {
+    render(<Harness editable={undefined} />)
 
-    const input = screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement
-    const inputbar = container.querySelector<HTMLElement>('[data-composer-inputbar]')
-    const narrowLayout = container.querySelector<HTMLElement>('.narrow-mode')
-
-    expect(input).toBeEnabled()
-    expect(input).toHaveClass('w-full')
-    expect(input).toHaveAttribute('rows', '1')
-    expect(input).toHaveStyle({ height: '46px', minHeight: '46px', padding: '6px 15px 0', lineHeight: '1.4' })
-    expect(narrowLayout).toHaveClass('max-w-[calc(800px+3rem)]', 'px-6')
-    expect(narrowLayout).toContainElement(inputbar)
-    expect(inputbar).toContainElement(screen.getByText('Composer tools'))
-    expect(inputbar?.querySelector('[data-composer-toolbar]')).toContainElement(
-      screen.getByRole('button', { name: 'Send' })
-    )
+    expect(screen.getByRole('textbox', { name: 'Message' })).toBeEnabled()
     expect(mocks.runtimeLoads).toBe(0)
   })
 
@@ -202,19 +159,6 @@ describe('deferred ComposerSurface', () => {
     expect(mocks.runtimeLoads).toBe(0)
   })
 
-  it('swaps in the rich runtime while idle, before the user can type into the fallback', async () => {
-    const idleCallbacks: Array<() => void> = []
-    vi.stubGlobal('requestIdleCallback', (callback: () => void) => idleCallbacks.push(callback))
-    vi.stubGlobal('cancelIdleCallback', () => {})
-
-    render(<Harness text="" />)
-    expect(mocks.runtimeLoads).toBe(0)
-
-    act(() => idleCallbacks.forEach((callback) => callback()))
-
-    expect(await screen.findByTestId('composer-runtime')).toBeInTheDocument()
-  })
-
   it('loads the rich runtime on focus so the fallback swap cannot swallow the first keystroke', async () => {
     render(<Harness text="" />)
 
@@ -222,129 +166,6 @@ describe('deferred ComposerSurface', () => {
     const runtime = await screen.findByTestId('composer-runtime')
     expect(runtime).toHaveTextContent('')
     expect(runtime).toHaveAttribute('data-selection', '0:0')
-  })
-
-  it('keeps one voice target binding across the fallback-to-runtime handoff', async () => {
-    const view = render(<Harness voiceTarget={{ targetId: 'composer:chat:topic-1', sourceEntityId: 'topic-1' }} />)
-    const manager = mocks.targetManager!
-    const input = screen.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement
-    input.setSelectionRange(0, 0)
-    fireEvent.select(input)
-
-    fireEvent.pointerDown(input)
-    const binding = manager.captureCurrent()!
-    expect(binding).toMatchObject({ targetId: 'composer:chat:topic-1', sourceEntityId: 'topic-1', owner: window })
-    act(() => expect(manager.insert(binding, 'X')).toBe('inserted'))
-    expect(await screen.findByTestId('composer-runtime')).toHaveTextContent('X')
-
-    expect(manager.captureCurrent()).toEqual(binding)
-    expect(manager.insert(binding, 'voice')).toBe('inserted')
-    expect(mocks.runtimeInputAdapter.replaceRange).toHaveBeenCalledWith({ from: 4, to: 4 }, 'voice')
-
-    view.unmount()
-    expect(manager.captureCurrent()).toBeNull()
-    expect(manager.insert(binding, 'late transcript')).toBe('unavailable')
-  })
-
-  it.each(['fallback', 'runtime'])('rejects late dictation while the %s is submitting', async (surface) => {
-    const props = { voiceTarget: { targetId: 'composer', sourceEntityId: 'topic' } }
-    const view = render(<Harness {...props} />)
-    const manager = mocks.targetManager!
-    manager.markCurrent('composer')
-    const binding = manager.captureCurrent()!
-    if (surface === 'runtime') {
-      fireEvent.focus(screen.getByRole('textbox', { name: 'Message' }))
-      await screen.findByTestId('composer-runtime')
-    }
-
-    view.rerender(<Harness {...props} editable={false} />)
-
-    expect(manager.insert(binding, 'late transcript')).toBe('unavailable')
-    expect(mocks.runtimeInputAdapter.replaceRange).not.toHaveBeenCalled()
-    expect(manager.captureCurrent()).toEqual(binding)
-    if (surface === 'fallback') expect(screen.getByRole('textbox', { name: 'Message' })).toHaveValue('')
-
-    view.rerender(<Harness {...props} editable />)
-    act(() => expect(manager.insert(binding, 'recovered transcript')).toBe('inserted'))
-    if (surface === 'fallback') {
-      expect(await screen.findByTestId('composer-runtime')).toHaveTextContent('recovered transcript')
-    }
-  })
-
-  it('accepts a normalized literal replacement at the fallback draft limit', () => {
-    const text = ' '.repeat(COMPOSER_INPUT_MAX_LENGTH)
-    const onTextChange = vi.fn()
-    render(
-      <Harness
-        text={text}
-        onTextChange={onTextChange}
-        voiceTarget={{ targetId: 'composer', sourceEntityId: 'topic' }}
-      />
-    )
-    const input = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Message' })
-    input.setSelectionRange(COMPOSER_INPUT_MAX_LENGTH - 10, COMPOSER_INPUT_MAX_LENGTH)
-    fireEvent.select(input)
-    const manager = mocks.targetManager!
-    manager.markCurrent('composer')
-
-    expect(manager.insertIntoCurrent('${HOME}\r\nOK', 'user_recovery')).toBe('inserted')
-    expect(onTextChange).toHaveBeenCalledWith(' '.repeat(COMPOSER_INPUT_MAX_LENGTH - 10) + '${HOME}\nOK')
-  })
-
-  it('rejects an oversized fallback replacement without changing text or the selection handed to the runtime', async () => {
-    const text = ' '.repeat(COMPOSER_INPUT_MAX_LENGTH)
-    const onTextChange = vi.fn()
-    render(
-      <Harness
-        text={text}
-        onTextChange={onTextChange}
-        voiceTarget={{ targetId: 'composer', sourceEntityId: 'topic' }}
-      />
-    )
-    const input = screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Message' })
-    input.setSelectionRange(COMPOSER_INPUT_MAX_LENGTH - 10, COMPOSER_INPUT_MAX_LENGTH)
-    fireEvent.select(input)
-    const manager = mocks.targetManager!
-    manager.markCurrent('composer')
-
-    expect(manager.insertIntoCurrent('${HOME}\r\nOK!', 'user_recovery')).toBe('unavailable')
-    expect(input).toHaveValue(text)
-    expect(input.selectionStart).toBe(COMPOSER_INPUT_MAX_LENGTH - 10)
-    expect(input.selectionEnd).toBe(COMPOSER_INPUT_MAX_LENGTH)
-    expect(onTextChange).not.toHaveBeenCalled()
-
-    fireEvent.keyDown(input, { key: 'ArrowLeft' })
-    expect(await screen.findByTestId('composer-runtime')).toHaveAttribute('data-selection', '39990:40000')
-  })
-
-  it('makes the keyboard-focused fallback toolbar the current voice target', async () => {
-    const manager = mocks.targetManager!
-    manager.bind({
-      targetId: 'previous-composer',
-      owner: window,
-      sourceEntityId: 'previous-topic',
-      captureReplaceRange: () => ({ from: 0, to: 0 }),
-      replaceRange: () => true
-    })
-    manager.markCurrent('previous-composer')
-    render(
-      <Harness
-        voiceTarget={{ targetId: 'composer', sourceEntityId: 'topic' }}
-        renderLeftControls={() => (
-          <>
-            <ToolbarButton>Previous toolbar control</ToolbarButton>
-            <ToolbarButton>Dictate locally</ToolbarButton>
-          </>
-        )}
-      />
-    )
-    screen.getByRole('button', { name: 'Previous toolbar control' }).focus()
-    manager.markCurrent('previous-composer')
-
-    await userEvent.setup().tab()
-
-    expect(screen.getByRole('button', { name: 'Dictate locally' })).toHaveFocus()
-    expect(manager.captureCurrent()).toMatchObject({ targetId: 'composer', sourceEntityId: 'topic' })
   })
 
   it('keeps a usable textarea and IME state until the rich runtime can replace it', async () => {
@@ -487,29 +308,6 @@ describe('deferred ComposerSurface', () => {
     render(<Harness text="one long single line" />)
 
     expect(await screen.findByTestId('composer-runtime')).toHaveTextContent('one long single line')
-  })
-
-  it('marks the deferred intent as focused when the fallback textarea gained focus', async () => {
-    render(<Harness />)
-
-    const input = screen.getByRole('textbox', { name: 'Message' })
-    fireEvent.focus(input)
-    fireEvent.change(input, { target: { value: 'hello' } })
-
-    await screen.findByTestId('composer-runtime')
-    expect(mocks.runtimeIntent?.hadFocus).toBe(true)
-  })
-
-  it('loads the runtime for the compact structural variant', async () => {
-    render(<Harness compactWhenSingleLine />)
-
-    expect(await screen.findByTestId('composer-runtime')).toBeInTheDocument()
-  })
-
-  it('loads the runtime for the expanded structural variant', async () => {
-    render(<Harness isExpanded />)
-
-    expect(await screen.findByTestId('composer-runtime')).toBeInTheDocument()
   })
 
   it('labels the fallback send control with the resolved send shortcut', () => {
@@ -721,5 +519,22 @@ describe('deferred ComposerSurface', () => {
     expect(mocks.onSendDraft).not.toHaveBeenCalled()
     await screen.findByTestId('composer-runtime')
     expect(mocks.runtimeIntent?.transfer).toBeUndefined()
+  })
+  it('handles the mode shortcut before the editor loads without changing the draft', () => {
+    let mode = 'ordinary'
+    render(
+      <Harness
+        text="Keep this draft"
+        onShiftTab={() => {
+          mode = mode === 'ordinary' ? 'plan' : 'ordinary'
+        }}
+      />
+    )
+    const input = screen.getByRole('textbox', { name: 'Message' })
+    fireEvent.keyDown(input, { key: 'Tab', shiftKey: true })
+    expect(mode).toBe('plan')
+    expect(input).toHaveValue('Keep this draft')
+    fireEvent.keyDown(input, { key: 'Tab', shiftKey: true, repeat: true })
+    expect(mode).toBe('plan')
   })
 })

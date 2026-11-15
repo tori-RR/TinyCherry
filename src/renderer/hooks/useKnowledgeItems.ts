@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useInfiniteFlatItems, useInfiniteQuery, useInvalidateCache } from '@data/hooks/useDataApi'
+import { useDataChange } from '@data/hooks/useDataChange'
 import { loggerService } from '@logger'
 import { ipcApi } from '@renderer/ipc'
 import type { KnowledgeItemListResponse, KnowledgeItemSort } from '@shared/data/api/schemas/knowledges'
@@ -98,6 +99,7 @@ export const useKnowledgeItems = (
   }, [pages])
 
   const items = useInfiniteFlatItems(pages)
+  useDataChange('/knowledge-bases/:id/items', () => void refresh(), { routeParams: { id: baseId } })
   // Server-side total across all pages, read off page 0 (every page carries the same `total`).
   // Consumers use it only to detect that unloaded rows remain (loaded < total); it stays fresh
   // as long as SWR revalidates page 0 — don't gate page 0's refresh behind future swrOptions.

@@ -144,21 +144,9 @@ is prompt-free only after it has been granted:
 
 ## Validation after applied fixes
 
-Never run local lint, test, or format during a review that edited nothing.
-When fixes were applied, select the validation matching the changed surface,
-following `AGENTS.md` § Operational Rules ("Check what you changed, not the
-whole repo"), and report the results:
+Use CI evidence for the exact reviewed revision where available. Run focused read-only checks during review when they cover a meaningful gap, and report what was actually verified.
 
-- Docs/markdown-only fixes — including this skill's own files — run
-  `pnpm docs:check`.
-- Code fixes run `pnpm lint` (which already ends with `pnpm format`, so never
-  invoke `format` again) plus the tests covering the change: a per-project
-  wrapper such as `pnpm test:main <file>` or `pnpm exec vitest run <file>`.
-  Never `pnpm test <path>` — that script chains several vitest invocations and
-  the path reaches only the last one.
-- Reserve the full `pnpm test` for a broad change whose affected tests cannot
-  be named, and use `pnpm test:lint` when the CI-equivalent lint gate matters
-  (`pnpm lint` tolerates oxlint warnings that CI denies).
+After authorized fixes, use the [repository rules](../../../CLAUDE.md) to select checks for the changed behavior. Use scoped text, link, and formatting checks for docs or rules. For code, run the relevant tests with explicit file paths, for example `pnpm test:main <file>` or `pnpm exec vitest run <file>`. Report gaps where a check cannot be run.
 
 ## Route
 

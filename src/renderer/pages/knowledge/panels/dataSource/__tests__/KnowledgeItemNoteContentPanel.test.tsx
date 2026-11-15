@@ -1,10 +1,19 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { PosixRelativeFilePath } from '@shared/utils/file'
+
 import KnowledgeItemNoteContentPanel from '../KnowledgeItemNoteContentPanel'
 import { createNoteItem } from './testUtils'
 
 const mockUseQuery = vi.fn()
+const runtime = vi.hoisted(() => ({ isEvoStack: false }))
+
+vi.mock('@renderer/utils/platform', () => ({
+  get isEvoStack() {
+    return runtime.isEvoStack
+  }
+}))
 
 vi.mock('@data/hooks/useDataApi', () => ({
   useQuery: (...args: unknown[]) => mockUseQuery(...args)
@@ -37,12 +46,28 @@ vi.mock('react-i18next', () => ({
 
 describe('KnowledgeItemNoteContentPanel', () => {
   beforeEach(() => {
+    runtime.isEvoStack = false
     vi.clearAllMocks()
     mockUseQuery.mockReturnValue({
       data: createNoteItem({ id: 'note-1', content: '第一行标题\n第二行完整正文内容' }),
       isLoading: false,
       error: undefined
     })
+  })
+
+  it('shows the native user title while keeping its UUID snapshot and full note body', () => {
+    runtime.isEvoStack = true
+    const note = createNoteItem({ id: 'note-1', source: '柠檬协议', content: '完整笔记正文' })
+    const snapshot = '019d0f00-0000-7000-8000-000000000001.md' as PosixRelativeFilePath
+    note.data.relativePath = snapshot
+    mockUseQuery.mockReturnValue({ data: note, isLoading: false, error: undefined })
+
+    render(<KnowledgeItemNoteContentPanel itemId="note-1" onBack={vi.fn()} />)
+
+    expect(screen.getByText('柠檬协议')).toBeInTheDocument()
+    expect(screen.getByText('完整笔记正文')).toBeInTheDocument()
+    expect(screen.queryByText(snapshot.replace(/\.md$/, ''))).not.toBeInTheDocument()
+    expect(note.data.relativePath).toBe(snapshot)
   })
 
   it("renders the note's full original content and fetches the item by id", () => {

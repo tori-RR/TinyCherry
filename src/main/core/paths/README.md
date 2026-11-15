@@ -31,7 +31,7 @@ application.getPath('invalid.key')
 
 | Namespace | Ownership | Examples |
 |-----------|-----------|----------|
-| `cherry.*` | Generic infra under `{cherryHome}` (`~/.cherrystudio` by default) | `cherry.home`, `cherry.bin` |
+| `cherry.*` | Generic infra under `{cherryHome}` (`~/.tinycherry` by default) | `cherry.home`, `cherry.bin` |
 | `sys.*` | OS-managed directories | `sys.home`, `sys.temp`, `sys.downloads` |
 | `app.*` | Electron app: install dir, userData, database, logs, temp root | `app.userdata`, `app.database.file` |
 | `feature.*` | Cherry-owned feature data (grouped by feature) | `feature.files.data`, `feature.mcp.oauth` |
@@ -89,7 +89,6 @@ Type-checked via `satisfies` — typos and stale references fail at compile time
 |-----|-------------------|------|
 | `feature.mcp.oauth` | `{cherryHome}/config/mcp/oauth` | Under `config/`, not `mcp/` |
 | `feature.agents.skills.install.temp` | `{app.temp}/skill-install` | Sibling `feature.agents.skills` lives at `{userData}/Data/Skills` |
-| `feature.pdf_translation.babeldoc` | `{userData}/Runtime/models/babeldoc` | Grouped with the other downloaded model caches, not under a `pdf_translation/` dir |
 
 **Never assume filesystem nesting from key nesting.** Consult `pathRegistry.ts` directly.
 
@@ -143,12 +142,15 @@ No object literals besides the registry itself — the ESLint rule validates eve
 `buildPathRegistry()` runs once during preboot (after `app.setPath('userData', ...)`, before `app.whenReady()`). Key implications:
 
 - Every value must depend only on sync Electron APIs, `process.resourcesPath`, or Node built-ins
+- Computer Use resolves its optional native SDK package on first path access in development. Missing native dependencies fail that feature's lookup without preventing application startup; packaged builds use `extraResources/computer-use`.
 - User-facing OS folders (`downloads`, `documents`, `desktop`) are best-effort: if Electron cannot resolve a
   redirected known folder, the registry logs a warning and falls back to the conventional directory under the
   user's home instead of aborting startup
 - Calling `application.getPath()` before `initPathRegistry()` throws
 - `LoggerService` and `BootConfigService` bypass the registry — they read from `paths/constants.ts` directly (they run before the registry exists)
+- Packaged Windows portable runs use `data/`, `data/logs/`, and `home/` beside the launcher for userData, logs, and Cherry home respectively. A valid custom userData mapping takes precedence for userData.
 - Unpackaged runs can set `CS_DEV_PROFILE_ROOT` to keep Cherry home, BootConfig, legacy config discovery, Electron `userData`, and logs below one absolute non-root directory
+- Isolated development profiles do not register the global `cherrystudio://` handler. Direct launch arguments and protocol events still route within the instance.
 
 ## Testing
 

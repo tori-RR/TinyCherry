@@ -4,8 +4,14 @@ import path from 'node:path'
 import { app } from 'electron'
 
 import { loggerService } from '@logger'
-import { DEV_PROFILE_ROOT, resolveDevUserDataPath } from '@main/core/paths/constants'
-import { isLinux, isPortable, isWin } from '@main/core/platform'
+import {
+  DEV_PROFILE_ROOT,
+  PORTABLE_EXECUTABLE_NAME,
+  resolveDevUserDataPath,
+  WINDOWS_PORTABLE_ROOT,
+  WINDOWS_PORTABLE_USER_DATA
+} from '@main/core/paths/constants'
+import { isLinux } from '@main/core/platform'
 import { bootConfigService } from '@main/data/bootConfig'
 
 const logger = loggerService.withContext('Preboot')
@@ -21,8 +27,8 @@ export function getNormalizedExecutablePath(): string {
   if (isLinux && process.env.APPIMAGE) {
     return path.join(path.dirname(process.env.APPIMAGE), 'cherry-studio.appimage')
   }
-  if (isWin && isPortable) {
-    return path.join(process.env.PORTABLE_EXECUTABLE_DIR || '', 'cherry-studio-portable.exe')
+  if (WINDOWS_PORTABLE_ROOT) {
+    return path.join(WINDOWS_PORTABLE_ROOT, PORTABLE_EXECUTABLE_NAME)
   }
   return app.getPath('exe')
 }
@@ -70,11 +76,10 @@ export function resolveUserDataLocation(): void {
     return
   }
 
-  if (isPortable) {
-    const portableDir = process.env.PORTABLE_EXECUTABLE_DIR
-    const portablePath = path.join(portableDir || app.getPath('exe'), 'data')
-    app.setPath('userData', portablePath)
-    logger.info('userData set for portable build', { portablePath })
+  if (WINDOWS_PORTABLE_USER_DATA) {
+    fs.mkdirSync(WINDOWS_PORTABLE_USER_DATA, { recursive: true })
+    app.setPath('userData', WINDOWS_PORTABLE_USER_DATA)
+    logger.info('userData set for portable build', { portablePath: WINDOWS_PORTABLE_USER_DATA })
   }
 }
 

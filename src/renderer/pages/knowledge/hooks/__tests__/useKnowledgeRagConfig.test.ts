@@ -1,3 +1,4 @@
+import { mockUseMutation, MockUseDataApiUtils } from '@test-mocks/renderer/useDataApi'
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -5,61 +6,20 @@ import type { KnowledgeBase } from '@shared/data/types/knowledge'
 
 import { useKnowledgeRagConfig } from '../useKnowledgeRagConfig'
 
-const mockUseMutation = vi.fn()
 const mockTrigger = vi.fn()
-const mockUsePreference = vi.fn()
-const mockUseAvailableFileProcessors = vi.hoisted(() => vi.fn())
-const mockLogger = vi.hoisted(() => ({
-  error: vi.fn()
-}))
-
-vi.mock('@data/hooks/useDataApi', () => ({
-  useMutation: (...args: unknown[]) => mockUseMutation(...args)
-}))
-
-vi.mock('@data/hooks/usePreference', () => ({
-  usePreference: (...args: unknown[]) => mockUsePreference(...args)
-}))
-
-vi.mock('@renderer/hooks/useAvailableFileProcessors', () => ({
-  useAvailableFileProcessors: () => mockUseAvailableFileProcessors()
-}))
+const mockLogger = vi.hoisted(() => ({ error: vi.fn() }))
 
 vi.mock('@logger', () => ({
-  loggerService: {
-    withContext: () => ({
-      error: mockLogger.error
-    })
-  }
+  loggerService: { withContext: () => mockLogger }
 }))
 
-vi.mock('@renderer/i18n/label', () => ({
-  getFileProcessorLabelKey: (id: string) =>
-    (
-      ({
-        'local-document': 'Local Document',
-        paddleocr: 'PaddleOCR',
-        mineru: 'MinerU',
-        doc2x: 'Doc2X',
-        mistral: 'Mistral',
-        'open-mineru': 'Open MinerU'
-      }) as Record<string, string>
-    )[id] ?? id
-}))
-
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => key
-  })
-}))
-
-const createKnowledgeBase = (overrides: Partial<KnowledgeBase> = {}): KnowledgeBase => ({
+const createKnowledgeBase = (): KnowledgeBase => ({
   orderKey: 'a0',
   id: 'base-1',
-  name: 'Base 1',
+  name: 'Text knowledge',
   groupId: null,
-  dimensions: 1536,
-  embeddingModelId: 'openai::text-embedding-3-small',
+  dimensions: null,
+  embeddingModelId: null,
   rerankModelId: undefined,
   fileProcessorId: undefined,
   chunkSize: 1024,
@@ -70,172 +30,49 @@ const createKnowledgeBase = (overrides: Partial<KnowledgeBase> = {}): KnowledgeB
   documentCount: 6,
   status: 'completed',
   error: null,
-  createdAt: '2026-04-15T09:00:00+08:00',
-  updatedAt: '2026-04-15T09:00:00+08:00',
-  ...overrides
+  createdAt: '2026-11-10T01:00:00Z',
+  updatedAt: '2026-11-10T01:00:00Z'
 })
 
 describe('useKnowledgeRagConfig', () => {
   beforeEach(() => {
+    MockUseDataApiUtils.resetMocks()
     vi.clearAllMocks()
-    mockUseMutation.mockReturnValue({
-      trigger: mockTrigger,
-      isLoading: false,
-      error: undefined
-    })
-    mockUsePreference.mockReturnValue([
-      {
-        paddleocr: {
-          apiKeys: ['paddle-key']
-        },
-        mineru: {
-          apiKeys: []
-        },
-        mistral: {
-          apiKeys: ['   ']
-        }
-      }
-    ])
-    mockUseAvailableFileProcessors.mockReturnValue({
-      processorIds: new Set(['paddleocr', 'local-document', 'mineru', 'doc2x', 'mistral', 'open-mineru']),
-      status: 'ready'
-    })
+    mockUseMutation.mockReturnValue({ trigger: mockTrigger, isLoading: false, error: undefined })
   })
 
-  it('marks unconfigured document processors as unavailable and exposes the save mutation', async () => {
-    const base = createKnowledgeBase({
-      fileProcessorId: 'paddleocr',
-      rerankModelId: 'jina::jina-reranker-v2-base-multilingual'
-    })
-    const { result } = renderHook(() => useKnowledgeRagConfig(base))
+  it('keeps BM25 configuration independent of retired OCR and local-model services', () => {
+    const { result } = renderHook(() => useKnowledgeRagConfig(createKnowledgeBase()))
 
-    // `statusLabel` is what the row shows on the right; it must track `disabled`
-    // so an unconfigured processor says why rather than looking merely greyed out.
-    expect(result.current.fileProcessorOptions).toEqual([
-      {
-        value: 'local-document',
-        label: 'Local Document',
-        disabled: false,
-        statusLabel: undefined
-      },
-      { value: 'paddleocr', label: 'PaddleOCR', disabled: false, statusLabel: undefined },
-      { value: 'mineru', label: 'MinerU', disabled: true, statusLabel: 'knowledge.rag.processor_not_configured' },
-      { value: 'doc2x', label: 'Doc2X', disabled: true, statusLabel: 'knowledge.rag.processor_not_configured' },
-      { value: 'mistral', label: 'Mistral', disabled: true, statusLabel: 'knowledge.rag.processor_not_configured' },
-      { value: 'open-mineru', label: 'Open MinerU', disabled: false, statusLabel: undefined }
-    ])
-    expect(mockUseMutation).toHaveBeenCalledWith('PATCH', '/knowledge-bases/:id', {
-      refresh: ['/knowledge-bases']
-    })
+    expect(result.current.initialValues.embeddingModelId).toBeNull()
+    expect(result.current.initialValues.rerankModelId).toBeNull()
+    expect(result.current.fileProcessorOptions).toEqual([])
+  })
 
+  it('persists changed chunking and retrieval settings without adding model or OCR selections', async () => {
+    const { result } = renderHook(() => useKnowledgeRagConfig(createKnowledgeBase()))
     await act(async () => {
       await result.current.save({
-        fileProcessorId: null,
+        ...result.current.initialValues,
         chunkSize: '1536',
         chunkOverlap: '256',
-        chunkStrategy: 'structured',
-        chunkSeparator: '\\n\\n',
-        embeddingModelId: 'voyage::voyage-3-large',
-        rerankModelId: null,
-        documentCount: 10,
-        threshold: 0.4
+        documentCount: 10
       })
     })
 
     expect(mockTrigger).toHaveBeenCalledWith({
       params: { id: 'base-1' },
-      body: {
-        fileProcessorId: null,
-        chunkSize: 1536,
-        chunkOverlap: 256,
-        rerankModelId: null,
-        documentCount: 10,
-        threshold: 0.4
-      }
+      body: { chunkSize: 1536, chunkOverlap: 256, documentCount: 10 }
     })
   })
 
-  it('includes Open MinerU without an API key because authentication is optional', () => {
-    mockUsePreference.mockReturnValue([
-      {
-        'open-mineru': {
-          capabilities: {
-            document_to_markdown: {
-              apiHost: 'http://127.0.0.1:8000'
-            }
-          }
-        }
-      }
-    ])
-
+  it('propagates save errors so a rejected settings update does not look successful', async () => {
+    const error = new Error('save failed')
+    mockTrigger.mockRejectedValueOnce(error)
     const { result } = renderHook(() => useKnowledgeRagConfig(createKnowledgeBase()))
 
-    expect(result.current.fileProcessorOptions.find((option) => option.value === 'open-mineru')).toEqual({
-      value: 'open-mineru',
-      label: 'Open MinerU',
-      disabled: false
-    })
-  })
-
-  it('offers only processors reported as supported by main', () => {
-    mockUseAvailableFileProcessors.mockReturnValue({
-      processorIds: new Set(['paddleocr', 'mineru']),
-      status: 'ready'
-    })
-
-    const { result } = renderHook(() =>
-      useKnowledgeRagConfig(createKnowledgeBase({ fileProcessorId: 'local-document' }))
-    )
-
-    expect(result.current.fileProcessorOptions.map((option) => option.value)).toEqual(['paddleocr', 'mineru'])
-  })
-
-  it.each(['loading', 'error'] as const)(
-    'keeps only the persisted processor visible and disabled when support is %s',
-    (status) => {
-      mockUseAvailableFileProcessors.mockReturnValue({ processorIds: new Set(), status })
-
-      const { result } = renderHook(() =>
-        useKnowledgeRagConfig(createKnowledgeBase({ fileProcessorId: 'local-document' }))
-      )
-
-      expect(result.current.fileProcessorOptions).toEqual([
-        {
-          value: 'local-document',
-          label: 'Local Document',
-          disabled: true,
-          statusLabel: undefined
-        }
-      ])
-    }
-  )
-
-  it('includes an explicit embedding model override in the patch body', async () => {
-    const { result } = renderHook(() => useKnowledgeRagConfig(createKnowledgeBase()))
-
-    await act(async () => {
-      await result.current.save(result.current.initialValues, {
-        embeddingModelId: 'voyage::voyage-3-large',
-        dimensions: 2048
-      })
-    })
-
-    expect(mockTrigger).toHaveBeenCalledWith({
-      params: { id: 'base-1' },
-      body: {
-        embeddingModelId: 'voyage::voyage-3-large',
-        dimensions: 2048
-      }
-    })
-  })
-
-  it('propagates save failures to the caller', async () => {
-    const saveError = new Error('save failed')
-    mockTrigger.mockRejectedValueOnce(saveError)
-    const { result } = renderHook(() => useKnowledgeRagConfig(createKnowledgeBase()))
-
-    await expect(result.current.save(result.current.initialValues)).rejects.toBe(saveError)
-    expect(mockLogger.error).toHaveBeenCalledWith('Failed to update knowledge RAG config', saveError, {
+    await expect(result.current.save(result.current.initialValues)).rejects.toBe(error)
+    expect(mockLogger.error).toHaveBeenCalledWith('Failed to update knowledge RAG config', error, {
       baseId: 'base-1',
       updates: {}
     })

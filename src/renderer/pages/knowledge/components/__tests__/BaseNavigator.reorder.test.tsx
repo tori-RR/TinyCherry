@@ -2,11 +2,20 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type * as PlatformModule from '@renderer/utils/platform'
 import type { KnowledgeBaseListItem } from '@shared/data/api/schemas/knowledges'
 
 import { BaseNavigator } from '../navigator'
 
 vi.unmock('@cherrystudio/ui')
+
+const runtime = vi.hoisted(() => ({ isEvoStack: false }))
+vi.mock('@renderer/utils/platform', async (importOriginal) => ({
+  ...(await importOriginal<typeof PlatformModule>()),
+  get isEvoStack() {
+    return runtime.isEvoStack
+  }
+}))
 
 const bases: KnowledgeBaseListItem[] = ['A', 'B', 'C'].map((name, index) => ({
   id: name,
@@ -27,6 +36,7 @@ const bases: KnowledgeBaseListItem[] = ['A', 'B', 'C'].map((name, index) => ({
 }))
 
 beforeEach(() => {
+  runtime.isEvoStack = false
   // jsdom has no layout; give the real sortable sensor the production row height and gap.
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     const id = this.closest('[data-knowledge-base-id]')?.getAttribute('data-knowledge-base-id')
@@ -47,7 +57,7 @@ function renderNavigator() {
       isLoading={false}
       width={250}
       onReorderBase={onReorderBase}
-      onReorderGroup={vi.fn(async () => {})}
+      onReorderGroup={runtime.isEvoStack ? undefined : vi.fn(async () => {})}
       onSelectBase={vi.fn()}
       onCreateGroup={vi.fn()}
       onCreateBase={vi.fn()}
@@ -63,6 +73,21 @@ function renderNavigator() {
 }
 
 describe('knowledge base keyboard ordering', () => {
+  it('keeps native base ordering available without group reordering', async () => {
+    runtime.isEvoStack = true
+    const onReorderBase = renderNavigator()
+    const user = userEvent.setup()
+    screen.getByRole('button', { name: 'A' }).focus()
+
+    await user.keyboard('[Space]')
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('over droppable area base:A'))
+    await user.keyboard('{ArrowDown}')
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('over droppable area base:B'))
+    await user.keyboard('[Space]')
+
+    await waitFor(() => expect(onReorderBase).toHaveBeenCalledWith('A', { groupId: null, anchor: { after: 'B' } }))
+  })
+
   it.each([
     ['C', 'ArrowUp', 'B', { before: 'B' }],
     ['B', 'ArrowUp', 'A', { before: 'A' }],

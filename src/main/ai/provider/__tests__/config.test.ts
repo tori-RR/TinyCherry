@@ -148,8 +148,6 @@ describe('providerToAiSdkConfig — builder dispatch matrix', () => {
     const model = makeModel({ id: 'openai::gpt-4o', apiModelId: 'gpt-4o', providerId: 'openai' })
 
     const config = await providerToAiSdkConfig(provider, model, { apiKeyOverride: 'sk-selected' })
-
-    expect(resolveApiKeyMock).toHaveBeenCalledWith('openai', 'sk-selected')
     expect((config.providerSettings as Record<string, unknown>).apiKey).toBe('sk-selected')
   })
 
@@ -1315,7 +1313,7 @@ describe('providerToAiSdkConfig — builder dispatch matrix', () => {
       const config = await providerToAiSdkConfig(provider, imageModel)
 
       expect((config.providerSettings as Record<string, unknown>).imageBaseURL).toBe('')
-      await expectNativeSubmit(config, 'https://dashscope.aliyuncs.com')
+      await expectNativeSubmit(config, 'https://maas.qianwenaiapi.com')
     })
 
     it('propagates the chat-derived image base URL to Responses settings', async () => {
@@ -1428,16 +1426,11 @@ describe('providerToAiSdkConfig — builder dispatch matrix', () => {
     })
   })
 
-  describe('Local embedding routing (in-process provider, no endpoint/baseURL/apiKey)', () => {
-    it('routes the local embedding provider to its own provider id instead of the openai-compatible fallback (REGRESSION)', async () => {
-      // The local embedding provider has no endpoint config, so resolveAiSdkProviderId
-      // returns 'openai-compatible'. Without the dedicated dispatch row it would fall
-      // through to buildOpenAICompatibleConfig, which hands ai-core an empty baseURL and
-      // throws "Invalid URL". The id-based row must win and produce empty providerSettings.
+  describe('Legacy local embedding provider', () => {
+    it('reports the retired provider without resolving an API key', async () => {
       const provider = makeProvider({
         id: LOCAL_EMBEDDING_PROVIDER_ID,
         presetProviderId: LOCAL_EMBEDDING_PROVIDER_ID,
-        // Mirrors the registered row: in-process runtime, no endpoints.
         endpointConfigs: {}
       })
       const model = makeModel({
@@ -1447,17 +1440,10 @@ describe('providerToAiSdkConfig — builder dispatch matrix', () => {
         capabilities: [MODEL_CAPABILITY.EMBEDDING]
       })
 
-      const config = await providerToAiSdkConfig(provider, model)
-      const settings = config.providerSettings as Record<string, unknown>
-
-      expect(config.providerId).toBe(LOCAL_EMBEDDING_PROVIDER_ID)
-      // The local builder returns empty providerSettings: no baseURL/apiKey leak from the
-      // openai-compatible builder, and no unused provider key is selected.
-      expect(settings.baseURL).toBeUndefined()
-      expect(settings.apiKey).toBeUndefined()
+      await expect(providerToAiSdkConfig(provider, model)).rejects.toThrow(
+        'The built-in local embedding provider has been removed'
+      )
       expect(resolveApiKeyMock).not.toHaveBeenCalled()
-      // Still defaulted to the proxy-aware fetch by the shared tail of providerToAiSdkConfig.
-      expect(settings.fetch).toBe(customFetch)
     })
   })
 

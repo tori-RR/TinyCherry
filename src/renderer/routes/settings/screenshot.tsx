@@ -1,7 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router'
-
-import ScreenshotSettings from '@renderer/pages/settings/ScreenshotSettings/ScreenshotSettings'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/settings/screenshot')({
-  component: ScreenshotSettings
+  beforeLoad: () => {
+    throw redirect({ to: '/settings/provider', replace: true })
+  }
 })

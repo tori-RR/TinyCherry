@@ -26,6 +26,9 @@ describe('getKnowledgeItemFailureReason', () => {
     expect(getKnowledgeItemFailureReason({ error: 'directory_not_migrated' }, t)).toBe(
       'knowledge.error.directory_not_migrated'
     )
+    expect(getKnowledgeItemFailureReason({ error: 'empty_indexable_text' }, t)).toBe(
+      'knowledge.error.empty_indexable_text'
+    )
   })
 
   it('passes a free-form item error message through unchanged', () => {

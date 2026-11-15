@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SegmentedControl } from '@cherrystudio/ui'
+import { isEvoStack } from '@renderer/utils/platform'
 
 import type { NoteDraft, NoteItem, NoteSourceMode } from '../types'
 import NoteCreateContent from './NoteCreateContent'
@@ -40,14 +41,16 @@ const NoteSourceContent = ({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
-      <SegmentedControl<NoteSourceMode>
-        size="sm"
-        value={mode}
-        onValueChange={onModeChange}
-        options={modeOptions}
-        className="shrink-0 self-start"
-        aria-label={t('knowledge.data_source.add_dialog.sources.note')}
-      />
+      {!isEvoStack && (
+        <SegmentedControl<NoteSourceMode>
+          size="sm"
+          value={mode}
+          onValueChange={onModeChange}
+          options={modeOptions}
+          className="shrink-0 self-start"
+          aria-label={t('knowledge.data_source.add_dialog.sources.note')}
+        />
+      )}
       {mode === 'create' ? (
         <NoteCreateContent draft={draft} onTitleChange={onDraftTitleChange} onContentChange={onDraftContentChange} />
       ) : (

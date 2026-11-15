@@ -1,6 +1,6 @@
-import { ArrowLeftRight, ChevronDown, PenLine, Plus, X } from 'lucide-react'
+import { ChevronDown, PenLine, Plus, X } from 'lucide-react'
 import type { FC, KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -9,22 +9,18 @@ import {
   Field,
   FieldDescription,
   FieldLabel,
-  HelpTooltip,
   Input,
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
-  PageSidePanel,
   PageSidePanelItem,
   PageSidePanelSection,
   Popover,
   PopoverContent,
   PopoverTrigger,
-  SegmentedControl,
   Slider,
-  Switch,
-  Tooltip
+  Switch
 } from '@cherrystudio/ui'
 import { usePreference } from '@data/hooks/usePreference'
 import { loggerService } from '@logger'
@@ -34,193 +30,17 @@ import { toast } from '@renderer/services/toast'
 import { cn } from '@renderer/utils/style'
 import { UNKNOWN_LANG_CODE } from '@renderer/utils/translate'
 import { TRANSLATE_PROMPT } from '@shared/ai/prompts'
-import type {
-  AutoDetectionMethod,
-  PersistedLangCode,
-  TranslateBidirectionalPair
-} from '@shared/data/preference/preferenceTypes'
+import type { PersistedLangCode } from '@shared/data/preference/preferenceTypes'
 import { parsePersistedLangCode, PersistedLangCodeSchema } from '@shared/data/preference/preferenceTypes'
 import { BUILTIN_TRANSLATE_LANGUAGES } from '@shared/data/presets/translateLanguages'
 import type { TranslateLanguage } from '@shared/data/types/translate'
 
 import IconButton from './components/IconButton'
-import LanguagePicker from './components/LanguagePicker'
 import { useTranslateReasoningEffort } from './useTranslateReasoningEffort'
-
-type Props = {
-  visible: boolean
-  onClose: () => void
-}
 
 const BUILTIN_LANG_CODES = new Set<string>(BUILTIN_TRANSLATE_LANGUAGES.map((lang) => lang.langCode))
 const EMOJI_OPTIONS = ['🌐', '🇺🇸', '🇬🇧', '🇨🇳', '🇯🇵', '🇰🇷', '🇫🇷', '🇩🇪', '🇪🇸', '🇵🇹', '🇮🇳', '🇧🇷']
 const logger = loggerService.withContext('TranslateSettings')
-
-const TranslateSettings: FC<Props> = ({ visible, onClose }) => {
-  const { t } = useTranslation()
-  const [bidirectionalPair, setBidirectionalPair] = usePreference('feature.translate.page.bidirectional_pair')
-  const [enableMarkdown, setEnableMarkdown] = usePreference('feature.translate.page.enable_markdown')
-  const [autoCopy, setAutoCopy] = usePreference('feature.translate.page.auto_copy')
-  const [autoDetectionMethod, setAutoDetectionMethod] = usePreference('feature.translate.auto_detection_method')
-  const [isScrollSyncEnabled, setIsScrollSyncEnabled] = usePreference('feature.translate.page.scroll_sync')
-  const [isBidirectional, setIsBidirectional] = usePreference('feature.translate.page.bidirectional_enabled')
-
-  const safePersist = useCallback(
-    async (persistPromise: Promise<unknown>, actionName: string) => {
-      try {
-        await persistPromise
-      } catch (error) {
-        logger.error(`Failed to persist ${actionName}`, error as Error)
-        toast.error(t('common.save_failed'))
-      }
-    },
-    [t]
-  )
-
-  const updateBidirectionalPair = useCallback(
-    (next: TranslateBidirectionalPair) => {
-      if (next[0] === next[1]) {
-        toast.warning(t('translate.language.same'))
-        return
-      }
-      void safePersist(setBidirectionalPair(next), 'translate bidirectional pair')
-    },
-    [safePersist, setBidirectionalPair, t]
-  )
-
-  const toggleItems: Array<{ key: string; label: string; value: boolean; onChange: (next: boolean) => void }> = [
-    {
-      key: 'markdown',
-      label: t('translate.settings.preview'),
-      value: enableMarkdown,
-      onChange: (next) => void safePersist(setEnableMarkdown(next), 'translate markdown preference')
-    },
-    {
-      key: 'autoCopy',
-      label: t('translate.settings.autoCopy'),
-      value: autoCopy,
-      onChange: (next) => void safePersist(setAutoCopy(next), 'translate auto copy preference')
-    },
-    {
-      key: 'scrollSync',
-      label: t('translate.settings.scroll_sync'),
-      value: isScrollSyncEnabled,
-      onChange: (next) => void safePersist(setIsScrollSyncEnabled(next), 'translate scroll sync preference')
-    }
-  ]
-
-  const detectionOptions: Array<{ value: AutoDetectionMethod; label: string; tip: string }> = [
-    {
-      value: 'auto',
-      label: t('translate.detect.method.auto.label'),
-      tip: t('translate.detect.method.auto.tip')
-    },
-    {
-      value: 'franc',
-      label: t('translate.detect.method.algo.label'),
-      tip: t('translate.detect.method.algo.tip')
-    },
-    {
-      value: 'llm',
-      label: t('translate.detect.method.llm.label'),
-      tip: t('translate.detect.method.llm.tip')
-    }
-  ]
-
-  return (
-    <PageSidePanel
-      open={visible}
-      onClose={onClose}
-      title={t('translate.settings.title')}
-      closeLabel={t('translate.close')}>
-      <div className="flex flex-col gap-8">
-        <div className="flex flex-col gap-5">
-          {toggleItems.map((item) => (
-            <PageSidePanelItem
-              key={item.key}
-              title={item.label}
-              action={<Switch size="sm" checked={item.value} onCheckedChange={item.onChange} />}
-            />
-          ))}
-
-          <PageSidePanelItem
-            title={
-              <span className="flex items-center gap-1">
-                <span>{t('translate.detect.method.label')}</span>
-                <HelpTooltip
-                  content={t('translate.detect.method.tip')}
-                  iconProps={{ className: 'text-foreground-tertiary' }}
-                />
-              </span>
-            }
-            action={
-              <SegmentedControl<AutoDetectionMethod>
-                size="sm"
-                aria-label={t('translate.detect.method.label')}
-                value={autoDetectionMethod}
-                onValueChange={(value) =>
-                  void safePersist(setAutoDetectionMethod(value), 'translate auto detection method')
-                }
-                options={detectionOptions.map((opt) => ({
-                  value: opt.value,
-                  label: (
-                    <Tooltip content={opt.tip} placement="top">
-                      <span>{opt.label}</span>
-                    </Tooltip>
-                  )
-                }))}
-              />
-            }
-          />
-
-          <PageSidePanelItem
-            title={
-              <span className="flex items-center gap-1">
-                <span>{t('translate.settings.bidirectional')}</span>
-                <HelpTooltip
-                  content={t('translate.settings.bidirectional_tip')}
-                  iconProps={{ className: 'text-foreground-tertiary' }}
-                />
-              </span>
-            }
-            action={
-              <Switch
-                size="sm"
-                checked={isBidirectional}
-                onCheckedChange={(next) =>
-                  void safePersist(setIsBidirectional(next), 'translate bidirectional enabled preference')
-                }
-              />
-            }>
-            {isBidirectional && (
-              <div className="flex items-center gap-2">
-                <div className="flex-1">
-                  <LanguagePicker
-                    value={bidirectionalPair[0]}
-                    onChange={(value) => updateBidirectionalPair([value, bidirectionalPair[1]])}
-                  />
-                </div>
-                <ArrowLeftRight size={12} className="shrink-0 text-foreground-tertiary" />
-                <div className="flex-1">
-                  <LanguagePicker
-                    value={bidirectionalPair[1]}
-                    onChange={(value) => updateBidirectionalPair([bidirectionalPair[0], value])}
-                  />
-                </div>
-              </div>
-            )}
-          </PageSidePanelItem>
-        </div>
-
-        <TranslateModelParameters />
-
-        <TranslatePromptField />
-
-        <CustomLanguageList />
-      </div>
-    </PageSidePanel>
-  )
-}
 
 const TranslateSettingsCoreContent: FC = () => {
   return (
@@ -232,9 +52,7 @@ const TranslateSettingsCoreContent: FC = () => {
   )
 }
 
-// Rendered by both panel bodies, so the translate page and Settings → Models
-// agree. Values commit on release, never per change: they go straight to
-// Preference, and an `enable*` toggle must not disturb the number beside it.
+// Selection and message translation share these preferences. Sliders persist on release.
 const TranslateModelParameters: FC = () => {
   const { t } = useTranslation()
   const { model, effort, selectEffort, supportsReasoning } = useTranslateReasoningEffort()
@@ -808,5 +626,3 @@ const EmojiPicker: FC<{ value: string; onChange: (value: string) => void }> = ({
 }
 
 export const TranslateSettingsPanelContent: FC = () => <TranslateSettingsCoreContent />
-
-export default memo(TranslateSettings)

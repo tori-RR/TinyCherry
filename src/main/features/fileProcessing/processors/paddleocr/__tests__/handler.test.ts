@@ -5,36 +5,27 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FileProcessorMerged } from '@shared/data/presets/fileProcessing'
 import { FileInfoSchema } from '@shared/types/file'
 
-const {
-  getStatusMock,
-  submitDocumentParsingMock,
-  waitDocumentParsingResultMock,
-  ocrMock,
-  netFetchMock,
-  PaddleOCRClientMock
-} = vi.hoisted(() => {
-  const getStatusMock = vi.fn()
-  const submitDocumentParsingMock = vi.fn()
-  const waitDocumentParsingResultMock = vi.fn()
-  const ocrMock = vi.fn()
-  const netFetchMock = vi.fn()
+const { getStatusMock, submitDocumentParsingMock, waitDocumentParsingResultMock, netFetchMock, PaddleOCRClientMock } =
+  vi.hoisted(() => {
+    const getStatusMock = vi.fn()
+    const submitDocumentParsingMock = vi.fn()
+    const waitDocumentParsingResultMock = vi.fn()
+    const netFetchMock = vi.fn()
 
-  return {
-    getStatusMock,
-    submitDocumentParsingMock,
-    waitDocumentParsingResultMock,
-    ocrMock,
-    netFetchMock,
-    PaddleOCRClientMock: vi.fn(function PaddleOCRClientMock() {
-      return {
-        getStatus: getStatusMock,
-        submitDocumentParsing: submitDocumentParsingMock,
-        waitDocumentParsingResult: waitDocumentParsingResultMock,
-        ocr: ocrMock
-      }
-    })
-  }
-})
+    return {
+      getStatusMock,
+      submitDocumentParsingMock,
+      waitDocumentParsingResultMock,
+      netFetchMock,
+      PaddleOCRClientMock: vi.fn(function PaddleOCRClientMock() {
+        return {
+          getStatus: getStatusMock,
+          submitDocumentParsing: submitDocumentParsingMock,
+          waitDocumentParsingResult: waitDocumentParsingResultMock
+        }
+      })
+    }
+  })
 
 vi.mock('@paddleocr/api-sdk', () => ({
   PaddleOCRClient: PaddleOCRClientMock
@@ -45,7 +36,6 @@ vi.mock('electron', () => ({
 }))
 
 import { buildPollResult, paddleDocumentToMarkdownHandler } from '../documentToMarkdown/handler'
-import { paddleImageToTextHandler } from '../imageToText/handler'
 
 const documentFile = FileInfoSchema.parse({
   path: '/tmp/input.pdf',
@@ -54,17 +44,6 @@ const documentFile = FileInfoSchema.parse({
   ext: 'pdf',
   mime: 'application/pdf',
   type: 'document',
-  createdAt: 1,
-  modifiedAt: 1
-})
-
-const imageFile = FileInfoSchema.parse({
-  path: '/tmp/input.png',
-  name: 'input',
-  size: 1024,
-  ext: 'png',
-  mime: 'image/png',
-  type: 'image',
   createdAt: 1,
   modifiedAt: 1
 })
@@ -93,42 +72,6 @@ describe('paddleocr handlers', () => {
     vi.spyOn(fs, 'stat').mockResolvedValue({ size: 1024 } as never)
   })
 
-  it('extracts text from images when configured with an OCR model', async () => {
-    const prepared = await paddleImageToTextHandler.prepare(imageFile, createConfig('image_to_text', 'PP-OCRv6'))
-    if (prepared.mode !== 'background') {
-      throw new Error('Expected paddle image handler to prepare a background task')
-    }
-
-    ocrMock.mockResolvedValueOnce({
-      pages: [{ prunedResult: { rec_texts: ['hello', 'world'] } }]
-    })
-
-    await expect(
-      prepared.execute({
-        signal: new AbortController().signal,
-        reportProgress: vi.fn()
-      })
-    ).resolves.toEqual({ kind: 'text', text: 'hello\nworld' })
-  })
-
-  it('fails when image OCR returns empty text content', async () => {
-    const prepared = await paddleImageToTextHandler.prepare(imageFile, createConfig('image_to_text', 'PP-OCRv6'))
-    if (prepared.mode !== 'background') {
-      throw new Error('Expected paddle image handler to prepare a background task')
-    }
-
-    ocrMock.mockResolvedValueOnce({
-      pages: [{ prunedResult: { rec_texts: ['   ', ''] } }]
-    })
-
-    await expect(
-      prepared.execute({
-        signal: new AbortController().signal,
-        reportProgress: vi.fn()
-      })
-    ).rejects.toThrow('PaddleOCR image OCR returned empty text content')
-  })
-
   it('fails when a completed document parsing job returns empty markdown', async () => {
     getStatusMock.mockResolvedValueOnce({ state: 'done' })
     waitDocumentParsingResultMock.mockResolvedValueOnce({
@@ -141,14 +84,6 @@ describe('paddleocr handlers', () => {
       status: 'failed',
       error: 'PaddleOCR task job-1 completed but returned empty markdown content'
     })
-  })
-
-  it('rejects image OCR requests larger than 50MB before upload', async () => {
-    vi.spyOn(fs, 'stat').mockResolvedValueOnce({ size: 51 * 1024 * 1024 } as never)
-
-    await expect(
-      paddleImageToTextHandler.prepare(imageFile, createConfig('image_to_text', 'PP-OCRv6'))
-    ).rejects.toThrow('PaddleOCR file is too large (must be smaller than 50MB)')
   })
 
   it('starts remote document parsing with the configured model', async () => {
@@ -241,47 +176,6 @@ describe('paddleocr handlers', () => {
     ).toThrow('paddleocr rehydrate: missing apiHost in persisted remote state')
   })
 
-  it('sanitizes image OCR result fetches and forbids redirects during the real ocr flow', async () => {
-    PaddleOCRClientMock.mockImplementationOnce(function PaddleOCRClientMockOnce(options?: { fetch?: typeof fetch }) {
-      const safeFetch = options?.fetch
-      if (!safeFetch) {
-        throw new Error('Expected PaddleOCR client to receive a fetch implementation')
-      }
-
-      ocrMock.mockImplementationOnce(async () => {
-        void safeFetch('https://paddleocr.aistudio-app.com/results/job-1', { method: 'GET' })
-        return safeFetch('http://127.0.0.1/results/job-1', { method: 'GET' }) as never
-      })
-
-      return {
-        getStatus: getStatusMock,
-        submitDocumentParsing: submitDocumentParsingMock,
-        waitDocumentParsingResult: waitDocumentParsingResultMock,
-        ocr: ocrMock
-      }
-    })
-
-    netFetchMock.mockResolvedValue({ ok: true })
-
-    const prepared = await paddleImageToTextHandler.prepare(imageFile, createConfig('image_to_text', 'PP-OCRv6'))
-    if (prepared.mode !== 'background') {
-      throw new Error('Expected paddle image handler to prepare a background task')
-    }
-
-    await expect(
-      prepared.execute({
-        signal: new AbortController().signal,
-        reportProgress: vi.fn()
-      })
-    ).rejects.toThrow('Unsafe remote url: local or private addresses are not allowed (127.0.0.1)')
-
-    expect(ocrMock).toHaveBeenCalledTimes(1)
-    expect(netFetchMock).toHaveBeenCalledWith('https://paddleocr.aistudio-app.com/results/job-1', {
-      method: 'GET',
-      redirect: 'error'
-    })
-  })
-
   it('returns failed status when PaddleOCR reports a failed document job', async () => {
     getStatusMock.mockResolvedValueOnce({ state: 'failed', errorMsg: 'provider failed' })
 
@@ -344,8 +238,7 @@ describe('paddleocr handlers', () => {
       return {
         getStatus: getStatusMock,
         submitDocumentParsing: vi.fn(),
-        waitDocumentParsingResult: waitDocumentParsingResultMock,
-        ocr: ocrMock
+        waitDocumentParsingResult: waitDocumentParsingResultMock
       }
     })
 

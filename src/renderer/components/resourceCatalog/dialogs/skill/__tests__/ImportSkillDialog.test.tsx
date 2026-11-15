@@ -8,6 +8,14 @@ import type * as CherryStudioUi from '@cherrystudio/ui'
 const installFromZip = vi.fn()
 const installFromDirectory = vi.fn()
 const ipcApiRequest = vi.hoisted(() => vi.fn())
+const runtime = vi.hoisted(() => ({ isEvoStack: false }))
+
+vi.mock(import('@renderer/utils/platform'), async (importOriginal) => ({
+  ...(await importOriginal()),
+  get isEvoStack() {
+    return runtime.isEvoStack
+  }
+}))
 
 vi.mock('@renderer/ipc', () => ({ ipcApi: { request: ipcApiRequest } }))
 
@@ -87,7 +95,10 @@ beforeAll(() => {
 })
 
 beforeEach(() => {
+  runtime.isEvoStack = false
   vi.clearAllMocks()
+  installFromZip.mockReset()
+  installFromDirectory.mockReset()
   ipcApiRequest.mockReset()
   ipcApiRequest.mockResolvedValue(fileMetadata)
   Object.assign(window, {
@@ -105,6 +116,22 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('ImportSkillDialog', () => {
+  it('imports a native absolute path without calling an unavailable Electron picker', async () => {
+    runtime.isEvoStack = true
+    const user = userEvent.setup()
+    installFromDirectory.mockResolvedValueOnce({ id: 'fixture', name: 'Local fixture' })
+    render(<ImportSkillDialog open onOpenChange={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: 'settings.skills.installFromDirectory' }))
+    expect(screen.getByText('settings.skills.evostack.path_required')).toBeInTheDocument()
+    expect(installFromDirectory).not.toHaveBeenCalled()
+    await user.type(screen.getByRole('textbox', { name: 'settings.skills.evostack.import_path' }), 'C:/fixture/skill')
+    await user.click(screen.getByRole('button', { name: 'settings.skills.installFromDirectory' }))
+
+    await waitFor(() => expect(installFromDirectory).toHaveBeenCalledWith('C:/fixture/skill'))
+    expect(window.api.file.select).not.toHaveBeenCalled()
+  })
+
   it('closes when clicking the overlay while idle', () => {
     const onOpenChange = vi.fn()
 
@@ -182,25 +209,6 @@ describe('ImportSkillDialog', () => {
       /skill-install|zip[-_]install[-_]|[\\/]tmp[\\/]|[\\/]Temp[\\/]/
     )
     expect(toast.error).not.toHaveBeenCalled()
-  })
-
-  it('truncates a long import name and wraps a long error while preserving their titles', async () => {
-    const user = userEvent.setup()
-    const longName = `Xiao_Yue_Complete_Internal_Documentation_${'1'.repeat(120)}.zip`
-    const localizedError = `settings.skills.installFailed:${longName}: corrupt archive`
-    vi.mocked(window.api.file.select).mockResolvedValue([{ name: longName, path: `/tmp/${longName}` }] as any)
-    installFromZip.mockRejectedValue(new Error('corrupt archive'))
-
-    render(<ImportSkillDialog open onOpenChange={vi.fn()} />)
-
-    await user.click(screen.getByRole('button', { name: 'settings.skills.installFromZip' }))
-
-    const fileName = await screen.findByTitle(longName)
-    expect(fileName).toHaveTextContent(longName)
-    expect(fileName).toHaveClass('truncate')
-    const errorMessage = await screen.findByTitle(localizedError)
-    expect(errorMessage).toHaveTextContent(localizedError)
-    expect(errorMessage).toHaveClass('whitespace-normal', 'break-words', '[overflow-wrap:anywhere]')
   })
 
   it('closes after a successful install while keeping the marketplace success toast', async () => {

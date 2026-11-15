@@ -39,7 +39,7 @@ import {
   DropdownMenuTrigger,
   EmptyState,
   Input,
-  Scrollbar,
+  ScrollArea,
   Skeleton
 } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
@@ -49,6 +49,7 @@ import { SettingDescription, SettingTitle } from '@renderer/components/SettingsP
 import { useGroupMutations } from '@renderer/hooks/useGroups'
 import { toast } from '@renderer/services/toast'
 import type { GroupItem, ResourceItem, ResourceType } from '@renderer/types/resourceCatalog'
+import { isEvoStack } from '@renderer/utils/platform'
 import { RESOURCE_TYPE_META } from '@renderer/utils/resourceCatalog'
 import { cn } from '@renderer/utils/style'
 import type { Group } from '@shared/data/types/group'
@@ -195,17 +196,29 @@ function SkillAddActions({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-40">
         {onCreateWithAgent ? (
-          <DropdownMenuItem onSelect={onCreateWithAgent} className="gap-2">
+          <DropdownMenuItem
+            onSelect={onCreateWithAgent}
+            className="gap-2"
+            disabled={isEvoStack}
+            title={isEvoStack ? t('settings.skills.evostack.execution_unavailable') : undefined}>
             <Bot size={13} />
             <span>{t('library.skill_add.create_with_agent')}</span>
           </DropdownMenuItem>
         ) : null}
-        <DropdownMenuItem onSelect={onSearchMarketplace} className="gap-2">
+        <DropdownMenuItem
+          onSelect={onSearchMarketplace}
+          className="gap-2"
+          disabled={isEvoStack}
+          title={isEvoStack ? t('settings.skills.evostack.execution_unavailable') : undefined}>
           <Search size={13} />
           <span>{t('library.skill_add.online_search')}</span>
         </DropdownMenuItem>
         {onSearchSystem ? (
-          <DropdownMenuItem onSelect={onSearchSystem} className="gap-2">
+          <DropdownMenuItem
+            onSelect={onSearchSystem}
+            className="gap-2"
+            disabled={isEvoStack}
+            title={isEvoStack ? t('settings.skills.evostack.execution_unavailable') : undefined}>
             <FolderSearch size={13} />
             <span>{t('library.skill_add.system_search')}</span>
           </DropdownMenuItem>
@@ -258,7 +271,7 @@ export const ResourceGrid: FC<Props> = ({
   })
   const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
-  const responsiveColumnCount = useGridColumnCount(isSettings ? contentRef : scrollRef)
+  const responsiveColumnCount = useGridColumnCount(contentRef)
   const [preferredColumns, setPreferredColumns] = useState<1 | 2>(1)
   const columnCount = isSettings
     ? Math.min(allowColumnToggle ? preferredColumns : 1, responsiveColumnCount)
@@ -570,7 +583,10 @@ export const ResourceGrid: FC<Props> = ({
         />
       </div>
 
-      <Scrollbar ref={scrollRef} className={cn('min-h-0 flex-1', isSettings ? 'px-6 pt-4 pb-6' : 'px-5 py-4')}>
+      <ScrollArea
+        viewportProps={{ ref: scrollRef }}
+        className="min-h-0 flex-1"
+        contentProps={{ className: isSettings ? 'px-6 pt-4 pb-6' : 'px-5 py-4' }}>
         <div ref={contentRef} className={cn(isSettings && 'mx-auto w-full max-w-3xl')}>
           {isLoading ? (
             <ResourceGridLoadingState columnCount={columnCount} resourceType={activeResourceType} />
@@ -598,7 +614,7 @@ export const ResourceGrid: FC<Props> = ({
             />
           )}
         </div>
-      </Scrollbar>
+      </ScrollArea>
     </div>
   )
 }

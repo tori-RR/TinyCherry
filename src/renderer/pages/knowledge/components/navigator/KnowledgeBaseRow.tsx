@@ -7,7 +7,7 @@ import { cn } from '@cherrystudio/ui/lib/utils'
 import { CommandContextMenu, type CommandContextMenuExtraItem } from '@renderer/components/command'
 import SidebarShortcutIcon from '@renderer/components/icons/SidebarShortcutIcon'
 import KnowledgeRowActionsMenu from '@renderer/pages/knowledge/components/KnowledgeRowActionsMenu'
-import { DEFAULT_KNOWLEDGE_GROUP_LABEL_KEY } from '@renderer/pages/knowledge/utils/group'
+import { DEFAULT_KNOWLEDGE_GROUP_LABEL_KEY, supportsKnowledgeGroups } from '@renderer/pages/knowledge/utils/group'
 
 import type { KnowledgeBaseRowProps } from './types'
 
@@ -25,6 +25,7 @@ const KnowledgeBaseRow = ({
   sidebarPinned
 }: KnowledgeBaseRowProps) => {
   const { t } = useTranslation()
+  const groupingEnabled = supportsKnowledgeGroups()
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const availableGroups = useMemo(() => groups.filter((group) => group.id !== base.groupId), [base.groupId, groups])
   const canMoveToUngrouped = base.groupId !== null
@@ -64,7 +65,7 @@ const KnowledgeBaseRow = ({
       }
     ]
 
-    if (canMoveToUngrouped || availableGroups.length > 0) {
+    if (groupingEnabled && (canMoveToUngrouped || availableGroups.length > 0)) {
       items.push({
         type: 'submenu',
         id: 'move',
@@ -98,7 +99,7 @@ const KnowledgeBaseRow = ({
           }
         ]
       })
-    } else {
+    } else if (groupingEnabled) {
       // No group exists and the base is ungrouped — no move targets to offer, so
       // surface group creation directly (the sole entry point for the first group).
       items.push({
@@ -132,6 +133,7 @@ const KnowledgeBaseRow = ({
     availableGroups,
     base,
     canMoveToUngrouped,
+    groupingEnabled,
     handleCreateGroup,
     handleMoveBase,
     handleRenameBase,

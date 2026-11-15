@@ -8,6 +8,7 @@ import { type CommandContextMenuExtraItem, CommandPopupMenu } from '@renderer/co
 import { useAssistantMutationsById } from '@renderer/hooks/resourceCatalog'
 import { toast } from '@renderer/services/toast'
 import type { ResourceItem } from '@renderer/types/resourceCatalog'
+import { isEvoStack } from '@renderer/utils/platform'
 import { isProtectedBuiltinAgentRole } from '@shared/ai/builtinAgent'
 import type { Group } from '@shared/data/types/group'
 
@@ -172,6 +173,7 @@ function useResourceCardMenuItems({
       items.push({
         type: 'item',
         id: 'delete',
+        enabled: !(isEvoStack && resource.type === 'skill' && resource.raw.source === 'builtin'),
         label: resource.type === 'skill' ? t('library.action.uninstall') : t('common.delete'),
         icon: <Trash2 size={14} />,
         destructive: true,

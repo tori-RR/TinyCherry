@@ -1,7 +1,5 @@
-import { isDarwinX64, isMac, isWin, isWinArm64 } from '@main/core/platform'
 import type { FileProcessorFeature } from '@shared/data/preference/preferenceTypes'
 
-import { isOvOcrAvailable } from './ovocr/utils'
 import type { FileProcessingCapabilityHandler, FileProcessingProcessorRegistry } from './types'
 
 function lazyHandler<Feature extends FileProcessorFeature>(
@@ -20,31 +18,12 @@ function lazyHandler<Feature extends FileProcessorFeature>(
 }
 
 export const processorRegistry = {
-  tesseract: {
-    runtime: 'local',
-    isSupported: () => true,
-    capabilities: {
-      image_to_text: lazyHandler('background', async () =>
-        import('./tesseract/imageToText/handler').then(({ tesseractImageToTextHandler }) => tesseractImageToTextHandler)
-      )
-    }
-  },
-  system: {
-    runtime: 'local',
-    isSupported: () => isMac || isWin,
-    capabilities: {
-      image_to_text: lazyHandler('background', async () =>
-        import('./system/imageToText/handler').then(({ systemImageToTextHandler }) => systemImageToTextHandler)
-      )
-    }
-  },
+  tesseract: { runtime: 'local', isSupported: () => false, capabilities: {} },
+  system: { runtime: 'local', isSupported: () => false, capabilities: {} },
   paddleocr: {
     runtime: 'remote',
     isSupported: () => true,
     capabilities: {
-      image_to_text: lazyHandler('background', async () =>
-        import('./paddleocr/imageToText/handler').then(({ paddleImageToTextHandler }) => paddleImageToTextHandler)
-      ),
       document_to_markdown: lazyHandler('remote-poll', async () =>
         import('./paddleocr/documentToMarkdown/handler').then(
           ({ paddleDocumentToMarkdownHandler }) => paddleDocumentToMarkdownHandler
@@ -52,42 +31,9 @@ export const processorRegistry = {
       )
     }
   },
-  'local-paddleocr': {
-    runtime: 'local',
-    // Intel Mac ships no onnxruntime-node binding, so the model can never run
-    // there. Whether it is *downloaded* is a separate, user-fixable question the
-    // UI must keep offering — see FILE_PROCESSOR_LOCAL_MODEL.
-    isSupported: () => !isDarwinX64,
-    capabilities: {
-      image_to_text: lazyHandler('background', async () =>
-        import('./localPaddleocr/imageToText/handler').then(
-          ({ localPaddleocrImageToTextHandler }) => localPaddleocrImageToTextHandler
-        )
-      )
-    }
-  },
-  'local-document': {
-    runtime: 'local',
-    // Scanned PDFs need the local OCR model, while text PDFs need anydoc. The
-    // latter ships no Windows ARM64 binding or wasm fallback.
-    isSupported: () => !isDarwinX64 && !isWinArm64,
-    capabilities: {
-      document_to_markdown: lazyHandler('background', async () =>
-        import('./localDocument/documentToMarkdown/handler').then(
-          ({ localDocumentToMarkdownHandler }) => localDocumentToMarkdownHandler
-        )
-      )
-    }
-  },
-  ovocr: {
-    runtime: 'local',
-    isSupported: isOvOcrAvailable,
-    capabilities: {
-      image_to_text: lazyHandler('background', async () =>
-        import('./ovocr/imageToText/handler').then(({ ovocrImageToTextHandler }) => ovocrImageToTextHandler)
-      )
-    }
-  },
+  'local-paddleocr': { runtime: 'local', isSupported: () => false, capabilities: {} },
+  'local-document': { runtime: 'local', isSupported: () => false, capabilities: {} },
+  ovocr: { runtime: 'local', isSupported: () => false, capabilities: {} },
   mineru: {
     runtime: 'remote',
     isSupported: () => true,
@@ -118,9 +64,6 @@ export const processorRegistry = {
         import('./mistral/documentToMarkdown/handler').then(
           ({ mistralDocumentToMarkdownHandler }) => mistralDocumentToMarkdownHandler
         )
-      ),
-      image_to_text: lazyHandler('background', async () =>
-        import('./mistral/imageToText/handler').then(({ mistralImageToTextHandler }) => mistralImageToTextHandler)
       )
     }
   },

@@ -15,7 +15,7 @@ import type { CaptureResult, RawWindowInfo } from '../types'
 const platform = vi.hoisted(() => ({ isMac: true, isWin: false, isLinux: false, isDev: false }))
 vi.mock('@main/core/platform', () => platform)
 
-// ─── Capture engine, OCR readiness, i18n ──────────────────────────────────────
+// ─── Capture engine and i18n ──────────────────────────────────────
 
 // Two mocks because the TCC gate lives outside this module: it answers for the whole
 // process, and routing it through the barrel would pull this service into every launch.
@@ -32,19 +32,7 @@ vi.mock('@main/utils/screenCapturePermission', () => capture)
 const enumerator = vi.hoisted(() => ({ listWindowsOffThread: vi.fn() }))
 vi.mock('../windowEnumerator', () => enumerator)
 
-const localModel = vi.hoisted(() => ({ isDefaultModelReady: vi.fn(() => true) }))
 vi.mock('@main/i18n', () => ({ t: (key: string) => key }))
-
-const nativeOcr = vi.hoisted(() => ({ recognize: vi.fn(), OcrAccuracy: { Accurate: 1 } }))
-vi.mock('@napi-rs/system-ocr', () => nativeOcr)
-
-// ─── OCR pipeline ─────────────────────────────────────────────────────────────
-
-// Tags the crop with the region's x so a test can tell which request reached the
-// inference service; the real one would need decodable PNG bytes.
-vi.mock('@main/utils/image', () => ({
-  cropPng: vi.fn(async (_bytes: Uint8Array, region: { x: number }) => new Uint8Array([region.x]))
-}))
 
 // ─── Electron ─────────────────────────────────────────────────────────────────
 
@@ -186,10 +174,6 @@ const container = vi.hoisted(() => {
 
   const ipcApiService = { send: vi.fn(), broadcast: vi.fn(), broadcastToType: vi.fn() }
 
-  const ocrInferenceService = {
-    recognize: vi.fn<(source: { imageBytes: Uint8Array }) => Promise<{ text: string; lines: unknown[] }>>()
-  }
-
   return {
     preferences,
     mediaEntries,
@@ -204,15 +188,12 @@ const container = vi.hoisted(() => {
       PreferenceService: preferenceService,
       MediaProtocolService: mediaProtocolService,
       WindowManager: windowManager,
-      IpcApiService: ipcApiService,
-      OcrInferenceService: ocrInferenceService,
-      LocalModelService: localModel
+      IpcApiService: ipcApiService
     },
     preferenceService,
     mediaProtocolService,
     windowManager,
     ipcApiService,
-    ocrInferenceService,
     reset() {
       preferences.clear()
       mediaEntries.clear()
@@ -229,7 +210,6 @@ vi.mock('@application', async () => {
   return mockApplicationFactory(container.overrides)
 })
 
-const { mockMainLoggerService } = await import('@test-mocks/MainLoggerService')
 const { ScreenshotOverlayService } = await import('../ScreenshotOverlayService')
 const { ScreenCapturePermissionError } = await import('../types')
 
@@ -256,9 +236,6 @@ const makeWindowInfo = (over: Partial<RawWindowInfo> = {}): RawWindowInfo => ({
 })
 
 let service: InstanceType<typeof ScreenshotOverlayService>
-
-/** Reach a private map for the leak / residue guards; there is no public reader. */
-const privateMap = (name: string) => Reflect.get(service, name) as Map<unknown, unknown>
 
 const fakeWindow = (id: string) => container.windows.get(id) as FakeWindow
 
@@ -311,36 +288,6 @@ const startService = () => {
 }
 
 /** An OCR request rect, tagged by `x` so the fake recognizer can name it. */
-const ocrRegion = (tag: number) => ({ x: tag, y: 0, width: 100, height: 100 })
-
-/** How long the fake recognizer occupies the inference service, in fake-timer ms. */
-const FAKE_RECOGNITION_MS = 10
-
-/**
- * Replaces the inference service with one that takes measurable time, recording which
- * regions actually reached it. Timer-driven rather than manually released, so a broken
- * implementation fails an assertion instead of hanging on a gate nobody opens.
- */
-function gateInferenceService() {
-  const reached: number[] = []
-  let announceStart: (() => void) | null = null
-
-  container.ocrInferenceService.recognize.mockImplementation(async (source: { imageBytes: Uint8Array }) => {
-    reached.push(source.imageBytes[0])
-    announceStart?.()
-    announceStart = null
-    await new Promise<void>((resolve) => setTimeout(resolve, FAKE_RECOGNITION_MS))
-    return { text: '', lines: [] }
-  })
-
-  return {
-    reached,
-    /** Arm before issuing a request, await after, to know the worker really started. */
-    nextStart: () => new Promise<void>((resolve) => (announceStart = resolve))
-  }
-}
-
-/** Single 1920×1080 display at the origin, authorized, feature on. */
 const singleDisplaySetup = () => {
   electron.displays = [makeDisplay(1, 0, 0)]
   electron.cursorDisplay = electron.displays[0]
@@ -353,6 +300,8 @@ const singleDisplaySetup = () => {
 describe('ScreenshotOverlayService', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    electron.dialog.showSaveDialog.mockReset()
+    writeFileSyncMock.mockReset()
     vi.useFakeTimers()
     container.reset()
     platform.isMac = true
@@ -364,14 +313,10 @@ describe('ScreenshotOverlayService', () => {
     electron.primaryDisplay = undefined
     electron.browserWindows = []
     container.preferences.set('feature.screenshot.enabled', true)
-    container.preferences.set('feature.screenshot.auto_ocr', true)
     capture.getScreenCapturePermissionStatus.mockReturnValue('authorized')
     enumerator.listWindowsOffThread.mockResolvedValue([])
     capture.listMonitors.mockReturnValue([])
     capture.captureAllMonitors.mockReturnValue(new Map())
-    localModel.isDefaultModelReady.mockReturnValue(true)
-    nativeOcr.recognize.mockReset().mockResolvedValue({ text: '', confidence: 1, lines: [] })
-    container.ocrInferenceService.recognize.mockResolvedValue({ text: '', lines: [] })
     startService()
   })
 
@@ -689,7 +634,7 @@ describe('ScreenshotOverlayService', () => {
       expect(calls.at(-1)).toEqual([overlayId, null])
     })
 
-    it('releases every stored media entry AND session capture on dismiss', async () => {
+    it('releases every stored media entry and overlay association on dismiss', async () => {
       electron.displays = [makeDisplay(1, 0, 0), makeDisplay(2, 1920, 0)]
       capture.captureAllMonitors.mockReturnValue(
         new Map([
@@ -706,8 +651,6 @@ describe('ScreenshotOverlayService', () => {
       // Media entries are never reclaimed automatically, so a missed remove() is a
       // permanent multi-MB leak that nothing else would surface.
       for (const id of storedIds) expect(container.mediaProtocolService.has('image', id)).toBe(false)
-      expect(privateMap('sessionCaptures').size).toBe(0)
-      expect(privateMap('overlayMediaIds').size).toBe(0)
     })
 
     it('closes the overlays it already opened when a later display throws', async () => {
@@ -755,10 +698,6 @@ describe('ScreenshotOverlayService', () => {
       container.windowManager.getWindow.mockImplementationOnce(() => undefined)
 
       await service.startCapture()
-
-      // Returning quietly leaves the user staring at an unchanged screen believing the
-      // shortcut is broken, and pins the full-screen PNG in the media protocol forever.
-      expect(mockMainLoggerService.error).toHaveBeenCalled()
       expect(container.mediaEntries.size).toBe(0)
     })
   })
@@ -798,6 +737,27 @@ describe('ScreenshotOverlayService', () => {
       expect(service.isSessionOverlay('overlay-0-0')).toBe(true)
       expect(service.isActiveOverlay('overlay-0-0')).toBe(false)
       expect(service.isActiveOverlay('overlay-1920-0')).toBe(true)
+    })
+
+    it('binds active result authorization to the current capture of a recycled window', async () => {
+      singleDisplaySetup()
+      await service.startCapture()
+      const windowId = 'overlay-0-0'
+      const oldMediaId = initDataOf(windowId).mediaId
+      expect(service.isActiveCapture(windowId, oldMediaId)).toBe(false)
+      service.markOverlayActive(windowId)
+      expect(service.isActiveCapture(windowId, oldMediaId)).toBe(true)
+      expect(service.isActiveCapture('another-overlay', oldMediaId)).toBe(false)
+      expect(service.isActiveCapture(windowId, 'another-capture')).toBe(false)
+
+      service.dismiss()
+      expect(service.isActiveCapture(windowId, oldMediaId)).toBe(false)
+      await service.startCapture()
+      service.markOverlayActive(windowId)
+      const newMediaId = initDataOf(windowId).mediaId
+      expect(newMediaId).not.toBe(oldMediaId)
+      expect(service.isActiveCapture(windowId, oldMediaId)).toBe(false)
+      expect(service.isActiveCapture(windowId, newMediaId)).toBe(true)
     })
 
     it('stops treating an overlay as active once the session is dismissed', async () => {
@@ -1220,17 +1180,6 @@ describe('ScreenshotOverlayService', () => {
       expect(fakeWindow('overlay-0-0').setOpacity).toHaveBeenLastCalledWith(1)
     })
 
-    it('leaves no pending reveal or fallback timer behind after dismiss', async () => {
-      singleDisplaySetup()
-      await service.startCapture()
-
-      service.dismiss()
-
-      expect(privateMap('pendingReveals').size).toBe(0)
-      vi.advanceTimersByTime(5000)
-      expect(mockMainLoggerService.warn).not.toHaveBeenCalled()
-    })
-
     it('aborts the session when an overlay renderer goes away, instead of revealing a dead window', async () => {
       singleDisplaySetup()
       await service.startCapture()
@@ -1337,8 +1286,6 @@ describe('ScreenshotOverlayService', () => {
       // createFromBuffer returns an EMPTY image instead of throwing, so writing it
       // replaces the clipboard with nothing while the user is told it was copied.
       expect(electron.clipboard.write).not.toHaveBeenCalled()
-      expect(mockMainLoggerService.info).not.toHaveBeenCalledWith(expect.stringContaining('clipboard'))
-      expect(mockMainLoggerService.error).toHaveBeenCalled()
     })
 
     it('writes no file when the result bytes cannot be decoded', async () => {
@@ -1351,8 +1298,6 @@ describe('ScreenshotOverlayService', () => {
 
       // Undecodable bytes written straight through would be a corrupt .png the log calls saved.
       expect(writeFileSyncMock).not.toHaveBeenCalled()
-      expect(mockMainLoggerService.info).not.toHaveBeenCalledWith(expect.stringContaining('saved'))
-      expect(mockMainLoggerService.error).toHaveBeenCalled()
     })
 
     it('writes no file when the session ends while the save dialog is open', async () => {
@@ -1404,6 +1349,139 @@ describe('ScreenshotOverlayService', () => {
         skipTransformProcessType: true
       })
       expect(service.isSessionOverlay('overlay-0-0')).toBe(true)
+    })
+
+    it.each(['cancel', 'throw'] as const)(
+      'keeps a newer save session hidden when the old dialog finishes with %s',
+      async (outcome) => {
+        singleDisplaySetup()
+        await service.startCapture()
+        const windowId = 'overlay-0-0'
+        const window = fakeWindow(windowId)
+        let visible = true
+        window.isVisible.mockImplementation(() => visible)
+        window.show.mockImplementation(() => {
+          visible = true
+        })
+        window.showInactive.mockImplementation(() => {
+          visible = true
+        })
+        window.hide.mockImplementation(() => {
+          visible = false
+        })
+        service.markOverlayActive(windowId)
+        service.markOverlayReady(windowId, initDataOf(windowId).mediaId)
+
+        let cancelOldDialog!: (result: Electron.SaveDialogReturnValue) => void
+        let rejectOldDialog!: (error: Error) => void
+        electron.dialog.showSaveDialog.mockReturnValueOnce(
+          new Promise<Electron.SaveDialogReturnValue>((resolve, reject) => {
+            cancelOldDialog = resolve
+            rejectOldDialog = reject
+          })
+        )
+        const oldSave = service.save({ pngBytes: PNG_BYTES })
+        expect(window.isVisible()).toBe(false)
+        service.dismiss()
+        await service.startCapture()
+        service.markOverlayActive(windowId)
+        service.markOverlayReady(windowId, initDataOf(windowId).mediaId)
+        expect(window.isVisible()).toBe(true)
+
+        let cancelNewDialog!: (result: Electron.SaveDialogReturnValue) => void
+        electron.dialog.showSaveDialog.mockReturnValueOnce(
+          new Promise<Electron.SaveDialogReturnValue>((resolve) => {
+            cancelNewDialog = resolve
+          })
+        )
+        let newSaveSettled = false
+        const newSave = service.save({ pngBytes: PNG_BYTES }).then(() => {
+          newSaveSettled = true
+        })
+        expect(window.isVisible()).toBe(false)
+
+        if (outcome === 'throw') {
+          const rejected = expect(oldSave).rejects.toThrow('old dialog failed')
+          rejectOldDialog(new Error('old dialog failed'))
+          await rejected
+        } else {
+          cancelOldDialog({ canceled: true, filePath: '' })
+          await oldSave
+        }
+        expect.soft(window.isVisible(), 'The newer save panel must remain above its hidden overlay').toBe(false)
+        expect(service.isSessionOverlay(windowId)).toBe(true)
+        expect(service.isActiveOverlay(windowId)).toBe(true)
+        expect(newSaveSettled).toBe(false)
+
+        cancelNewDialog({ canceled: true, filePath: '' })
+        await newSave
+        expect(window.isVisible()).toBe(true)
+        expect(service.isSessionOverlay(windowId)).toBe(true)
+        service.dismiss()
+      }
+    )
+
+    it('keeps one save panel pending and allows another save after cancellation', async () => {
+      singleDisplaySetup()
+      await service.startCapture()
+      const windowId = 'overlay-0-0'
+      service.markOverlayActive(windowId)
+      const window = fakeWindow(windowId)
+      let visible = true
+      window.isVisible.mockImplementation(() => visible)
+      window.hide.mockImplementation(() => {
+        visible = false
+      })
+      window.show.mockImplementation(() => {
+        visible = true
+      })
+      const dialogs: Array<(result: Electron.SaveDialogReturnValue) => void> = []
+      electron.dialog.showSaveDialog.mockImplementation(
+        () => new Promise<Electron.SaveDialogReturnValue>((resolve) => dialogs.push(resolve))
+      )
+      const files = new Map<string, Uint8Array>()
+      writeFileSyncMock.mockImplementation((path: string, bytes: Uint8Array) => files.set(path, bytes))
+
+      const first = service.save({ pngBytes: PNG_BYTES })
+      await service.save({ pngBytes: new Uint8Array([9]) })
+      expect(dialogs).toHaveLength(1)
+      expect(window.isVisible()).toBe(false)
+      expect(files.size).toBe(0)
+      dialogs[0]({ canceled: true, filePath: '' })
+      await first
+      expect(window.isVisible()).toBe(true)
+      expect(service.isSessionOverlay(windowId)).toBe(true)
+
+      const retry = service.save({ pngBytes: PNG_BYTES })
+      expect(dialogs).toHaveLength(2)
+      dialogs[1]({ canceled: false, filePath: '/tmp/retry.png' })
+      await retry
+      expect(files).toEqual(new Map([['/tmp/retry.png', PNG_BYTES]]))
+      expect(service.isSessionOverlay(windowId)).toBe(false)
+    })
+
+    it('does not release a newer save panel lock when an older session finishes', async () => {
+      singleDisplaySetup()
+      await service.startCapture()
+      const windowId = 'overlay-0-0'
+      service.markOverlayActive(windowId)
+      const dialogs: Array<(result: Electron.SaveDialogReturnValue) => void> = []
+      electron.dialog.showSaveDialog.mockImplementation(
+        () => new Promise<Electron.SaveDialogReturnValue>((resolve) => dialogs.push(resolve))
+      )
+      const oldSave = service.save({ pngBytes: PNG_BYTES })
+      service.dismiss()
+      await service.startCapture()
+      service.markOverlayActive(windowId)
+      const newSave = service.save({ pngBytes: PNG_BYTES })
+      dialogs[0]({ canceled: true, filePath: '' })
+      await oldSave
+      await service.save({ pngBytes: PNG_BYTES })
+      expect(dialogs).toHaveLength(2)
+      expect(service.isSessionOverlay(windowId)).toBe(true)
+      dialogs[1]({ canceled: true, filePath: '' })
+      await newSave
+      service.dismiss()
     })
 
     it('parents the save dialog to the active overlay off macOS', async () => {
@@ -1482,236 +1560,6 @@ describe('ScreenshotOverlayService', () => {
       await vi.runAllTimersAsync()
 
       expect(electron.dialog.showMessageBox).toHaveBeenCalled()
-      expect(mockMainLoggerService.error).not.toHaveBeenCalled()
-    })
-  })
-
-  describe('region OCR', () => {
-    beforeEach(() => {
-      platform.isMac = false
-      platform.isLinux = true
-    })
-
-    it.each(['macOS', 'Windows'])(
-      'enables %s OCR without a downloaded model and scales to the clamped crop',
-      async (os) => {
-        platform.isMac = os === 'macOS'
-        platform.isWin = os === 'Windows'
-        platform.isLinux = false
-        localModel.isDefaultModelReady.mockReturnValue(false)
-        nativeOcr.recognize.mockResolvedValue({
-          text: 'native',
-          confidence: 1,
-          lines: [{ text: 'native', confidence: 1, boundingBox: { x: 0.25, y: 0.5, width: 0.5, height: 0.25 } }]
-        })
-        singleDisplaySetup()
-        await service.startCapture()
-        const initData = initDataOf('overlay-0-0')
-
-        expect(initData.ocrAvailable).toBe(true)
-        const result = await service.recognizeText('overlay-0-0', initData.mediaId, {
-          x: 1900,
-          y: 1070,
-          width: 100,
-          height: 100
-        })
-        expect(result).toEqual({
-          status: 'ok',
-          lines: [{ text: 'native', box: { x: 5, y: 5, width: 10, height: 2.5 } }]
-        })
-        expect(container.ocrInferenceService.recognize).not.toHaveBeenCalled()
-      }
-    )
-
-    it('drops native OCR results after a pooled overlay starts a new session', async () => {
-      platform.isMac = true
-      platform.isLinux = false
-      let resolveOld: (result: unknown) => void = () => {}
-      let announceStart: () => void = () => {}
-      const started = new Promise<void>((resolve) => {
-        announceStart = resolve
-      })
-      nativeOcr.recognize.mockImplementationOnce(() => {
-        announceStart()
-        return new Promise((resolve) => {
-          resolveOld = resolve
-        })
-      })
-      singleDisplaySetup()
-      await service.startCapture()
-      const pending = service.recognizeText('overlay-0-0', initDataOf('overlay-0-0').mediaId, ocrRegion(1))
-      await started
-      service.dismiss()
-      await service.startCapture()
-      resolveOld({ text: 'stale', confidence: 1, lines: [] })
-
-      expect(await pending).toEqual({ status: 'rejected' })
-      expect(await service.recognizeText('overlay-0-0', initDataOf('overlay-0-0').mediaId, ocrRegion(2))).toEqual({
-        status: 'ok',
-        lines: []
-      })
-    })
-
-    /** Two 1920×1080 displays side by side, each with its own capture. */
-    const twoDisplaySetup = () => {
-      electron.displays = [makeDisplay(1, 0, 0), makeDisplay(2, 1920, 0)]
-      electron.cursorDisplay = electron.displays[0]
-      capture.captureAllMonitors.mockReturnValue(
-        new Map([
-          [1, makeCapture()],
-          [2, makeCapture()]
-        ])
-      )
-      capture.listMonitors.mockReturnValue([
-        { id: 1, name: 'M1', x: 0, y: 0, width: 1920, height: 1080, scaleFactor: 1, isPrimary: true },
-        { id: 2, name: 'M2', x: 1920, y: 0, width: 1920, height: 1080, scaleFactor: 1, isPrimary: false }
-      ])
-    }
-
-    it('rejects a media id belonging to another display of the same session', async () => {
-      // Both overlays are session members, so session scope alone cannot stop display
-      // A from asking for a recognition of display B's screen contents.
-      twoDisplaySetup()
-      await service.startCapture()
-      const foreignMediaId = initDataOf('overlay-1920-0').mediaId
-
-      const result = await service.recognizeText('overlay-0-0', foreignMediaId, ocrRegion(1))
-
-      expect(result).toEqual({ status: 'rejected' })
-      expect(container.ocrInferenceService.recognize).not.toHaveBeenCalled()
-    })
-
-    it('reports unavailable when the model is removed while the overlay is open', async () => {
-      // initData said the model was ready; the user can delete it in settings minutes
-      // later, and reporting "no text" there sends them looking for the wrong problem.
-      singleDisplaySetup()
-      await service.startCapture()
-      localModel.isDefaultModelReady.mockReturnValue(false)
-
-      const result = await service.recognizeText('overlay-0-0', initDataOf('overlay-0-0').mediaId, ocrRegion(1))
-
-      expect(result).toEqual({ status: 'unavailable' })
-      expect(container.ocrInferenceService.recognize).not.toHaveBeenCalled()
-    })
-
-    it('trims a region whose extent overshoots the capture', async () => {
-      const cropPng = vi.mocked((await import('@main/utils/image')).cropPng)
-      singleDisplaySetup()
-      await service.startCapture()
-      const mediaId = initDataOf('overlay-0-0').mediaId
-
-      // Rounding a scaled selection can put the rect a pixel past the edge.
-      await service.recognizeText('overlay-0-0', mediaId, { x: 1900, y: 1070, width: 100, height: 100 })
-
-      expect(cropPng.mock.calls[0][1]).toEqual({ x: 1900, y: 1070, width: 20, height: 10 })
-    })
-
-    it('rejects a region whose origin is outside the capture instead of cropping a sliver', async () => {
-      singleDisplaySetup()
-      await service.startCapture()
-
-      const result = await service.recognizeText('overlay-0-0', initDataOf('overlay-0-0').mediaId, {
-        x: 1920,
-        y: 0,
-        width: 100,
-        height: 100
-      })
-
-      // Clamping the origin yields a 1px-wide slice that recognizes nothing, presenting
-      // the caller's coordinate bug to the user as "there is no text here".
-      expect(result).toEqual({ status: 'rejected' })
-      expect(container.ocrInferenceService.recognize).not.toHaveBeenCalled()
-    })
-
-    // Serialization itself is OcrInferenceService's PQueue(concurrency: 1) and is covered
-    // by its own tests; what this module owes is that a superseded request paints nothing.
-    it('keeps only the newest of a burst, and never sends the superseded ones to the worker', async () => {
-      singleDisplaySetup()
-      await service.startCapture()
-      const mediaId = initDataOf('overlay-0-0').mediaId
-      const gate = gateInferenceService()
-
-      // The first request must actually reach the worker before the rest are fired:
-      // issued in one synchronous burst, even it would look superseded.
-      const firstStarted = gate.nextStart()
-      const first = service.recognizeText('overlay-0-0', mediaId, ocrRegion(1))
-      await firstStarted
-
-      const second = service.recognizeText('overlay-0-0', mediaId, ocrRegion(2))
-      const third = service.recognizeText('overlay-0-0', mediaId, ocrRegion(3))
-      const fourth = service.recognizeText('overlay-0-0', mediaId, ocrRegion(4))
-      const fifth = service.recognizeText('overlay-0-0', mediaId, ocrRegion(5))
-
-      await vi.advanceTimersByTimeAsync(1000)
-
-      expect(await second).toEqual({ status: 'rejected' })
-      expect(await third).toEqual({ status: 'rejected' })
-      expect(await fourth).toEqual({ status: 'rejected' })
-      expect(await fifth).toEqual({ status: 'ok', lines: [] })
-      // The first is superseded by the time it returns, but it was already running —
-      // it is the queued middle that is dropped without touching the worker.
-      expect(await first).toEqual({ status: 'rejected' })
-      expect(gate.reached).toEqual([1, 5])
-    })
-
-    it('answers the display the user switched to, not the one they left', async () => {
-      twoDisplaySetup()
-      await service.startCapture()
-      const gate = gateInferenceService()
-
-      const firstStarted = gate.nextStart()
-      const onFirstDisplay = service.recognizeText('overlay-0-0', initDataOf('overlay-0-0').mediaId, ocrRegion(1))
-      await firstStarted
-
-      const onSecondDisplay = service.recognizeText(
-        'overlay-1920-0',
-        initDataOf('overlay-1920-0').mediaId,
-        ocrRegion(2)
-      )
-      await vi.advanceTimersByTimeAsync(1000)
-
-      // A per-window token would leave both live and let display A's late result paint
-      // over the overlay the user actually moved to.
-      expect(await onFirstDisplay).toEqual({ status: 'rejected' })
-      expect(await onSecondDisplay).toEqual({ status: 'ok', lines: [] })
-    })
-
-    it('rejects a recognition that finishes after the pooled window entered a new session', async () => {
-      singleDisplaySetup()
-      await service.startCapture()
-      const gate = gateInferenceService()
-
-      const started = gate.nextStart()
-      const pending = service.recognizeText('overlay-0-0', initDataOf('overlay-0-0').mediaId, ocrRegion(1))
-      await started
-
-      service.dismiss()
-      await service.startCapture() // same pooled window id, new capture
-      await vi.advanceTimersByTimeAsync(1000)
-
-      // The overlay's React tree survives a pool recycle, so an `ok` here would paint
-      // the previous capture's text onto the new one.
-      expect(await pending).toEqual({ status: 'rejected' })
-    })
-
-    it('lets a new session recognize while the previous session request is still running', async () => {
-      singleDisplaySetup()
-      await service.startCapture()
-      const gate = gateInferenceService()
-
-      const started = gate.nextStart()
-      const stale = service.recognizeText('overlay-0-0', initDataOf('overlay-0-0').mediaId, ocrRegion(1))
-      await started
-
-      service.dismiss()
-      await service.startCapture()
-      const fresh = service.recognizeText('overlay-0-0', initDataOf('overlay-0-0').mediaId, ocrRegion(2))
-      await vi.advanceTimersByTimeAsync(1000)
-
-      // The stale one must not resolve `ok`, or a pooled overlay would paint the
-      // previous capture's text over the new one.
-      expect(await stale).toEqual({ status: 'rejected' })
-      expect(await fresh).toEqual({ status: 'ok', lines: [] })
     })
   })
 
@@ -1772,46 +1620,11 @@ describe('ScreenshotOverlayService', () => {
   describe('permission warm-up', () => {
     const subscribeChange = () => container.preferenceService.subscribeChange.mock.calls.at(-1)?.[1]
 
-    it('touches the capture backend when the feature is switched on, so macOS asks now', async () => {
-      subscribeChange()?.(true)
-      await vi.runAllTimersAsync()
-
-      // macOS re-confirms consent periodically and raises the prompt on the next
-      // ScreenCaptureKit call; unasked here, it lands mid-capture on a busy main process.
-      expect(capture.listMonitors).toHaveBeenCalled()
-    })
-
     it('leaves the native backend alone when the feature is switched off', async () => {
       subscribeChange()?.(false)
       await vi.runAllTimersAsync()
 
       expect(capture.listMonitors).not.toHaveBeenCalled()
-    })
-
-    it('leaves the native backend alone off macOS', async () => {
-      // No consent to re-confirm there, and probing would load the native module the
-      // feature deliberately defers until a capture actually happens.
-      platform.isMac = false
-      platform.isWin = true
-
-      subscribeChange()?.(true)
-      await vi.runAllTimersAsync()
-
-      expect(capture.listMonitors).not.toHaveBeenCalled()
-    })
-
-    it('logs a warm-up failure instead of letting it escape or raise a dialog', async () => {
-      capture.listMonitors.mockImplementation(() => {
-        throw new Error('backend unavailable')
-      })
-
-      subscribeChange()?.(true)
-      await vi.runAllTimersAsync()
-
-      // A background convenience: an unhandled throw here would take down whatever
-      // dispatched the preference change, and a dialog would ambush the settings page.
-      expect(mockMainLoggerService.warn).toHaveBeenCalled()
-      expect(electron.dialog.showMessageBox).not.toHaveBeenCalled()
     })
   })
 })

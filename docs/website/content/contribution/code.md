@@ -57,9 +57,9 @@ icon: code
 {% endstep %}
 
 {% step %}
-### 4. 提交并签署
+### 4. 提交
 
-提交信息写清改动类型和模块，并使用 `git commit --signoff` 添加 DCO 签署。签署表示你有权按项目许可提交这部分内容。
+提交信息写清改动类型和模块。
 {% endstep %}
 
 {% step %}

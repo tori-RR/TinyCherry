@@ -33,7 +33,7 @@ beforeEach(() => {
       platform: process.platform === 'win32' ? 'windows' : 'macos',
       ref: 'test',
       runner: 'local',
-      task: 'translation-settings',
+      task: 'custom-provider-chat',
       providerMode: 'mock'
     })
   )
@@ -131,7 +131,12 @@ it('still stops the mock when application cleanup fails, while retaining the cle
   expect(findListeningPid(record.platform, record.port)).toBeUndefined()
 })
 
-it('refuses unsupported knowledge and whole-suite mock acceptance before launching', () => {
-  for (const task of ['knowledge', 'notes', 'translation', 'mini-app', 'all'] as const)
+it('refuses unsupported module and whole-suite mock acceptance before launching', () => {
+  for (const task of ['notes', 'mini-app', 'all'] as const)
     expect(() => assertMockTask(task)).toThrow('provider_mode=real')
+})
+
+it('permits combinations only when every selected task supports the mock backend', () => {
+  expect(() => assertMockTask(['startup-smoke', 'chat-stream-failure'])).not.toThrow()
+  expect(() => assertMockTask(['startup-smoke', 'notes'])).toThrow('provider_mode=real')
 })

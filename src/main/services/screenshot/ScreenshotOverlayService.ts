@@ -12,18 +12,15 @@ import { isDev, isMac, isWin } from '@main/core/platform'
 import { WindowType } from '@main/core/window/types'
 import { t } from '@main/i18n'
 import { MediaKind } from '@main/services/mediaProtocol'
-import { cropPng } from '@main/utils/image'
 import {
   getScreenCapturePermissionStatus,
   openScreenCaptureSettings,
   requestScreenCapturePermission,
   type ScreenCapturePermissionStatus
 } from '@main/utils/screenCapturePermission'
-import type { OcrRecognitionResult } from '@shared/ipc/schemas/screenshot'
 import type { WindowId } from '@shared/ipc/types'
 import type { DetectedWindow, ScreenshotInitData, ScreenshotResultData } from '@shared/types/screenshot'
 
-import { isScreenshotOcrAvailable, recognizeScreenshotText } from './recognizeText'
 import { captureAllMonitors, listMonitors } from './screenCapture'
 import { type CaptureResult, type MonitorInfo, type RawWindowInfo, ScreenCapturePermissionError } from './types'
 import { listWindowsOffThread } from './windowEnumerator'
@@ -70,22 +67,6 @@ interface CaptureTrace {
   ready: number
 }
 
-/** One display's frozen capture, kept for the session so region OCR can crop it. */
-interface SessionCapture {
-  buffer: Buffer
-  /** Physical pixel dimensions — needed to clamp an incoming region to the image. */
-  width: number
-  height: number
-}
-
-/** An OCR request's rectangle, in the capture's own physical pixel space. */
-interface OcrRegion {
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
 /**
  * Orchestrates an interactive capture session: freeze every display, hand each
  * frozen image to a full-screen overlay window, then turn the overlay's result
@@ -97,7 +78,7 @@ interface OcrRegion {
  */
 @Injectable('ScreenshotOverlayService')
 @ServicePhase(Phase.WhenReady)
-@DependsOn(['WindowManager', 'MediaProtocolService', 'OcrInferenceService'])
+@DependsOn(['WindowManager', 'MediaProtocolService'])
 export class ScreenshotOverlayService extends BaseService {
   /** Overlay window ids of the live session — one per display that matched a capture. */
   private overlayWindowIds: WindowId[] = []
@@ -107,9 +88,6 @@ export class ScreenshotOverlayService extends BaseService {
 
   /** Media protocol entries handed out this session; nothing else frees them. */
   private mediaIds: string[] = []
-
-  /** Session captures keyed by the media id handed to the owning overlay. */
-  private sessionCaptures = new Map<string, SessionCapture>()
 
   /** Which media id belongs to which overlay — the ownership check for handshakes. */
   private overlayMediaIds = new Map<WindowId, string>()
@@ -122,6 +100,7 @@ export class ScreenshotOverlayService extends BaseService {
 
   /** Monotonic session id; a callback carrying an older one must not act. */
   private sessionGeneration = 0
+  private savingGeneration: number | null = null
   private hiddenSourceWindow: BrowserWindow | null = null
   private resultConsumer: {
     submit: (result: ScreenshotResultData & { text: string }) => Promise<void>
@@ -158,10 +137,6 @@ export class ScreenshotOverlayService extends BaseService {
 
   /** Overlay windows created since the session started; the rest came from the pool. */
   private overlaysCreated = 0
-
-  /** Token of the newest OCR request. At most one overlay is active, so "keep only
-   *  the newest" is global — bucketing by window would let two chains run at once. */
-  private latestOcrToken: symbol | null = null
 
   protected onInit(): void {
     const windowManager = application.get('WindowManager')
@@ -298,9 +273,6 @@ export class ScreenshotOverlayService extends BaseService {
         // display's pixel grid, so its scale factor is the reference for normalizing.
         const primaryScaleFactor = screen.getPrimaryDisplay().scaleFactor
 
-        const autoOcr = preferenceService.get('feature.screenshot.auto_ocr')
-        const ocrAvailable = isScreenshotOcrAvailable()
-
         // Which overlay covers which display, for the snap-target push below.
         const snapOverlays: { windowId: WindowId; display: Display }[] = []
 
@@ -318,12 +290,6 @@ export class ScreenshotOverlayService extends BaseService {
           // Store before open(): initData carries the media id.
           const mediaId = mediaProtocol.store(MediaKind.Image, captureResult.buffer, 'image/png')
           this.mediaIds.push(mediaId)
-          this.sessionCaptures.set(mediaId, {
-            buffer: captureResult.buffer,
-            width: captureResult.width,
-            height: captureResult.height
-          })
-
           // Floored: DPI scaling makes Electron report values like 1919.9999…, and the
           // leftover fraction shows up as a 1px uncovered strip at a display edge.
           const bounds = {
@@ -348,9 +314,7 @@ export class ScreenshotOverlayService extends BaseService {
                 width: captureResult.width,
                 height: captureResult.height,
                 scaleFactor: display.scaleFactor
-              },
-              autoOcr,
-              ocrAvailable
+              }
             }
           })
 
@@ -431,6 +395,11 @@ export class ScreenshotOverlayService extends BaseService {
     return this.activeOverlayWindowId === windowId
   }
 
+  /** Whether result bytes belong to the active overlay's current capture. */
+  public isActiveCapture(windowId: WindowId, mediaId: string): boolean {
+    return this.isActiveOverlay(windowId) && this.overlayMediaIds.get(windowId) === mediaId
+  }
+
   /**
    * The calling overlay took over the interaction; the previously active one is
    * told to drop its selection, so at most one selection exists across displays.
@@ -472,63 +441,6 @@ export class ScreenshotOverlayService extends BaseService {
   public setTextEditing(windowId: WindowId, editing: boolean): void {
     if (!isMac) return
     application.get('WindowManager').behavior.setAlwaysOnTopLevel(windowId, editing ? 'floating' : null)
-  }
-
-  /**
-   * Recognize text inside one region of an overlay's frozen capture.
-   *
-   * Native OCR runs asynchronously; Paddle uses its inference worker. Only the latest
-   * request may publish lines, including across pooled-window sessions.
-   */
-  public async recognizeText(windowId: WindowId, mediaId: string, region: OcrRegion): Promise<OcrRecognitionResult> {
-    const token = Symbol('ocr-request')
-    this.latestOcrToken = token
-
-    // Ownership, not just session membership: two overlays of one session would
-    // otherwise let display A ask for OCR of display B's capture.
-    if (this.overlayMediaIds.get(windowId) !== mediaId) return { status: 'rejected' }
-
-    // Re-checked per request, never cached from initData: the user can delete the
-    // Paddle model in settings while the overlay is open.
-    if (!isScreenshotOcrAvailable()) return { status: 'unavailable' }
-
-    const capture = this.sessionCaptures.get(mediaId)
-    if (!capture) return { status: 'rejected' }
-
-    // An origin outside the image is a caller coordinate bug; clamping it would run a
-    // full recognition on a 1px slice and report the result as "no text here".
-    if (region.x >= capture.width || region.y >= capture.height) return { status: 'rejected' }
-
-    // The renderer scales a CSS-px selection by scaleFactor and rounds, so the
-    // rect can reach a pixel past the image edge.
-    const clamped = {
-      x: region.x,
-      y: region.y,
-      width: Math.min(region.width, capture.width - region.x),
-      height: Math.min(region.height, capture.height - region.y)
-    }
-    if (clamped.width <= 0 || clamped.height <= 0) return { status: 'rejected' }
-
-    try {
-      const imageBytes = await cropPng(capture.buffer, clamped)
-
-      // Superseded while the crop ran: skip a recognition whose result nobody will use.
-      if (this.latestOcrToken !== token) return { status: 'rejected' }
-
-      const result = await recognizeScreenshotText(imageBytes, clamped)
-
-      // A pooled overlay's React tree survives into the next session, so a late
-      // success would paint the previous capture's text onto the new one.
-      if (this.latestOcrToken !== token) return { status: 'rejected' }
-      if (this.overlayMediaIds.get(windowId) !== mediaId) return { status: 'rejected' }
-
-      return result
-    } catch (error) {
-      // Rethrown so the overlay shows its error state; logged here because the IPC
-      // transport only serializes the error to the renderer, it never records it.
-      logger.error('Region OCR failed', error as Error)
-      throw error
-    }
   }
 
   /**
@@ -649,6 +561,8 @@ export class ScreenshotOverlayService extends BaseService {
    */
   public async save(result: ScreenshotResultData): Promise<void> {
     const generation = this.sessionGeneration
+    if (this.savingGeneration === generation) return
+    this.savingGeneration = generation
     try {
       const saveOptions: Electron.SaveDialogOptions = {
         // Local time, not an epoch: the name is what the user scans in a file list.
@@ -699,9 +613,10 @@ export class ScreenshotOverlayService extends BaseService {
         if (!hasVisibleWindows) app.hide()
       }
     } finally {
-      // On cancel (or a throwing dialog) the overlays are hidden yet still tracked, so
-      // the session would be stuck; after a successful save the list is empty, a no-op.
-      if (isMac) this.showAllOverlays()
+      if (this.savingGeneration === generation) this.savingGeneration = null
+      // Restore only the session that opened this dialog; an older completion must
+      // not reveal a newer session's overlays over its save panel.
+      if (isMac && generation === this.sessionGeneration) this.showAllOverlays()
     }
   }
 
@@ -782,7 +697,6 @@ export class ScreenshotOverlayService extends BaseService {
     // full-screen PNG in memory for the rest of the process's life.
     for (const mediaId of this.mediaIds) mediaProtocol.remove(MediaKind.Image, mediaId)
     this.mediaIds = []
-    this.sessionCaptures.clear()
     this.overlayMediaIds.clear()
     // Per-session: a recycled overlay that painted last time has to earn it again, or
     // the next session's never-painted window would have no Escape rescue.
@@ -809,9 +723,6 @@ export class ScreenshotOverlayService extends BaseService {
       )
     }
     this.trace = null
-
-    // Invalidates every in-flight OCR result; the recognitions themselves run to completion.
-    this.latestOcrToken = null
   }
 
   /** The overlay holding the live selection, used as the save dialog's parent. */

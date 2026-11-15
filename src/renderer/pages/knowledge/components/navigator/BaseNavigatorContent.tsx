@@ -20,9 +20,10 @@ import { isKeyboardEvent } from '@dnd-kit/utilities'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Accordion, BlurCancelPointerSensor, EmptyState, Scrollbar } from '@cherrystudio/ui'
+import { Accordion, BlurCancelPointerSensor, EmptyState, ScrollArea } from '@cherrystudio/ui'
 import { loggerService } from '@logger'
 import { useSidebarShortcuts } from '@renderer/hooks/useSidebarShortcuts'
+import { supportsKnowledgeGroups } from '@renderer/pages/knowledge/utils/group'
 import { toast } from '@renderer/services/toast'
 import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
 import { createSidebarShortcutTarget, SIDEBAR_SHORTCUT_PROVIDER_IDS } from '@renderer/utils/sidebar'
@@ -56,10 +57,11 @@ const BaseNavigatorContent = ({
   onDeleteBase
 }: BaseNavigatorContentProps) => {
   const { t } = useTranslation()
+  const groupingEnabled = supportsKnowledgeGroups()
   const [activeLabel, setActiveLabel] = useState<string | null>(null)
   const [indicator, setIndicator] = useState<{ id: string; position: 'before' | 'after' } | null>(null)
   const savingRef = useRef(false)
-  const dragDisabled = !onReorderBase || !onReorderGroup || isReordering
+  const dragDisabled = !onReorderBase || (groupingEnabled && !onReorderGroup) || isReordering
   const sensors = useSensors(
     useSensor(BlurCancelPointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, {
@@ -155,12 +157,13 @@ const BaseNavigatorContent = ({
   const handleDragEnd = async (event: DragEndEvent) => {
     const target = getIndicator(event)
     clearDrag()
-    if (!target || savingRef.current || !onReorderBase || !onReorderGroup) return
+    if (!target || savingRef.current || !onReorderBase || (groupingEnabled && !onReorderGroup)) return
     const active = event.active.data.current
     const over = event.over?.data.current
     if (!active || !over) return
     let persist: () => Promise<void>
     if (active.type === 'group') {
+      if (!groupingEnabled || !onReorderGroup) return
       if (!active.groupId || !over.groupId || over.type !== 'group') return
       const from = sections.findIndex((section) => section.groupId === active.groupId)
       const to = sections.findIndex((section) => section.groupId === over.groupId)
@@ -169,6 +172,7 @@ const BaseNavigatorContent = ({
     } else {
       const base = active.base as KnowledgeBaseListItem
       const targetGroupId = over.groupId as string | null
+      if (!groupingEnabled && base.groupId !== targetGroupId) return
       const anchor: OrderRequest =
         over.type === 'base'
           ? target.position === 'before'
@@ -214,7 +218,7 @@ const BaseNavigatorContent = ({
       onDragOver={(event) => setIndicator(getIndicator(event))}
       onDragCancel={clearDrag}
       onDragEnd={handleDragEnd}>
-      <Scrollbar className="min-h-0 flex-1 overflow-x-hidden pt-1 pb-3">
+      <ScrollArea className="min-h-0 flex-1 overflow-x-hidden pt-1 pb-3">
         {isLoading ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             {t('common.loading')}
@@ -282,7 +286,7 @@ const BaseNavigatorContent = ({
             </Accordion>
           </SortableContext>
         )}
-      </Scrollbar>
+      </ScrollArea>
       <DragOverlay dropAnimation={null}>
         {activeLabel ? (
           <div className="rounded-md border border-border bg-popover px-2.5 py-1.5 text-sm text-popover-foreground shadow-sm">

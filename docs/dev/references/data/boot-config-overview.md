@@ -176,7 +176,7 @@ Utility functions in `src/shared/data/preference/preferenceUtils.ts`:
 ## File Storage
 
 - **Path:** `{cherryHome}/boot-config.json` (intentionally outside `userData`)
-- **Cherry home:** `~/.cherrystudio` by default; `{profileRoot}/.cherrystudio` for unpackaged runs with `CS_DEV_PROFILE_ROOT`
+- **Cherry home:** `~/.tinycherry` by default, `{profileRoot}/.tinycherry` with `CS_DEV_PROFILE_ROOT`, or `home/` beside the packaged Windows portable launcher.
 - **Format:** Flat JSON object, pretty-printed (2-space indent)
 
 > **Why outside `userData`?** Boot config must be readable *before* the app data directory is determined. Storing it under `userData` would create a chicken-and-egg problem: the file that decides where data lives cannot itself live inside that data. Placing it under `{cherryHome}` keeps it stable across changes to `appDataPath` and ensures it is always available at process start, before `initAppDataDir()` runs.

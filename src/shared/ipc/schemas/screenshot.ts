@@ -20,54 +20,21 @@ import { uint8ArraySchema } from './common'
  */
 const MAX_RESULT_BYTES = 48 * 1024 * 1024
 
-/**
- * Widest OCR region accepted, per side. A selection cannot exceed the display it
- * was drawn on, and 8K covers the largest realistic panel; the cap exists so one
- * request cannot queue unbounded work onto the shared inference worker.
- */
-const MAX_OCR_REGION_SIDE = 8192
-
-/** Runtime form of {@link ScreenshotResultData}; the annotation binds the two structurally. */
-const screenshotResultSchema: z.ZodType<ScreenshotResultData> = z.object({
+/** Result bytes plus the capture identity checked before invoking the business service. */
+const screenshotResultSchema = z.object({
+  mediaId: z.string().min(1),
   // Raw bytes rather than a data URL: base64 adds a third to a payload that is already
   // tens of MB, plus an encode in the renderer and a decode in main.
   pngBytes: uint8ArraySchema.refine(
     (bytes) => bytes.byteLength <= MAX_RESULT_BYTES,
     'screenshot result exceeds the size cap'
   )
-})
-
-/** One text line with glyph bounds in physical pixels relative to the OCR crop. */
-const ocrTextLine = z.object({
-  text: z.string(),
-  box: z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() })
-})
-
-export type OcrTextLine = z.infer<typeof ocrTextLine>
-
-// Discriminated on purpose: a bare `lines: []` cannot tell "this region has no text"
-// apart from "the model was deleted" or "this request no longer applies".
-const ocrRecognitionResult = z.discriminatedUnion('status', [
-  z.object({
-    status: z.literal('ok'),
-    /** Lines in reading order, with engine-specific padding already removed. */
-    lines: z.array(ocrTextLine)
-  }),
-  /** Local OCR model not ready — never downloaded, or removed just now. */
-  z.object({ status: z.literal('unavailable') }),
-  /** Request no longer applies: not the active overlay, foreign mediaId, session
-   *  already gone, or the clamped region degenerated to nothing. Not an error. */
-  z.object({ status: z.literal('rejected') })
-])
-
-/** The single definition both the route and the service implement. */
-export type OcrRecognitionResult = z.infer<typeof ocrRecognitionResult>
+}) satisfies z.ZodType<ScreenshotResultData & { mediaId: string }>
 
 // ── Request: renderer→main calls (zod values, always parsed) ──
 export const screenshotRequestSchemas = {
   'screenshot.submit_result': defineRoute({
-    input: z.object({
-      pngBytes: uint8ArraySchema.refine((bytes) => bytes.byteLength <= MAX_RESULT_BYTES),
+    input: screenshotResultSchema.extend({
       text: z.string().max(10000)
     }),
     output: z.void()
@@ -112,30 +79,7 @@ export const screenshotRequestSchemas = {
    * candidates completely — text can be composed but nothing can be chosen. Main drops
    * this overlay below that level while the editor is open and restores it on close.
    */
-  'screenshot.text_editing': defineRoute({ input: z.object({ editing: z.boolean() }), output: z.void() }),
-  /**
-   * OCR a region of the frozen capture. Cropping happens in main so the full-size
-   * image never crosses the process boundary.
-   *
-   * Region is in the capture's own PHYSICAL pixel space and must be integral —
-   * `sharp.extract()` rejects fractional rects, and HiDPI overlays compute their
-   * selection in CSS px, so the renderer multiplies by scaleFactor and rounds
-   * before sending. Main additionally clamps to the image bounds (a rounded rect
-   * can land one pixel past the edge). MAX_OCR_REGION_SIDE bounds the work a
-   * single request can queue onto the inference worker.
-   */
-  'screenshot.recognize_text': defineRoute({
-    input: z.object({
-      mediaId: z.string(),
-      region: z.object({
-        x: z.number().int().nonnegative(),
-        y: z.number().int().nonnegative(),
-        width: z.number().int().positive().max(MAX_OCR_REGION_SIDE),
-        height: z.number().int().positive().max(MAX_OCR_REGION_SIDE)
-      })
-    }),
-    output: ocrRecognitionResult
-  })
+  'screenshot.text_editing': defineRoute({ input: z.object({ editing: z.boolean() }), output: z.void() })
 }
 
 // ── Event: main→renderer pushes (pure types, never parsed) ──

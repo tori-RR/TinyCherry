@@ -169,15 +169,7 @@ Browser downloads (`<a download>`, `URL.createObjectURL` + click) and the File S
 |---|---|---|
 | `show({ title, body? })` | `notification.show` | `{ ok: true }` |
 
-| Rule | Value |
-|---|---|
-| `title` | required, shown truncated to 64 characters |
-| `body` | optional, truncated to 256 characters |
-| Rate | 5 per minute per app |
-| Attribution | The notification is prefixed with your app id and name; you cannot impersonate the host |
-| User switch | If the user disabled mini app notifications, the call resolves `ok` and shows nothing |
-
-Notifications are one-way: there is no click event back to the app.
+TinyCherry accepts valid requests for compatibility and does not deliver system notifications. The title must be a nonempty string, the optional body must be a string, and the limit is five calls per minute per app.
 
 ## `cherry.clipboard`
 

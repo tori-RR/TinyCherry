@@ -1,12 +1,26 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type * as ReactModule from 'react'
 import type { ComponentProps, MouseEvent as ReactMouseEvent, ReactNode } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type * as PlatformModule from '@renderer/utils/platform'
 import type { KnowledgeBaseListItem } from '@shared/data/api/schemas/knowledges'
 import type { Group } from '@shared/data/types/group'
 
 import { BaseNavigator as BaseNavigatorComponent } from '../navigator'
+
+const runtime = vi.hoisted(() => ({ isEvoStack: false }))
+vi.mock('@renderer/utils/platform', async (importOriginal) => ({
+  ...(await importOriginal<typeof PlatformModule>()),
+  get isEvoStack() {
+    return runtime.isEvoStack
+  }
+}))
+
+beforeEach(() => {
+  runtime.isEvoStack = false
+})
 
 vi.mock('@cherrystudio/ui', () => {
   const React = require('react') as typeof ReactModule
@@ -406,7 +420,7 @@ vi.mock('@cherrystudio/ui', () => {
         {children}
       </button>
     ),
-    Scrollbar: ({ children, ...props }: { children: ReactNode; [key: string]: unknown }) => (
+    ScrollArea: ({ children, ...props }: { children: ReactNode; [key: string]: unknown }) => (
       <div {...props}>{children}</div>
     ),
     SearchInput: ({
@@ -552,6 +566,39 @@ describe('BaseNavigator', () => {
     onDeleteBase: vi.fn(),
     onResizeStart: vi.fn()
   }
+
+  it('keeps existing native grouped bases accessible without group mutation actions', async () => {
+    runtime.isEvoStack = true
+    const onSelectBase = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <BaseNavigator
+        {...baseProps}
+        bases={[
+          createKnowledgeBase({ id: 'base-1', name: 'Alpha', groupId: 'group-1' }),
+          createKnowledgeBase({ id: 'base-2', name: 'Beta' })
+        ]}
+        groups={[createGroup()]}
+        onSelectBase={onSelectBase}
+      />
+    )
+
+    const group = screen.getByRole('button', { name: /Research/ })
+    expect(group).not.toHaveAttribute('aria-roledescription', 'sortable')
+    fireEvent.contextMenu(group)
+    expect(screen.queryByRole('button', { name: '删除分组' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '在此分组新建' })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: '更多' })).toHaveLength(2)
+    expect(screen.getByRole('button', { name: /默认/ })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Alpha/ }))
+    expect(onSelectBase).toHaveBeenCalledWith('base-1')
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: /Alpha/ }))
+    expect(screen.queryByText('移动到')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '新建分组' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '重命名' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '删除知识库' })).toBeInTheDocument()
+  })
 
   // Zero bases normally never reaches the navigator because KnowledgePage owns that empty state.
   it('shows loading before the base query settles', () => {

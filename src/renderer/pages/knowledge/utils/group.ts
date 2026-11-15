@@ -1,4 +1,5 @@
 import { matchesSearchText } from '@renderer/utils/pinyin'
+import { isEvoStack } from '@renderer/utils/platform'
 import type { KnowledgeBaseListItem } from '@shared/data/api/schemas/knowledges'
 import type { Group } from '@shared/data/types/group'
 
@@ -8,6 +9,8 @@ export interface KnowledgePageBaseGroupSection {
 }
 
 export const DEFAULT_KNOWLEDGE_GROUP_LABEL_KEY = 'knowledge.groups.default'
+
+export const supportsKnowledgeGroups = () => !isEvoStack
 
 export const buildKnowledgeBaseGroupSections = (
   bases: ReadonlyArray<KnowledgeBaseListItem>,

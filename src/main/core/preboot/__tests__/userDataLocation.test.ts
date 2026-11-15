@@ -2,6 +2,8 @@ import { join, resolve as resolvePath } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type * as PathConstants from '@main/core/paths/constants'
+
 /**
  * Tests for src/main/core/preboot/userDataLocation.ts
  *
@@ -90,6 +92,15 @@ function stubConstants(flags: PlatformFlags) {
     isMac: !flags.isLinux && !flags.isWin,
     isDev: false
   }))
+  vi.doMock('@main/core/paths/constants', async (importOriginal) => {
+    const actual = await importOriginal<typeof PathConstants>()
+    const portableRoot = flags.isPortable ? process.env.PORTABLE_EXECUTABLE_DIR : undefined
+    return {
+      ...actual,
+      WINDOWS_PORTABLE_ROOT: portableRoot,
+      WINDOWS_PORTABLE_USER_DATA: portableRoot ? join(portableRoot, 'data') : undefined
+    }
+  })
 }
 
 function stubBootConfig(store: BootConfigStore = {}) {
@@ -213,14 +224,14 @@ describe('getNormalizedExecutablePath', () => {
     expect(getNormalizedExecutablePath()).toBe('C:\\Program Files\\Cherry Studio\\Cherry Studio.exe')
   })
 
-  it('Windows portable: returns PORTABLE_EXECUTABLE_DIR/cherry-studio-portable.exe', async () => {
-    vi.stubEnv('PORTABLE_EXECUTABLE_DIR', 'D:\\PortableApps\\CherryStudio')
+  it('Windows portable: returns PORTABLE_EXECUTABLE_DIR/tinycherry-portable.exe', async () => {
+    vi.stubEnv('PORTABLE_EXECUTABLE_DIR', 'D:\\PortableApps\\TinyCherry')
     stubConstants({ isLinux: false, isWin: true, isPortable: true })
-    stubElectron({ exePath: 'D:\\PortableApps\\CherryStudio\\Cherry Studio.exe' })
+    stubElectron({ exePath: 'D:\\PortableApps\\TinyCherry\\Cherry Studio.exe' })
     stubBootConfig()
     stubFs()
     const { getNormalizedExecutablePath } = await loadModule()
-    expect(getNormalizedExecutablePath()).toBe(join('D:\\PortableApps\\CherryStudio', 'cherry-studio-portable.exe'))
+    expect(getNormalizedExecutablePath()).toBe(join('D:\\PortableApps\\TinyCherry', 'tinycherry-portable.exe'))
   })
 })
 
@@ -314,7 +325,10 @@ describe('resolveUserDataLocation', () => {
     })
 
     it('app.isPackaged=false: creates and selects the configured dev profile userData', async () => {
-      vi.stubEnv('CS_DEV_PROFILE_ROOT', '/private/tmp/cherry-profile')
+      const profileRoot = resolvePath('/private/tmp/cherry-profile')
+      const userData = join(profileRoot, 'userData')
+      const temp = join(profileRoot, 'home', 'temp')
+      vi.stubEnv('CS_DEV_PROFILE_ROOT', profileRoot)
       stubConstants({ isLinux: false, isWin: false, isPortable: false })
       stubElectron({ isPackaged: false, userData: '/mock/userData' })
       stubBootConfig({ 'app.user_data_path': { '/mock/exe': '/real/user/data' } })
@@ -323,10 +337,10 @@ describe('resolveUserDataLocation', () => {
       const { resolveUserDataLocation } = await loadModule()
       resolveUserDataLocation()
 
-      expect(mkdirSync).toHaveBeenCalledWith('/private/tmp/cherry-profile/userData', { recursive: true })
-      expect(mkdirSync).toHaveBeenCalledWith('/private/tmp/cherry-profile/home/temp', { recursive: true })
-      expect(setPathMock).toHaveBeenCalledWith('temp', '/private/tmp/cherry-profile/home/temp')
-      expect(setPathMock).toHaveBeenCalledWith('userData', '/private/tmp/cherry-profile/userData')
+      expect(mkdirSync).toHaveBeenCalledWith(userData, { recursive: true })
+      expect(mkdirSync).toHaveBeenCalledWith(temp, { recursive: true })
+      expect(setPathMock).toHaveBeenCalledWith('temp', temp)
+      expect(setPathMock).toHaveBeenCalledWith('userData', userData)
       expect(bootConfigGetMock).not.toHaveBeenCalled()
     })
 
@@ -403,14 +417,14 @@ describe('resolveUserDataLocation', () => {
     })
 
     it('BootConfig empty + isPortable=true: setPath called with portableDir/data', async () => {
-      vi.stubEnv('PORTABLE_EXECUTABLE_DIR', 'D:\\PortableApps\\CherryStudio')
+      vi.stubEnv('PORTABLE_EXECUTABLE_DIR', 'D:\\PortableApps\\TinyCherry')
       stubConstants({ isLinux: false, isWin: true, isPortable: true })
-      stubElectron({ exePath: 'D:\\PortableApps\\CherryStudio\\Cherry Studio.exe' })
+      stubElectron({ exePath: 'D:\\PortableApps\\TinyCherry\\Cherry Studio.exe' })
       stubBootConfig({ 'app.user_data_path': {} })
       stubFs()
       const { resolveUserDataLocation } = await loadModule()
       resolveUserDataLocation()
-      expect(setPathMock).toHaveBeenCalledWith('userData', join('D:\\PortableApps\\CherryStudio', 'data'))
+      expect(setPathMock).toHaveBeenCalledWith('userData', join('D:\\PortableApps\\TinyCherry', 'data'))
       expect(setPathMock).toHaveBeenCalledTimes(1)
     })
 
@@ -441,12 +455,12 @@ describe('resolveUserDataLocation', () => {
     })
 
     it('Windows portable normalized key matches in BootConfig: setPath called', async () => {
-      vi.stubEnv('PORTABLE_EXECUTABLE_DIR', 'D:\\PortableApps\\CherryStudio')
+      vi.stubEnv('PORTABLE_EXECUTABLE_DIR', 'D:\\PortableApps\\TinyCherry')
       stubConstants({ isLinux: false, isWin: true, isPortable: true })
-      stubElectron({ exePath: 'D:\\PortableApps\\CherryStudio\\Cherry Studio.exe' })
+      stubElectron({ exePath: 'D:\\PortableApps\\TinyCherry\\Cherry Studio.exe' })
       stubBootConfig({
         'app.user_data_path': {
-          [join('D:\\PortableApps\\CherryStudio', 'cherry-studio-portable.exe')]: 'D:\\Data\\Cherry'
+          [join('D:\\PortableApps\\TinyCherry', 'tinycherry-portable.exe')]: 'D:\\Data\\Cherry'
         }
       })
       stubFs({ existsSyncImpl: () => true, accessSyncImpl: () => undefined })

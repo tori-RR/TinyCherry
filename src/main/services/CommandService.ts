@@ -108,9 +108,6 @@ export class CommandService extends BaseService {
     this.registerHandler('selection.capture_text', () => {
       application.get('SelectionService').processSelectTextByShortcut()
     })
-
-    // Returns the promise so execute() can log a rejection instead of dropping it.
-    this.registerHandler('screenshot.capture', () => application.get('ScreenshotChatService').startCapture())
   }
 
   private getDefaultContext(): ContextReader {

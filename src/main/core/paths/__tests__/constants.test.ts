@@ -73,13 +73,29 @@ afterEach(() => {
 })
 
 describe('LOGS_DIR dev diversion', () => {
+  it('keeps packaged Windows portable configuration and logs beside the launcher', async () => {
+    stubPlatform('win32')
+    stubWin32Path()
+    vi.stubEnv('PORTABLE_EXECUTABLE_DIR', 'D:\\Apps\\TinyCherry')
+    stubElectron({ isPackaged: true })
+
+    try {
+      const { BOOT_CONFIG_PATH, LOGS_DIR, WINDOWS_PORTABLE_USER_DATA } = await loadConstants()
+      expect(BOOT_CONFIG_PATH).toBe('D:\\Apps\\TinyCherry\\home\\boot-config.json')
+      expect(LOGS_DIR).toBe('D:\\Apps\\TinyCherry\\data\\logs')
+      expect(WINDOWS_PORTABLE_USER_DATA).toBe('D:\\Apps\\TinyCherry\\data')
+    } finally {
+      vi.doUnmock('node:path')
+    }
+  })
+
   it('packaged: ignores even an unsafe dev profile root and leaves platform defaults untouched', async () => {
     stubPlatform('darwin')
     vi.stubEnv('CS_DEV_PROFILE_ROOT', 'relative/profile')
     const { setAppLogsPath } = stubElectron({ isPackaged: true })
     const { CHERRY_HOME, LOGS_DIR } = await loadConstants()
     expect(setAppLogsPath).not.toHaveBeenCalled()
-    expect(CHERRY_HOME).toBe(path.join(os.homedir(), '.cherrystudio'))
+    expect(CHERRY_HOME).toBe(path.join(os.homedir(), '.tinycherry'))
     expect(LOGS_DIR).toBe(DEFAULT_LOGS)
   })
 
@@ -93,8 +109,8 @@ describe('LOGS_DIR dev diversion', () => {
 
     const isolatedPaths = [CHERRY_HOME, BOOT_CONFIG_PATH, resolveDevUserDataPath(), LOGS_DIR]
     expect(isolatedPaths).toEqual([
-      path.join(DEV_PROFILE_ROOT, '.cherrystudio'),
-      path.join(DEV_PROFILE_ROOT, '.cherrystudio', 'boot-config.json'),
+      path.join(DEV_PROFILE_ROOT, '.tinycherry'),
+      path.join(DEV_PROFILE_ROOT, '.tinycherry', 'boot-config.json'),
       path.join(DEV_PROFILE_ROOT, 'userData'),
       path.join(DEV_PROFILE_ROOT, 'logs')
     ])
@@ -215,7 +231,7 @@ describe('CS_DEV_PROFILE_ROOT validation', () => {
     vi.stubEnv('CS_DEV_USER_DATA_SUFFIX', 'DevQuito')
     stubElectron()
     const { CHERRY_HOME, LOGS_DIR, resolveDevUserDataPath } = await loadConstants()
-    expect(CHERRY_HOME).toBe(path.join(os.homedir(), '.cherrystudio'))
+    expect(CHERRY_HOME).toBe(path.join(os.homedir(), '.tinycherry'))
     expect(resolveDevUserDataPath()).toBe(`${DEFAULT_USER_DATA}DevQuito`)
     expect(LOGS_DIR).toBe(`${DEFAULT_LOGS}DevQuito`)
   })

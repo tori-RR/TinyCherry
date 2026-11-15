@@ -3,7 +3,6 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import type React from 'react'
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
 
-import { toast } from '@renderer/services/toast'
 import { TRANSLATE_PROMPT } from '@shared/ai/prompts'
 import { parsePersistedLangCode } from '@shared/data/preference/preferenceTypes'
 import { type Model, MODEL_CAPABILITY } from '@shared/data/types/model'
@@ -177,7 +176,7 @@ vi.mock('@cherrystudio/ui', () => ({
   Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>
 }))
 
-import TranslateSettings, { TranslateSettingsPanelContent } from '../TranslateSettings'
+import { TranslateSettingsPanelContent } from '../TranslateSettings'
 
 const getPromptTextarea = () => screen.getAllByRole('textbox')[0]
 const getAddLanguageButton = () => screen.getByRole('button', { name: 'common.add common.language' })
@@ -200,85 +199,12 @@ const submitCustomLanguage = ({ value, langCode }: { value?: string; langCode?: 
   fireEvent.click(screen.getByRole('button', { name: 'common.add' }))
 }
 
-const setBasePreferenceMocks = () => {
-  MockUsePreferenceUtils.setMultiplePreferenceValues({
-    'feature.translate.page.bidirectional_pair': ['en-us', 'zh-cn'],
-    'feature.translate.page.enable_markdown': false,
-    'feature.translate.page.auto_copy': false,
-    'feature.translate.auto_detection_method': 'auto',
-    'feature.translate.page.scroll_sync': false,
-    'feature.translate.page.bidirectional_enabled': true,
-    'feature.translate.model_prompt': TRANSLATE_PROMPT
-  })
-}
-
 const createCustomLanguage = (langCode: string, value: string, emoji = '🌐'): TranslateLanguage => ({
   value,
   langCode: parsePersistedLangCode(langCode),
   emoji,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z'
-})
-
-describe('TranslateSettings', () => {
-  const setBidirectionalPair = vi.fn().mockResolvedValue(undefined)
-  const setAutoDetectionMethod = vi.fn().mockResolvedValue(undefined)
-  const setEnableMarkdown = vi.fn().mockResolvedValue(undefined)
-  const setAutoCopy = vi.fn().mockResolvedValue(undefined)
-  const setScrollSync = vi.fn().mockResolvedValue(undefined)
-  const setBidirectionalEnabled = vi.fn().mockResolvedValue(undefined)
-  const setModelPrompt = vi.fn().mockResolvedValue(undefined)
-  const fallbackSetter = vi.fn().mockResolvedValue(undefined)
-
-  beforeEach(() => {
-    MockUsePreferenceUtils.resetMocks()
-    mockLanguages = []
-
-    setBidirectionalPair.mockReset()
-    setAutoDetectionMethod.mockReset()
-    setEnableMarkdown.mockReset()
-    setAutoCopy.mockReset()
-    setScrollSync.mockReset()
-    setBidirectionalEnabled.mockReset()
-    setModelPrompt.mockReset()
-    fallbackSetter.mockReset()
-
-    setBasePreferenceMocks()
-
-    const settersByPreference = new Map<string, typeof fallbackSetter>([
-      ['feature.translate.page.bidirectional_pair', setBidirectionalPair],
-      ['feature.translate.auto_detection_method', setAutoDetectionMethod],
-      ['feature.translate.page.enable_markdown', setEnableMarkdown],
-      ['feature.translate.page.auto_copy', setAutoCopy],
-      ['feature.translate.page.scroll_sync', setScrollSync],
-      ['feature.translate.page.bidirectional_enabled', setBidirectionalEnabled],
-      ['feature.translate.model_prompt', setModelPrompt]
-    ])
-    mockUsePreference.mockImplementation((key: string) => {
-      return [MockUsePreferenceUtils.getPreferenceValue(key as any), settersByPreference.get(key) ?? fallbackSetter]
-    })
-  })
-
-  afterEach(() => {
-    cleanup()
-  })
-
-  it('warns and blocks pair persistence when selecting the same bidirectional language', () => {
-    render(<TranslateSettings visible onClose={vi.fn()} />)
-
-    fireEvent.click(screen.getByTestId('language-picker-en-us'))
-
-    expect(toast.warning).toHaveBeenCalledWith('translate.language.same')
-    expect(setBidirectionalPair).not.toHaveBeenCalled()
-  })
-
-  it('persists selected auto detection method', async () => {
-    render(<TranslateSettings visible onClose={vi.fn()} />)
-
-    fireEvent.click(screen.getByText('translate.detect.method.llm.label'))
-
-    await waitFor(() => expect(setAutoDetectionMethod).toHaveBeenCalledWith('llm'))
-  })
 })
 
 describe('TranslateSettingsPanelContent', () => {

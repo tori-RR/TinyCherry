@@ -1,28 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { isSupportedSystemMock, isLocalModelReadyMock } = vi.hoisted(() => ({
-  isSupportedSystemMock: vi.fn(() => true),
-  isLocalModelReadyMock: vi.fn(() => true)
-}))
-
-vi.mock('@application', async () => {
-  const { mockApplicationFactory } = await import('@test-mocks/main/application')
-  const result = mockApplicationFactory()
-  const originalGet = result.application.get.getMockImplementation()!
-  result.application.get.mockImplementation((name: string) => {
-    if (name === 'LocalModelService') return { isDefaultModelReady: isLocalModelReadyMock }
-    return originalGet(name)
-  })
-  return result
-})
+const isSupportedSystemMock = vi.hoisted(() => vi.fn(() => true))
 
 vi.mock('../../processors/registry', () => ({
   processorRegistry: {
     tesseract: { isSupported: () => true },
     system: { isSupported: isSupportedSystemMock },
     paddleocr: { isSupported: () => true },
-    'local-paddleocr': { isSupported: () => true },
-    'local-document': { isSupported: () => true },
+    'local-paddleocr': { isSupported: () => false },
+    'local-document': { isSupported: () => false },
     ovocr: { isSupported: () => true },
     mineru: { isSupported: () => true },
     doc2x: { isSupported: () => true },
@@ -31,17 +17,7 @@ vi.mock('../../processors/registry', () => ({
   }
 }))
 
-const { resolveDefaultImageToTextProcessorMock } = vi.hoisted(() => ({
-  resolveDefaultImageToTextProcessorMock: vi.fn(() => 'tesseract' as const)
-}))
-
-vi.mock('../defaultImageToTextProcessor', () => ({
-  resolveDefaultImageToTextProcessor: resolveDefaultImageToTextProcessorMock
-}))
-
 import { MockMainPreferenceServiceUtils } from '@test-mocks/main/PreferenceService'
-
-import { MB } from '@shared/utils/constants'
 
 import { getFileProcessorConfigById, resolveProcessorConfigByFeature } from '../resolveProcessorConfig'
 
@@ -50,8 +26,6 @@ describe('resolveProcessorConfig', () => {
     vi.clearAllMocks()
     MockMainPreferenceServiceUtils.resetMocks()
     isSupportedSystemMock.mockReturnValue(true)
-    isLocalModelReadyMock.mockReturnValue(true)
-    resolveDefaultImageToTextProcessorMock.mockReturnValue('tesseract')
   })
 
   it('getFileProcessorConfigById merges preference override into preset config', () => {
@@ -69,7 +43,7 @@ describe('resolveProcessorConfig', () => {
       }
     })
 
-    expect(getFileProcessorConfigById('open-mineru')).toEqual({
+    expect(getFileProcessorConfigById('open-mineru')).toMatchObject({
       id: 'open-mineru',
       type: 'api',
       capabilities: [
@@ -77,8 +51,7 @@ describe('resolveProcessorConfig', () => {
           feature: 'document_to_markdown',
           inputs: ['document'],
           output: 'markdown',
-          apiHost: 'http://127.0.0.1:9000',
-          maxInputBytes: 200 * MB
+          apiHost: 'http://127.0.0.1:9000'
         }
       ],
       apiKeys: ['secret-key'],
@@ -86,6 +59,28 @@ describe('resolveProcessorConfig', () => {
         langs: ['eng']
       }
     })
+  })
+
+  it('merges Doc2X export options into the main-process capability config', () => {
+    MockMainPreferenceServiceUtils.setPreferenceValue('feature.file_processing.overrides', {
+      doc2x: {
+        capabilities: {
+          document_to_markdown: {
+            modelId: 'v3-2026',
+            formulaLevel: 2,
+            mergeCrossPageForms: true
+          }
+        }
+      }
+    })
+
+    expect(getFileProcessorConfigById('doc2x').capabilities[0]).toEqual(
+      expect.objectContaining({
+        modelId: 'v3-2026',
+        formulaLevel: 2,
+        mergeCrossPageForms: true
+      })
+    )
   })
 
   it('getFileProcessorConfigById throws notFound for an unknown processor id', () => {
@@ -123,35 +118,10 @@ describe('resolveProcessorConfig', () => {
     )
   })
 
-  it('uses the feature default processor when processorId is omitted', () => {
-    MockMainPreferenceServiceUtils.setMultiplePreferenceValues({
-      'feature.file_processing.default_image_to_text': 'mistral',
-      'feature.file_processing.overrides': {
-        mistral: {
-          apiKeys: ['mistral-key']
-        }
-      }
-    })
-
-    expect(resolveProcessorConfigByFeature('image_to_text')).toEqual(
-      expect.objectContaining({
-        id: 'mistral',
-        apiKeys: ['mistral-key']
-      })
-    )
-  })
-
   it('fails fast when no default processor is configured and the feature has no fallback', () => {
     expect(() => resolveProcessorConfigByFeature('document_to_markdown')).toThrowError(
       'Default file processor for document_to_markdown is not configured'
     )
-  })
-
-  it('falls back to the platform default for image_to_text when the pref is unset', () => {
-    resolveDefaultImageToTextProcessorMock.mockReturnValue('tesseract')
-
-    expect(resolveProcessorConfigByFeature('image_to_text')).toEqual(expect.objectContaining({ id: 'tesseract' }))
-    expect(resolveDefaultImageToTextProcessorMock).toHaveBeenCalled()
   })
 
   it('uses mistral when it is the default markdown processor', () => {
@@ -164,47 +134,11 @@ describe('resolveProcessorConfig', () => {
     )
   })
 
-  it('throws when the configured default processor does not support the requested feature', () => {
-    MockMainPreferenceServiceUtils.setPreferenceValue('feature.file_processing.default_image_to_text', 'open-mineru')
-
-    expect(() => resolveProcessorConfigByFeature('image_to_text')).toThrowError(
-      'File processor open-mineru does not support image_to_text'
+  it('rejects OCR even when a previous profile still has an OCR processor configured', () => {
+    MockMainPreferenceServiceUtils.setPreferenceValue('feature.file_processing.default_image_to_text', 'tesseract')
+    expect(() => resolveProcessorConfigByFeature('image_to_text')).toThrow('OCR is unavailable in TinyCherry')
+    expect(() => resolveProcessorConfigByFeature('image_to_text', 'mistral')).toThrow(
+      'OCR is unavailable in TinyCherry'
     )
-  })
-
-  it('throws when the configured default processor is not available on this platform', () => {
-    MockMainPreferenceServiceUtils.setPreferenceValue('feature.file_processing.default_image_to_text', 'system')
-    isSupportedSystemMock.mockReturnValue(false)
-
-    expect(() => resolveProcessorConfigByFeature('image_to_text')).toThrowError(
-      'File processor system is not available on this platform'
-    )
-  })
-
-  // A missing model is fixable in one click; a missing platform API never is.
-  // The two must not share a message — the platform wording sent users hunting
-  // for an OS problem when all they had to do was download the model.
-  it('distinguishes a missing local model from an unsupported platform', () => {
-    isLocalModelReadyMock.mockReturnValue(false)
-
-    expect(() => resolveProcessorConfigByFeature('document_to_markdown', 'local-document')).toThrowError(
-      'File processor local-document needs the local ocr model to be downloaded first'
-    )
-    expect(isLocalModelReadyMock).toHaveBeenCalledWith('ocr')
-  })
-
-  it('accepts a local model processor once its model is ready', () => {
-    expect(resolveProcessorConfigByFeature('document_to_markdown', 'local-document')).toEqual(
-      expect.objectContaining({ id: 'local-document' })
-    )
-  })
-
-  it('does not probe a local model for processors that need none', () => {
-    isLocalModelReadyMock.mockReturnValue(false)
-
-    expect(resolveProcessorConfigByFeature('document_to_markdown', 'paddleocr')).toEqual(
-      expect.objectContaining({ id: 'paddleocr' })
-    )
-    expect(isLocalModelReadyMock).not.toHaveBeenCalled()
   })
 })

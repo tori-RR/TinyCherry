@@ -3,11 +3,22 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Alert, Button, Dialog, DialogContent, Dropzone, DropzoneEmptyState, Scrollbar } from '@cherrystudio/ui'
+import {
+  Alert,
+  Button,
+  Dialog,
+  DialogContent,
+  Dropzone,
+  DropzoneEmptyState,
+  Input,
+  Label,
+  ScrollArea
+} from '@cherrystudio/ui'
 import { useSkillInstall } from '@renderer/hooks/useSkills'
 import { ipcApi } from '@renderer/ipc'
 import { toast } from '@renderer/services/toast'
 import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
+import { isEvoStack } from '@renderer/utils/platform'
 import { AbsoluteFilePathSchema } from '@shared/types/file'
 import type { InstalledSkill } from '@shared/types/skill'
 import { createFilePathHandle } from '@shared/utils/file'
@@ -48,6 +59,7 @@ export function ImportSkillDialog({ open, onOpenChange }: Props) {
   const [status, setStatus] = useState<ImportStatus>({ kind: 'idle' })
   const [installing, setInstalling] = useState<InstallingKey>(null)
   const [items, setItems] = useState<ImportItem[]>([])
+  const [nativePath, setNativePath] = useState('')
 
   // Reset transient state on open / close.
   useEffect(() => {
@@ -55,6 +67,7 @@ export function ImportSkillDialog({ open, onOpenChange }: Props) {
       setStatus({ kind: 'idle' })
       setInstalling(null)
       setItems([])
+      setNativePath('')
     }
   }, [open])
 
@@ -162,6 +175,15 @@ export function ImportSkillDialog({ open, onOpenChange }: Props) {
 
   const handleZipPick = async () => {
     if (installing) return
+    if (isEvoStack) {
+      const path = nativePath.trim()
+      if (!AbsoluteFilePathSchema.safeParse(path).success) {
+        setStatus({ kind: 'error', message: t('settings.skills.evostack.path_required') })
+        return
+      }
+      await runImportQueue([createImportItem('zip', path, getNameFromPath(path), 0)], 'zip')
+      return
+    }
     try {
       const selected = await window.api.file.select({
         filters: [{ name: 'ZIP', extensions: ['zip'] }],
@@ -179,6 +201,15 @@ export function ImportSkillDialog({ open, onOpenChange }: Props) {
 
   const handleDirPick = async () => {
     if (installing) return
+    if (isEvoStack) {
+      const path = nativePath.trim()
+      if (!AbsoluteFilePathSchema.safeParse(path).success) {
+        setStatus({ kind: 'error', message: t('settings.skills.evostack.path_required') })
+        return
+      }
+      await runImportQueue([createImportItem('directory', path, getNameFromPath(path), 0)], 'directory')
+      return
+    }
     try {
       const selected = await window.api.file.select({
         properties: ['openDirectory', 'multiSelections']
@@ -261,34 +292,51 @@ export function ImportSkillDialog({ open, onOpenChange }: Props) {
 
         {/* Body */}
         <div className="min-w-0">
-          <Dropzone
-            disabled={Boolean(installing)}
-            getFilesFromEvent={async (event) => {
-              if ('dataTransfer' in event && event.dataTransfer) {
-                return Array.from(event.dataTransfer.files)
-              }
+          {isEvoStack ? (
+            <div className="space-y-2">
+              <Label htmlFor="native-skill-import-path">{t('settings.skills.evostack.import_path')}</Label>
+              <Input
+                id="native-skill-import-path"
+                value={nativePath}
+                onChange={(event) => setNativePath(event.target.value)}
+                disabled={Boolean(installing)}
+              />
+              <p className="text-xs text-muted-foreground">{t('settings.skills.evostack.import_hint')}</p>
+            </div>
+          ) : (
+            <Dropzone
+              disabled={Boolean(installing)}
+              getFilesFromEvent={async (event) => {
+                if ('dataTransfer' in event && event.dataTransfer) {
+                  return Array.from(event.dataTransfer.files)
+                }
 
-              if ('target' in event && event.target && 'files' in event.target) {
-                const target = event.target
-                return target.files ? Array.from(target.files) : []
-              }
+                if ('target' in event && event.target && 'files' in event.target) {
+                  const target = event.target
+                  return target.files ? Array.from(target.files) : []
+                }
 
-              return []
-            }}
-            maxFiles={0}
-            multiple
-            onDrop={(files, _rejections, event) => {
-              const droppedFiles =
-                'dataTransfer' in event && event.dataTransfer ? Array.from(event.dataTransfer.files) : files
-              void handleDroppedEntries(droppedFiles)
-            }}
-            className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border-subtle bg-transparent p-8 text-center shadow-none transition-colors hover:border-border-strong hover:bg-accent disabled:pointer-events-none disabled:opacity-60">
-            <DropzoneEmptyState>
-              <Import size={26} strokeWidth={1.2} className="mb-3 text-foreground-tertiary" />
-              <p className="mb-1 text-xs text-muted-foreground">{t('library.import_skill_dialog.local.drop_hint')}</p>
-              <p className="text-xs text-muted-foreground">{t('library.import_skill_dialog.local.formats')}</p>
-            </DropzoneEmptyState>
-          </Dropzone>
+                return []
+              }}
+              maxFiles={0}
+              multiple
+              onDrop={(files, _rejections, event) => {
+                const droppedFiles =
+                  'dataTransfer' in event && event.dataTransfer ? Array.from(event.dataTransfer.files) : files
+                void handleDroppedEntries(droppedFiles)
+              }}
+              className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border-subtle bg-transparent p-8 text-center whitespace-normal shadow-none transition-colors hover:border-border-strong hover:bg-accent disabled:pointer-events-none disabled:opacity-60">
+              <DropzoneEmptyState>
+                <Import size={26} strokeWidth={1.2} className="mb-3 text-foreground-tertiary" />
+                <p className="mb-1 w-full text-xs whitespace-normal text-wrap break-words text-muted-foreground">
+                  {t('library.import_skill_dialog.local.drop_hint')}
+                </p>
+                <p className="w-full text-xs whitespace-normal text-wrap break-words text-muted-foreground">
+                  {t('library.import_skill_dialog.local.formats')}
+                </p>
+              </DropzoneEmptyState>
+            </Dropzone>
+          )}
 
           <div className="mt-4 flex items-center gap-2">
             <Button
@@ -325,9 +373,9 @@ function ImportResultList({ items }: { items: ImportItem[] }) {
   if (items.length === 0) return null
 
   return (
-    <Scrollbar
-      data-testid="skill-import-results"
-      className="mt-4 max-h-44 w-full max-w-full min-w-0 overflow-x-hidden rounded-md border border-border-subtle bg-background-subtle/50">
+    <ScrollArea
+      viewportProps={{ 'data-testid': 'skill-import-results', className: 'overflow-x-hidden' }}
+      className="mt-4 max-h-44 w-full max-w-full min-w-0 rounded-md border border-border-subtle bg-background-subtle/50">
       <div className="min-w-0 divide-y divide-border-subtle">
         {items.map((item) => {
           const displayName = item.status === 'success' ? (item.skillName ?? item.name) : item.name
@@ -353,7 +401,7 @@ function ImportResultList({ items }: { items: ImportItem[] }) {
           )
         })}
       </div>
-    </Scrollbar>
+    </ScrollArea>
   )
 }
 

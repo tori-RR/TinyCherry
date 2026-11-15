@@ -10,21 +10,14 @@ describe('regression report gate', () => {
       platform,
       ref: 'vtest',
       runner: platform,
-      task: 'translation-settings',
+      task: 'notes-smoke',
       providerMode,
       ...(providerMode === 'mock' ? { mockVersion: '1.46.0' } : {})
     })
     return finalizeRun(
       updatePhase(
-        completeE2eCase(
-          run,
-          'MP-86',
-          'passed',
-          'Translation verified',
-          [],
-          ['aiMock: fixed model responses; real clipboard']
-        ),
-        'translation',
+        completeE2eCase(run, 'N-01', 'passed', 'Notes verified', [], ['aiMock: fixed model responses; real editor']),
+        'basicFeatures',
         'passed'
       )
     )
@@ -38,10 +31,10 @@ describe('regression report gate', () => {
     const platform = renderMarkdown(runs[0])
     expect(platform).toContain('| Configured provider backend | mock |')
     expect(platform).toContain('| aiMock version | 1.46.0 |')
-    expect(platform).toContain('MP-86 data source:')
+    expect(platform).toContain('N-01 data source:')
     expect(renderJUnit(runs[0])).toContain('name="provider_mode" value="mock"')
     expect(renderJUnit(runs[0])).toContain('name="aimock_version" value="1.46.0"')
-    expect(renderJUnit(runs[0])).toContain('name="data-source" value="aiMock: fixed model responses; real clipboard"')
+    expect(renderJUnit(runs[0])).toContain('name="data-source" value="aiMock: fixed model responses; real editor"')
   })
 
   it('blocks mixed backends and rejects mock evidence when real-provider evidence is requested', () => {

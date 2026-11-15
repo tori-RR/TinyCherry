@@ -3,10 +3,10 @@ import i18n, { getLanguageCode } from '@renderer/i18n/resolver'
 import { ipcApi } from '@renderer/ipc'
 import { toast } from '@renderer/services/toast'
 import { openExternalWebsite } from '@renderer/services/website'
+import { APP_PROTOCOL } from '@shared/utils/constants'
 
 const logger = loggerService.withContext('oauth')
 
-const SILICON_CLIENT_ID = 'SFaJLLq0y6CAMoyDm81aMu'
 const PPIO_CLIENT_ID = '37d0828c96b34936a600b62c'
 const PPIO_APP_SECRET = import.meta.env.RENDERER_VITE_PPIO_APP_SECRET || ''
 
@@ -153,21 +153,8 @@ function startPopupMessageOAuth<T>({
   window.addEventListener('message', messageHandler)
 }
 
-export const oauthWithSiliconFlow = async (setKey) => {
-  const authUrl = `https://account.siliconflow.cn/oauth?client_id=${SILICON_CLIENT_ID}`
-
-  startPopupMessageOAuth({
-    authUrl,
-    popupName: 'oauth',
-    matches: isSecretKeyOAuthPayload,
-    getKey: (data) => data[0].secretKey,
-    setKey,
-    onError: (error) => logger.error('[oauthWithSiliconFlow] error', error as Error)
-  })
-}
-
 export const oauthWithAihubmix = async (setKey) => {
-  const authUrl = `https://console.inferera.com/token?client_id=cherry_studio_oauth&lang=${await getLanguageCode()}&aff=SJyh`
+  const authUrl = `https://console.inferera.com/token?lang=${await getLanguageCode()}&aff=SJyh`
 
   startPopupMessageOAuth({
     authUrl,
@@ -198,7 +185,7 @@ export const oauthWithAihubmix = async (setKey) => {
 }
 
 export const oauthWithPPIO = async (setKey) => {
-  const redirectUri = 'cherrystudio://'
+  const redirectUri = `${APP_PROTOCOL}://`
   const authUrl = `https://ppio.com/oauth/authorize?invited_by=JYT9GD&client_id=${PPIO_CLIENT_ID}&scope=api%20openid&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}`
 
   void openExternalWebsite(authUrl)

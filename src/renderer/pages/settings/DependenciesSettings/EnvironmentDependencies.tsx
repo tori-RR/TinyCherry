@@ -42,7 +42,6 @@ import {
 } from '@cherrystudio/ui'
 import { usePreference } from '@data/hooks/usePreference'
 import { loggerService } from '@logger'
-import babeldocIcon from '@renderer/assets/images/dependencies/babeldoc.png'
 import {
   BinaryInstallErrorDialog,
   BinaryInstallFailureRow,
@@ -58,8 +57,6 @@ import { formatFileSize } from '@renderer/utils/file'
 import { cn } from '@renderer/utils/style'
 import type { BinaryInstallSettings, CustomToolDefinition } from '@shared/data/preference/preferenceTypes'
 import {
-  BABELDOC_MINIMUM_VERSION,
-  BABELDOC_TOOL_NAME,
   BINARY_INSTALL_PREFERENCE_KEY,
   type BinaryToolPreset,
   isRuntimeDependency,
@@ -92,13 +89,10 @@ type CleanupBlockedResult = Extract<BinaryRemoveResult, { status: 'cleanup_block
 // one hands back a build Cherry's BabelDOC progress parser predates — which the
 // next availability check flags as outdated, costing a second full download.
 // Explicit updates still target latest.
-const FRESH_INSTALL_VERSIONS: Record<string, string> = { [BABELDOC_TOOL_NAME]: BABELDOC_MINIMUM_VERSION }
 
 // Tools whose brand mark isn't in an icon font (iconify) ship a bundled image instead, keyed by
 // preset name. Lives here rather than on the shared preset, which must not import renderer assets.
-const TOOL_IMAGE_ICONS: Record<string, string> = {
-  'babeldoc-stream': babeldocIcon
-}
+const TOOL_IMAGE_ICONS: Record<string, string> = {}
 
 const ToolIcon: FC<{ name?: string; icon?: string; className?: string }> = ({ name, icon, className }) => {
   const imageSrc = name ? TOOL_IMAGE_ICONS[name] : undefined
@@ -452,9 +446,7 @@ const EnvironmentDependencies: FC<EnvironmentDependenciesProps> = ({ mini = fals
               onInstall={() =>
                 installTool(
                   tool.name,
-                  snapshot?.operation?.status === 'failed'
-                    ? snapshot.operation.targetVersion
-                    : FRESH_INSTALL_VERSIONS[tool.name]
+                  snapshot?.operation?.status === 'failed' ? snapshot.operation.targetVersion : undefined
                 )
               }
               onUpdate={() => installTool(tool.name, latestVersion ?? 'latest')}
@@ -726,7 +718,7 @@ const BinaryToolPresetCard: FC<{
       )}
 
       {canInstall && !failedRemove && (
-        <div className="mt-3 border-t border-border pt-3">
+        <div className="mt-3 pt-3">
           <Button
             variant="outline"
             size="sm"
@@ -894,7 +886,7 @@ const CustomToolCard: FC<{
       )}
 
       {canInstall && !failedRemove && (
-        <div className="mt-3 border-t border-border pt-3">
+        <div className="mt-3 pt-3">
           <Button
             variant="outline"
             size="sm"

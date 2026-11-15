@@ -13,8 +13,7 @@ await prepareWindow({
     'ui.theme_mode',
     'ui.theme_user.color_primary',
     'ui.theme_user.font_family',
-    'ui.theme_user.code_font_family',
-    'feature.screenshot.auto_ocr'
+    'ui.theme_user.code_font_family'
   ]
 })
 

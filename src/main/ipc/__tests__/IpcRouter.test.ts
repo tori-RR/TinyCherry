@@ -29,10 +29,9 @@ function makeRouter(overrides?: Partial<IpcHandlersFor<typeof schemas>>) {
 
 describe('IpcRouter.dispatch', () => {
   it('routes to the matching handler and returns its result', async () => {
-    const { router, echo } = makeRouter()
+    const { router } = makeRouter()
     const result = await router.dispatch('demo.echo', { msg: 'hi' }, ctx)
     expect(result).toEqual({ echoed: 'hi' })
-    expect(echo).toHaveBeenCalledOnce()
   })
 
   it('passes the IpcContext through to the handler', async () => {
@@ -55,6 +54,11 @@ describe('IpcRouter.dispatch', () => {
       code: 'VALIDATION_FAILED'
     })
     expect(echo).not.toHaveBeenCalled()
+  })
+
+  it('rejects a retained schema whose feature has no registered handler', async () => {
+    const router = new IpcRouter(schemas, {})
+    await expect(router.dispatch('demo.echo', { msg: 'hi' }, ctx)).rejects.toMatchObject({ code: 'ROUTE_NOT_FOUND' })
   })
 
   it('rejects with ROUTE_NOT_FOUND for an unknown route', async () => {

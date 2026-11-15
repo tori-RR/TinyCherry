@@ -18,7 +18,15 @@ import path from 'node:path'
 
 import { app } from 'electron'
 
-export const CHERRY_HOME_DIRNAME = '.cherrystudio'
+export const CHERRY_HOME_DIRNAME = '.tinycherry'
+export const PORTABLE_EXECUTABLE_NAME = 'tinycherry-portable.exe'
+
+function resolveWindowsPortableRoot(): string | undefined {
+  const directory = process.env.PORTABLE_EXECUTABLE_DIR
+  if (!app.isPackaged || process.platform !== 'win32' || directory === undefined) return undefined
+  if (!path.isAbsolute(directory)) throw new Error('PORTABLE_EXECUTABLE_DIR must be an absolute directory.')
+  return path.normalize(directory)
+}
 
 function resolveDevProfileRoot(): string | undefined {
   if (app.isPackaged) return undefined
@@ -34,9 +42,11 @@ function resolveDevProfileRoot(): string | undefined {
 }
 
 export const DEV_PROFILE_ROOT = resolveDevProfileRoot()
-export const CHERRY_HOME = DEV_PROFILE_ROOT
-  ? path.join(DEV_PROFILE_ROOT, CHERRY_HOME_DIRNAME)
-  : path.join(os.homedir(), CHERRY_HOME_DIRNAME)
+export const WINDOWS_PORTABLE_ROOT = resolveWindowsPortableRoot()
+export const WINDOWS_PORTABLE_USER_DATA = WINDOWS_PORTABLE_ROOT ? path.join(WINDOWS_PORTABLE_ROOT, 'data') : undefined
+export const CHERRY_HOME = WINDOWS_PORTABLE_ROOT
+  ? path.join(WINDOWS_PORTABLE_ROOT, 'home')
+  : path.join(DEV_PROFILE_ROOT ?? os.homedir(), CHERRY_HOME_DIRNAME)
 export const BOOT_CONFIG_PATH = path.join(CHERRY_HOME, 'boot-config.json')
 
 const DEFAULT_DEV_USER_DATA_SUFFIX = 'Dev'
@@ -73,7 +83,7 @@ function resolveDevUserDataSuffix(): string {
 }
 
 /**
- * Dev-instance userData directory (`…/CherryStudio` → `…/CherryStudioDev`).
+ * Dev-instance userData directory (`…/TinyCherry` → `…/TinyCherryDev`).
  * Applied by `core/preboot/userDataLocation.ts` and — on Windows and Linux,
  * where logs live inside userData — by the logs diversion below, so both
  * derive from one definition.
@@ -85,10 +95,12 @@ export function resolveDevUserDataPath(): string {
 
 // Divert dev logs BEFORE the app.getPath('logs') call below caches Electron's
 // default. That default never sees the dev userData suffix — on macOS it
-// derives from the app *name* (~/Library/Logs/CherryStudio), elsewhere from
+// derives from the app *name* (~/Library/Logs/TinyCherry), elsewhere from
 // the not-yet-suffixed userData — so without this a dev run would interleave
 // its logs with a packaged install's.
-if (!app.isPackaged) {
+if (WINDOWS_PORTABLE_USER_DATA) {
+  app.setAppLogsPath(path.join(WINDOWS_PORTABLE_USER_DATA, 'logs'))
+} else if (!app.isPackaged) {
   app.setAppLogsPath(
     DEV_PROFILE_ROOT
       ? path.join(DEV_PROFILE_ROOT, 'logs')
@@ -103,6 +115,7 @@ if (!app.isPackaged) {
  *   - macOS:   ~/Library/Logs/<App>/
  *   - Windows: %APPDATA%/<App>/logs
  *   - Linux:   ~/.config/<App>/logs
+ *   - Windows portable: data/logs beside the launcher
  * where `<App>` carries the dev suffix in unpackaged runs (see above).
  *
  * Single source of truth — referenced by LoggerService directly and exposed

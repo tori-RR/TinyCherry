@@ -1,11 +1,11 @@
 ---
 name: gh-create-issue
-description: Use when user wants to create a GitHub issue for the current repository. Must read and follow the repository's issue template format.
+description: Create a concise GitHub issue, using a destination repository's form when selected or required.
 ---
 
 # GitHub Create Issue
 
-Use this skill when the user requests to create an issue. Must follow the repository's issue template format.
+For a TinyCherry issue, a clear title and actionable description are sufficient. Include steps and expected behavior for a bug, or the desired outcome for a proposal. Use the template workflow below when the user selects a form or the destination requires it.
 
 ## Workflow
 

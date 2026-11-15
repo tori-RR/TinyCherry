@@ -1,12 +1,10 @@
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
-import { BookOpen, CloudUpload, FileText, FolderCog, FolderInput, Import, Server } from 'lucide-react'
+import { CloudUpload, FileText, FolderCog, FolderInput, Import, Server } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { type FC, lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { MenuDivider, MenuItem, MenuList, PageHeader, RowFlex, Scrollbar } from '@cherrystudio/ui'
-import { NutstoreIcon } from '@renderer/components/icons/NutstoreIcons'
-import { JoplinIcon, SiyuanIcon } from '@renderer/components/icons/SvgIcon'
+import { MenuDivider, MenuItem, MenuList, PageHeader, RowFlex, ScrollArea } from '@cherrystudio/ui'
 import { SettingsContentColumn } from '@renderer/components/SettingsPrimitives'
 import { useTheme } from '@renderer/hooks/useTheme'
 import {
@@ -25,16 +23,11 @@ import { DATA_PANEL_KEYS, type DataPanelKey, DEFAULT_DATA_PANEL } from './dataPa
 const dataRouteApi = getRouteApi('/settings/data')
 
 const ExportMenuOptions = lazy(() => import('./ExportMenuSettings'))
-const JoplinSettings = lazy(() => import('./JoplinSettings'))
 const LocalBackupSettings = lazy(() => import('./LocalBackupSettings'))
 const MarkdownExportSettings = lazy(() => import('./MarkdownExportSettings'))
-const NotionSettings = lazy(() => import('./NotionSettings'))
-const NutstoreSettings = lazy(() => import('./NutstoreSettings'))
 const ObsidianSettings = lazy(() => import('./ObsidianSettings'))
 const S3Settings = lazy(() => import('./S3Settings'))
-const SiyuanSettings = lazy(() => import('./SiyuanSettings'))
 const WebDavSettings = lazy(() => import('./WebDavSettings'))
-const YuqueSettings = lazy(() => import('./YuqueSettings'))
 const ImportMenuOptions = lazy(() => import('./ImportMenuSettings'))
 
 type DataMenuItem =
@@ -58,7 +51,6 @@ const DataSettings: FC = () => {
     { key: 'divider_1', isDivider: true, text: t('settings.data.divider.cloud_storage') },
     { key: 'local_backup', title: t('settings.data.local.title'), icon: <FolderCog size={16} /> },
     { key: 'webdav', title: t('settings.data.webdav.title'), icon: <CloudUpload size={16} /> },
-    { key: 'nutstore', title: t('settings.data.nutstore.title'), icon: <NutstoreIcon /> },
     { key: 's3', title: t('settings.data.s3.title.label'), icon: <Server size={16} /> },
     { key: 'divider_2', isDivider: true, text: t('settings.data.divider.import_settings') },
     {
@@ -78,11 +70,7 @@ const DataSettings: FC = () => {
       icon: <FileText size={16} />
     },
     { key: 'divider_note_export', isDivider: true, text: t('settings.data.divider.note_export') },
-    { key: 'notion', title: t('settings.data.notion.title'), icon: <i className="iconfont icon-notion" /> },
-    { key: 'yuque', title: t('settings.data.yuque.title'), icon: <BookOpen size={16} /> },
-    { key: 'joplin', title: t('settings.data.joplin.title'), icon: <JoplinIcon /> },
-    { key: 'obsidian', title: t('settings.data.obsidian.title'), icon: <i className="iconfont icon-obsidian" /> },
-    { key: 'siyuan', title: t('settings.data.siyuan.title'), icon: <SiyuanIcon /> }
+    { key: 'obsidian', title: t('settings.data.obsidian.title'), icon: <i className="iconfont icon-obsidian" /> }
   ]
 
   return (
@@ -90,7 +78,7 @@ const DataSettings: FC = () => {
       <div
         className={`flex flex-col ${settingsSubmenuScrollClassName} [&_.iconfont]:text-current [&_.iconfont]:leading-4`}>
         <PageHeader title={t('settings.data.title')} />
-        <Scrollbar className="min-h-0 flex-1">
+        <ScrollArea className="min-h-0 flex-1">
           <MenuList className={settingsSubmenuListClassName}>
             {menuItems.map((item, index) =>
               item.isDivider ? (
@@ -111,7 +99,7 @@ const DataSettings: FC = () => {
               )
             )}
           </MenuList>
-        </Scrollbar>
+        </ScrollArea>
       </div>
       <SettingsContentColumn theme={theme}>
         {menu === 'data' ? (
@@ -119,17 +107,12 @@ const DataSettings: FC = () => {
         ) : (
           <Suspense fallback={null}>
             {menu === 'webdav' && <WebDavSettings />}
-            {menu === 'nutstore' && <NutstoreSettings />}
             {menu === 's3' && <S3Settings />}
             {menu === 'import_settings' && <ImportMenuOptions />}
             {menu === 'export_menu' && <ExportMenuOptions />}
             {menu === 'markdown_export' && <MarkdownExportSettings />}
             {menu === 'local_backup' && <LocalBackupSettings />}
-            {menu === 'notion' && <NotionSettings />}
-            {menu === 'yuque' && <YuqueSettings />}
-            {menu === 'joplin' && <JoplinSettings />}
             {menu === 'obsidian' && <ObsidianSettings />}
-            {menu === 'siyuan' && <SiyuanSettings />}
           </Suspense>
         )}
       </SettingsContentColumn>

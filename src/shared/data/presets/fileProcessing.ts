@@ -1,6 +1,5 @@
 import * as z from 'zod'
 
-import { type LocalModelCapability } from '@shared/data/presets/localModel'
 import { FILE_TYPE, FileTypeSchema } from '@shared/types/file'
 import { GB, MB } from '@shared/utils/constants'
 
@@ -48,6 +47,8 @@ export const DocumentToMarkdownCapabilitySchema = z
     output: z.literal('markdown'),
     apiHost: z.string().optional(),
     modelId: z.string().min(1).optional(),
+    formulaLevel: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional(),
+    mergeCrossPageForms: z.boolean().optional(),
     maxInputBytes: z.int().positive().optional(),
     maxInputPages: z.int().positive().optional()
   })
@@ -129,7 +130,9 @@ export const FileProcessorOptionsSchema: z.ZodType<FileProcessorOptions> = z
 export const FileProcessorCapabilityOverrideSchema: z.ZodType<FileProcessorCapabilityOverride> = z
   .object({
     apiHost: z.string().optional(),
-    modelId: z.string().min(1).optional()
+    modelId: z.string().min(1).optional(),
+    formulaLevel: z.union([z.literal(0), z.literal(1), z.literal(2)]).optional(),
+    mergeCrossPageForms: z.boolean().optional()
   })
   .strict()
 
@@ -248,6 +251,8 @@ export const FILE_PROCESSOR_PRESET_MAP = {
         output: 'markdown',
         apiHost: 'https://v2.doc2x.noedgeai.com',
         modelId: 'v3-2026',
+        formulaLevel: 0,
+        mergeCrossPageForms: false,
         maxInputBytes: GB,
         maxInputPages: 1000
       }
@@ -291,17 +296,3 @@ export const PRESETS_FILE_PROCESSORS: readonly FileProcessorPreset[] = FILE_PROC
   id,
   ...FILE_PROCESSOR_PRESET_MAP[id]
 }))
-
-/**
- * Processors that additionally need a downloadable local model before they can
- * run. Absent from this map means "nothing to download" — not "unavailable".
- *
- * A missing model is a state the user can fix in one click, unlike a platform
- * that can never run the processor, so both processes read this map to tell the
- * two apart: main refuses the job with a message that says which one it is, and
- * the renderer keeps the processor selectable and offers the download.
- */
-export const FILE_PROCESSOR_LOCAL_MODEL: Partial<Record<FileProcessorId, LocalModelCapability>> = {
-  'local-paddleocr': 'ocr',
-  'local-document': 'ocr'
-}

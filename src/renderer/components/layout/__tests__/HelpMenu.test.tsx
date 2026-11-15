@@ -9,11 +9,19 @@ import { ThemeContext } from '@renderer/hooks/useTheme'
 import { ThemeMode } from '@shared/data/preference/preferenceTypes'
 
 const mocks = vi.hoisted(() => ({
+  isEvoStack: false,
   language: 'en-US',
   openFeedback: vi.fn(),
   openReleaseNotes: vi.fn(),
   openSmartMiniApp: vi.fn(),
   showDoctor: vi.fn()
+}))
+
+vi.mock(import('@renderer/utils/platform'), async (importOriginal) => ({
+  ...(await importOriginal()),
+  get isEvoStack() {
+    return mocks.isEvoStack
+  }
 }))
 
 vi.mock('@cherrystudio/ui', async (importOriginal) => importOriginal<typeof CherryStudioUi>())
@@ -62,6 +70,7 @@ afterEach(() => {
 })
 
 beforeEach(() => {
+  mocks.isEvoStack = false
   mocks.language = 'en-US'
 })
 
@@ -73,6 +82,27 @@ async function openMenu() {
 }
 
 describe('HelpMenu', () => {
+  it('focuses the guide first in the simplified EvoStack menu and restores focus on Escape', async () => {
+    mocks.isEvoStack = true
+    const user = userEvent.setup()
+    render(<HelpMenu onFeedbackClick={mocks.openFeedback} />)
+    const trigger = screen.getByRole('button', { name: 'help.title' })
+    trigger.focus()
+
+    await user.keyboard('{ArrowRight}')
+    expect(await screen.findByRole('button', { name: 'help.guide' })).toHaveFocus()
+    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual([
+      'help.title',
+      'help.guide',
+      'help.feedback',
+      'System diagnostics'
+    ])
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(trigger).toHaveFocus())
+    await user.keyboard('{ArrowRight}{Enter}')
+    await waitFor(() => expect(mocks.openSmartMiniApp).toHaveBeenCalledOnce())
+  })
+
   it('opens on hover without stealing focus and lets the pointer enter the submenu', async () => {
     const user = userEvent.setup()
     render(
@@ -151,16 +181,9 @@ describe('HelpMenu', () => {
     await waitFor(() => expect(mocks.openFeedback).toHaveBeenCalledOnce())
   })
 
-  it('places report a problem immediately after the guide and opens release notes', async () => {
+  it('opens release notes', async () => {
     render(<HelpMenu onFeedbackClick={mocks.openFeedback} />)
     const user = await openMenu()
-
-    expect(
-      screen
-        .getAllByRole('button')
-        .slice(1)
-        .map((action) => action.textContent)
-    ).toEqual(['help.whats_new', 'help.guide', 'Report a problem', 'help.feedback', 'System diagnostics'])
 
     await user.click(screen.getByRole('button', { name: 'help.whats_new' }))
     await waitFor(() => expect(mocks.openReleaseNotes).toHaveBeenCalledOnce())
@@ -183,9 +206,9 @@ describe('HelpMenu', () => {
   })
 
   it.each([
-    ['zh-CN', 'https://docs.cherryai.com.cn/'],
-    ['zh-TW', 'https://docs.cherryai.com.cn/'],
-    ['en-US', 'https://docs.cherryai.com.cn/docs/en-us']
+    ['zh-CN', 'https://cherryai.com.cn/docs'],
+    ['zh-TW', 'https://cherryai.com.cn/docs'],
+    ['en-US', 'https://cherryai.com/docs']
   ])('opens the language-specific guide in app content for %s', async (language, expectedUrl) => {
     mocks.language = language
     render(<HelpMenu onFeedbackClick={mocks.openFeedback} />)

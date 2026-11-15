@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 
 import { defineTool, type ToolRenderContext } from '@renderer/components/composer/tools/types'
 import { isSupportedToolUse } from '@renderer/utils/assistant'
+import { isEvoStack } from '@renderer/utils/platform'
 import type { KnowledgeBase } from '@shared/data/types/knowledge'
 
 import { composerKnowledgeBaseTokenId, getComposerTokenIds } from '../../variants/shared/composerTokens'
@@ -30,7 +31,8 @@ const KnowledgeBaseComposerRuntime = ({ context }: { context: KnowledgeBaseToolC
   // Sessions skip the model tool-use probe: an Agent session reaches its knowledge bases through the
   // runtime's own kb_* MCP tools, not through the model's function-calling support, so the composer
   // model here (which may be a sub-model) says nothing about whether the picker is usable.
-  const isToolUseAvailable = context.session ? true : !!context.assistant && isSupportedToolUse(context.model)
+  const isToolUseAvailable =
+    isEvoStack || (context.session ? true : !!context.assistant && isSupportedToolUse(context.model))
 
   return (
     <KnowledgeBaseToolRuntime

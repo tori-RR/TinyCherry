@@ -10,7 +10,6 @@ sources:
   - electron.vite.config.ts
   - electron.vite.entries.config.ts
   - scripts/utilityProcessEntryGuard.ts
-  - src/main/ai/localModel/runtime/inferenceProcess.ts
 ---
 
 # Utility Process Architecture
@@ -57,10 +56,7 @@ flowchart LR
   RUNTIME --> HANDLERS["Domain handlers"]
 ```
 
-The generic layer does not register business definitions itself. The local-model domain registers
-embedding and OCR processes, with a separate production entry build. The forcing constraint is the Windows
-ONNX Runtime DLL collision described in #19621: incompatible native runtimes must not share a process.
-Embedding, OCR, and speech remain consumer-owned capabilities.
+Consumer services register their own definitions and build their entries separately.
 
 ## Registration and public API
 

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import path from 'path'
 
 import { optimizer } from '@electron-toolkit/utils'
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow, WebContents } from 'electron'
 import { app, dialog, nativeImage, nativeTheme, session, shell } from 'electron'
 
 import { application } from '@application'
@@ -88,6 +88,7 @@ export class MainWindowService extends BaseService {
 
   protected async onInit() {
     const windowManager = application.get('WindowManager')
+    this.setupAppSessionPermissions()
     this.setupHtmlArtifactPreviewSession()
     this.setupAgentWebviewSessions()
     this.setupSpellCheck()
@@ -133,6 +134,34 @@ export class MainWindowService extends BaseService {
     this.registerIpcHandlers()
     this.registerActivateHandler()
     this.registerSecondInstanceHandler()
+  }
+
+  private setupAppSessionPermissions(): void {
+    const appSession = session.defaultSession
+    const windowManager = application.get('WindowManager')
+    const isAllowed = (
+      contents: WebContents | null,
+      permission: string,
+      { requestingUrl, isMainFrame }: { requestingUrl?: string; isMainFrame: boolean }
+    ) => {
+      if (permission === 'media' || permission === 'deprecated-sync-clipboard-read') return false
+      if (!contents || contents.isDestroyed() || !isMainFrame || !requestingUrl || !isAppRendererUrl(requestingUrl))
+        return false
+      const windowId = windowManager.getWindowIdByWebContents(contents)
+      const window = windowId ? windowManager.getWindow(windowId) : undefined
+      return Boolean(window && !window.isDestroyed() && window.webContents === contents)
+    }
+
+    appSession.setPermissionCheckHandler((contents, permission, _origin, details) =>
+      isAllowed(contents, permission, details)
+    )
+    appSession.setPermissionRequestHandler((contents, permission, callback, details) => {
+      callback(isAllowed(contents, permission, details))
+    })
+    this.registerDisposable(() => {
+      appSession.setPermissionCheckHandler(null)
+      appSession.setPermissionRequestHandler(null)
+    })
   }
 
   private registerWindowShortcuts() {
@@ -558,7 +587,7 @@ export class MainWindowService extends BaseService {
       mainWindow.webContents.setZoomFactor(application.get('PreferenceService').get('app.zoom_factor'))
     })
 
-    // Windows: opacity is zeroed by minimize-to-tray; restore on show/restore for taskbar/Alt-Tab paths bypassing showMainWindow.
+    // Repair Windows tray appearance on show/restore paths that bypass showMainWindow.
     if (isWin) {
       const restoreOpacity = () => {
         if (!mainWindow.isDestroyed()) {
@@ -672,23 +701,33 @@ export class MainWindowService extends BaseService {
       const { url } = details
 
       const oauthProviderUrls = [
-        'https://account.siliconflow.cn/oauth',
-        'https://cloud.siliconflow.cn/bills',
-        'https://cloud.siliconflow.cn/expensebill',
         'https://console.inferera.com/token',
-        'https://console.inferera.com/topup',
-        'https://console.inferera.com/statistics',
         'https://dash.302.ai/sso/login',
-        'https://dash.302.ai/charge',
         'https://maas.aiionly.com/login'
       ]
+      const billingUrls = [
+        'https://cloud.siliconflow.cn/bills',
+        'https://cloud.siliconflow.cn/expensebill',
+        'https://console.inferera.com/topup',
+        'https://console.inferera.com/statistics',
+        'https://dash.302.ai/charge'
+      ]
+      const matchesEntry = (entry: string) =>
+        url === entry || ['/', '?', '#'].some((separator) => url.startsWith(entry + separator))
+      const isOAuthPopup = oauthProviderUrls.some(matchesEntry)
 
-      if (oauthProviderUrls.some((link) => url.startsWith(link))) {
+      if (isOAuthPopup || billingUrls.some(matchesEntry)) {
         return {
           action: 'allow',
           overrideBrowserWindowOptions: {
             webPreferences: {
-              partition: getWebviewPartition(WebviewSecurityProfile.MiniApp)
+              partition: getWebviewPartition(WebviewSecurityProfile.MiniApp),
+              // Electron 45 needs the opener's sandbox mode to preserve postMessage callbacks.
+              sandbox: !isOAuthPopup,
+              nodeIntegration: false,
+              contextIsolation: true,
+              preload: undefined,
+              webviewTag: false
             }
           }
         }
@@ -760,9 +799,8 @@ export class MainWindowService extends BaseService {
         application.get('WindowManager').behavior.setMacShowInDockByType(WindowType.Main, false)
       }
 
-      // Windows: minimize() refocuses previous window unlike hide(); opacity 0 suppresses animation.
       if (isWin) {
-        this.minimizeToTrayOnWindows(mainWindow)
+        this.hideToTrayOnWindows(mainWindow)
         return
       }
 
@@ -779,14 +817,16 @@ export class MainWindowService extends BaseService {
 
     const mainWindow = this.mainWindow
     if (mainWindow && !mainWindow.isDestroyed()) {
+      // Repair tray appearance before exposing the window; listeners cover out-of-band restores.
+      if (isWin) {
+        mainWindow.setOpacity(1)
+        mainWindow.setSkipTaskbar(false)
+      }
       if (mainWindow.isMinimized()) {
-        // Windows: restore opacity before restore() to avoid flash; listeners cover out-of-band restores.
-        if (isWin) {
-          mainWindow.setOpacity(1)
-          mainWindow.setSkipTaskbar(false)
-        }
         mainWindow.restore()
+        if (isWin) mainWindow.show()
         mainWindow.focus()
+        if (isMac) app.focus({ steal: true })
         this.pushMainWindowInitData(initData)
         return
       }
@@ -833,6 +873,7 @@ export class MainWindowService extends BaseService {
 
       mainWindow.show()
       mainWindow.focus()
+      if (isMac) app.focus({ steal: true })
       if (isWin) {
         mainWindow.setVisibleOnAllWorkspaces(false)
       }
@@ -868,9 +909,8 @@ export class MainWindowService extends BaseService {
           application.get('WindowManager').behavior.setMacShowInDockByType(WindowType.Main, false)
         }
 
-        // Windows: minimize() refocuses previous window; opacity 0 suppresses animation.
         if (isWin) {
-          this.minimizeToTrayOnWindows(mainWindow)
+          this.hideToTrayOnWindows(mainWindow)
         } else {
           mainWindow.hide()
         }
@@ -883,10 +923,13 @@ export class MainWindowService extends BaseService {
     this.showMainWindow()
   }
 
-  private minimizeToTrayOnWindows(win: BrowserWindow) {
+  private hideToTrayOnWindows(win: BrowserWindow) {
+    // Retain the minimize step used for Windows focus handoff (#14370).
+    // Hide afterward to remove native window visibility in tray mode.
     win.setOpacity(0)
     win.setSkipTaskbar(true)
     win.minimize()
+    win.hide()
   }
 
   /**

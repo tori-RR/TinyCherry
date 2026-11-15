@@ -8,7 +8,7 @@
 
 你可以通过以下方式参与：
 
-1.  **贡献代码**：帮助开发新功能或优化现有代码。请确保代码遵循项目规范并通过全部相关测试。
+1.  **贡献代码**：帮助开发新功能或优化现有代码。请遵守仓库规则，并验证受影响的行为。
 
 2.  **修复缺陷**：发现 bug 后欢迎提交修复。提交前请确认问题已经解决，并包含相关测试。
 
@@ -38,31 +38,15 @@
 
 ### 测试
 
-没有测试的功能视为不存在。为了确保代码真正有效，相关流程应由单元测试和功能测试覆盖。因此，请在贡献时同时考虑可测试性。所有测试都可以在本地运行，不依赖 CI。详情请参阅[开发者指南](docs/dev/contrib/development.md)中的“Testing”部分。
+按改动范围选择检查。文档检查文字和链接，素材直接校验变更文件，代码则运行覆盖变更及受影响调用方的测试。详情见[开发者指南](docs/dev/contrib/development.md)中的“Testing”部分。
 
 ### Pull Request 自动测试
 
-Cherry Studio 组织成员创建的非 Draft pull request（PR）会自动触发测试。新贡献者创建的 PR 最初会带有 `needs-ok-to-test` 标签，不会自动运行测试。Cherry Studio 组织成员添加 `/ok-to-test` 后，测试流水线才会创建。
+有 CI 时，确认当前 PR 版本实际运行了哪些检查，并说明结果和仍未覆盖的范围。
 
 ### 考虑使用 Draft Pull Request
 
-并非所有 pull request 在创建时都已经可以评审。作者可能希望先展开讨论、尚未确定方向，或变更还未完成。请考虑创建 [draft pull request](https://github.blog/2019-02-14-introducing-draft-pull-requests/)。Draft PR 会跳过 CI，从而节省资源；reviewer 也不会被自动分配，社区可以据此理解该 PR 尚未准备完成。
-将 Draft 标记为 ready for review 后，reviewer 才会被分配。
-
-### 贡献者条款合规
-
-每位贡献者都必须证明自己有权合法贡献代码。贡献者通过有意识地签署 commit 表示遵守[许可证](LICENSE)。
-签署 commit 时，commit message 应包含相应声明。
-
-```
-Signed-off-by: Your Name <your.email@example.com>
-```
-
-可以使用以下命令创建带 signoff 的 commit：[git commit --signoff](https://git-scm.com/docs/git-commit#Documentation/git-commit.txt---signoff)：
-
-```
-git commit --signoff -m "Your commit message"
-```
+变更尚未完成或希望尽早获得反馈时，可创建 [draft pull request](https://github.blog/2019-02-14-introducing-draft-pull-requests/)。
 
 ### 代码评审与合并
 

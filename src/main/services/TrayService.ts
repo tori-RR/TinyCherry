@@ -12,7 +12,9 @@ import { getNormalizedExecutablePath } from '@main/core/preboot/userDataLocation
 import { t } from '@main/i18n'
 import { getApplicationId } from '@main/utils/appEdition'
 import { isRunningWindowsExecutableSigned } from '@main/utils/windowsExecutableSignature'
+import { APP_NAME } from '@shared/utils/constants'
 
+import windowsIcon from '../../../build/icon.ico?asset'
 import icon from '../../../build/tray_icon.png?asset'
 import iconDark from '../../../build/tray_icon_dark.png?asset'
 import iconLight from '../../../build/tray_icon_light.png?asset'
@@ -55,7 +57,7 @@ export class TrayService extends BaseService implements Activatable {
   }
 
   onActivate(): void {
-    const iconPath = isMac ? (nativeTheme.shouldUseDarkColors ? iconLight : iconDark) : icon
+    const iconPath = isWin ? windowsIcon : isMac ? (nativeTheme.shouldUseDarkColors ? iconLight : iconDark) : icon
     const tray = isWin && shouldUseWindowsTrayGuid() ? new Tray(iconPath, getWindowsTrayGuid()) : new Tray(iconPath)
 
     if (isWin) {
@@ -79,7 +81,7 @@ export class TrayService extends BaseService implements Activatable {
       this.tray.setContextMenu(this.contextMenu)
     }
 
-    this.tray.setToolTip('Cherry Studio')
+    this.tray.setToolTip(APP_NAME)
 
     this.tray.on('right-click', () => {
       if (this.contextMenu) {

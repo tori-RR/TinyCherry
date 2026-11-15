@@ -13,7 +13,7 @@
  *
  * Key Features:
  * - Type-safe requests with full TypeScript inference
- * - Automatic retry with exponential backoff (network, timeout, 500/503 errors)
+ * - Bounded read recovery; mutations are never automatically replayed
  * - Bounded request timeouts (reads share the retry budget without overlapping IPC)
  * - Data change notification fan-out (cross-window convergence)
  *
@@ -40,6 +40,24 @@ import { DataApiDevtools } from './utils/dataApiDevtools'
 
 const logger = loggerService.withContext('DataApiService')
 const REQUEST_TIMEOUT_MS = 3000
+
+class MutationOutcomeUnknownError extends DataApiError {
+  readonly outcome = 'unknown'
+
+  constructor(error: DataApiError, context: RequestContext) {
+    super(
+      error.code,
+      `Write request outcome is unknown. Check the resource before retrying. ${error.message}`,
+      error.status,
+      error.details,
+      context
+    )
+  }
+
+  override get isRetryable(): boolean {
+    return false
+  }
+}
 
 /**
  * Retry options interface.
@@ -121,6 +139,7 @@ export class DataApiService implements ApiClient {
     }
     let errorMetadata: DataResponse['metadata'] | undefined
     let didTimeout = false
+    let responseReceived = false
     DataApiDevtools.recordStart({
       requestId: request.id,
       method: request.method,
@@ -159,6 +178,7 @@ export class DataApiService implements ApiClient {
           }, timeoutMs)
         })
       ]).finally(() => clearTimeout(timeoutId))
+      responseReceived = true
 
       if (response.error) {
         // Reconstruct DataApiError from serialized response
@@ -181,8 +201,10 @@ export class DataApiService implements ApiClient {
       return response.data as T
     } catch (error) {
       // Ensure we have a DataApiError for consistent handling
-      const apiError =
-        error instanceof DataApiError ? error : toDataApiError(error, `${request.method} ${request.path}`)
+      let apiError = error instanceof DataApiError ? error : toDataApiError(error, `${request.method} ${request.path}`)
+      if (request.method !== 'GET' && !responseReceived) {
+        apiError = new MutationOutcomeUnknownError(apiError, requestContext)
+      }
 
       DataApiDevtools.recordError({
         requestId: request.id,
@@ -197,6 +219,7 @@ export class DataApiService implements ApiClient {
 
       // Check if should retry using the error's built-in isRetryable getter
       if (
+        request.method === 'GET' &&
         retryCount < this.defaultRetryOptions.maxRetries &&
         apiError.isRetryable &&
         !(readDeadline !== undefined && didTimeout)

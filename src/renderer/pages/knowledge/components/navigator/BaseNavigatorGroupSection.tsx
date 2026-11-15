@@ -3,6 +3,7 @@ import { CSS } from '@dnd-kit/utilities'
 
 import { AccordionContent, AccordionItem } from '@cherrystudio/ui'
 import { cn } from '@cherrystudio/ui/lib/utils'
+import { supportsKnowledgeGroups } from '@renderer/pages/knowledge/utils/group'
 
 import BaseNavigatorSectionTrigger from './BaseNavigatorSectionTrigger'
 import KnowledgeGroupRow from './KnowledgeGroupRow'
@@ -30,11 +31,12 @@ const BaseNavigatorGroupSection = ({
   sidebarPinnedBaseIds
 }: BaseNavigatorGroupSectionProps) => {
   const groupValue = section.groupId ?? UNGROUPED_SECTION_VALUE
+  const groupingEnabled = supportsKnowledgeGroups()
 
   const { setNodeRef, attributes, listeners, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: `group:${groupValue}`,
     data: { type: 'group', groupId: section.groupId },
-    disabled: { draggable: dragDisabled || !group, droppable: dragDisabled }
+    disabled: { draggable: dragDisabled || !group || !groupingEnabled, droppable: dragDisabled }
   })
 
   return (
@@ -48,7 +50,7 @@ const BaseNavigatorGroupSection = ({
         isDragging && 'opacity-30',
         indicator?.id === `group:${groupValue}` && 'ring-1 ring-inset ring-primary'
       )}>
-      {group ? (
+      {group && groupingEnabled ? (
         <KnowledgeGroupRow
           group={group}
           dragProps={{ ...attributes, ...listeners, ref: setActivatorNodeRef }}

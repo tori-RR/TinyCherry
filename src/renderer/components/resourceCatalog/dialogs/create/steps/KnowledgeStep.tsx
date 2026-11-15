@@ -1,10 +1,6 @@
-import { useCallback } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
 
 import { KnowledgeBaseField } from '@renderer/components/resourceCatalog/dialogs/components/EditDialogShared'
-import { ipcApi } from '@renderer/ipc'
-import { getDefaultRouteTitle } from '@renderer/utils/routeTitle'
-import { uuid } from '@renderer/utils/uuid'
 
 import type { ResourceCreateWizardFormValues } from '../types'
 
@@ -19,16 +15,6 @@ type KnowledgeStepProps = {
  * picker popover + linked list — bound to `knowledgeBaseIds`.
  */
 export function KnowledgeStep({ form, isSubmitting = false, portalContainer }: KnowledgeStepProps) {
-  const openKnowledgePage = useCallback(() => {
-    if (isSubmitting) return
-    void ipcApi.request('tab.detach', {
-      id: uuid(),
-      url: '/app/knowledge',
-      title: getDefaultRouteTitle('/app/knowledge'),
-      type: 'route'
-    })
-  }, [isSubmitting])
-
   return (
     <KnowledgeBaseField
       form={form}
@@ -36,7 +22,6 @@ export function KnowledgeStep({ form, isSubmitting = false, portalContainer }: K
       formLabel={false}
       labelClassName="font-medium"
       disabled={isSubmitting}
-      onOpenKnowledgePage={openKnowledgePage}
     />
   )
 }

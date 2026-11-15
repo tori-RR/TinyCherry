@@ -23,6 +23,9 @@ vi.mock('@cherrystudio/provider-registry/node', () => {
   class RegistryLoader {
     loadProviders() {
       return [
+        { id: 'qiniu', name: 'Qiniu', endpointConfigs: {} },
+        { id: 'groq', name: 'Groq', endpointConfigs: {} },
+        { id: 'omlx', name: 'oMLX', endpointConfigs: {} },
         {
           id: 'global-only',
           availableInEditions: ['global'],
@@ -107,6 +110,24 @@ describe('ProviderService edition availability', () => {
       .where(eq(userProviderTable.providerId, 'global-only'))
     expect(persisted.name).toBe('Global only')
     expect(persisted.apiKeys).toEqual([{ id: 'key-1', key: 'secret', isEnabled: true }])
+  })
+
+  it('omits unused excluded presets and keeps configured and custom providers', async () => {
+    await dbh.db.insert(userProviderTable).values([
+      { providerId: 'qiniu', presetProviderId: 'qiniu', name: 'Qiniu', orderKey: 'a0' },
+      {
+        providerId: 'groq',
+        presetProviderId: 'groq',
+        name: 'Groq',
+        apiKeys: [{ id: 'key-1', key: 'placeholder', isEnabled: true }],
+        orderKey: 'a1'
+      },
+      { providerId: 'omlx', presetProviderId: 'omlx', name: 'oMLX', isEnabled: true, orderKey: 'a2' },
+      { providerId: 'custom-qiniu', presetProviderId: 'qiniu', name: 'My Qiniu', orderKey: 'a3' }
+    ])
+
+    expect(providerService.list({}).map(({ id }) => id)).toEqual(['groq', 'omlx', 'custom-qiniu'])
+    expect(providerService.getByProviderId('qiniu').id).toBe('qiniu')
   })
 
   it('enforces edition availability in provider-backed registry reads', async () => {

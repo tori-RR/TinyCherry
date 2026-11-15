@@ -5,6 +5,7 @@ import { app, BrowserWindow } from 'electron'
 import { application } from '@application'
 import { loggerService } from '@logger'
 import { isWin } from '@main/core/platform'
+import { canCheckForAppUpdates } from '@main/services/AppUpdaterService'
 import { cacheCleanupService } from '@main/services/cacheCleanup'
 import { requestDataReset, requestV1Remigration } from '@main/services/dataReset'
 import { regionService } from '@main/services/RegionService'
@@ -29,6 +30,7 @@ export const appHandlers: IpcHandlersFor<typeof appRequestSchemas> = {
     logsPath: loggerService.getLogsDir(),
     arch: arch(),
     isPortable: isWin && 'PORTABLE_EXECUTABLE_DIR' in process.env,
+    canCheckForUpdates: canCheckForAppUpdates(),
     installPath: application.getPath('app.install')
   }),
   // The request face of userData relocation IPC: the running app validates a

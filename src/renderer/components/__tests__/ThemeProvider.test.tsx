@@ -1,5 +1,5 @@
 import { MockUsePreferenceUtils } from '@test-mocks/renderer/usePreference'
-import { render, waitFor } from '@testing-library/react'
+import { act, render, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useTheme } from '@renderer/hooks/useTheme'
@@ -92,5 +92,53 @@ describe('ThemeProvider first frame', () => {
     expect(renderedThemes[0]).toBe(ThemeMode.light)
     await waitFor(() => expect(renderedThemes.at(-1)).toBe(ThemeMode.dark))
     expect(ipcMocks.request).toHaveBeenCalledWith('system.get_native_theme')
+  })
+
+  it('follows runtime OS changes only while the saved theme is system', async () => {
+    MockUsePreferenceUtils.setPreferenceValue('ui.theme_mode', ThemeMode.system)
+    stubMatchMedia(false)
+    ipcMocks.request.mockResolvedValue(ThemeMode.light)
+    const view = render(
+      <ThemeProvider>
+        <ThemeProbe />
+      </ThemeProvider>
+    )
+    await waitFor(() => expect(renderedThemes.at(-1)).toBe(ThemeMode.light))
+    const notify = () => ipcMocks.useIpcOn.mock.calls.at(-1)![1] as (theme: ThemeMode) => void
+    act(() => notify()(ThemeMode.dark))
+    expect(renderedThemes.at(-1)).toBe(ThemeMode.dark)
+    act(() => notify()(ThemeMode.light))
+    expect(renderedThemes.at(-1)).toBe(ThemeMode.light)
+
+    MockUsePreferenceUtils.setPreferenceValue('ui.theme_mode', ThemeMode.dark)
+    view.rerender(
+      <ThemeProvider>
+        <ThemeProbe />
+      </ThemeProvider>
+    )
+    await waitFor(() => expect(renderedThemes.at(-1)).toBe(ThemeMode.dark))
+    act(() => notify()(ThemeMode.light))
+    expect(renderedThemes.at(-1)).toBe(ThemeMode.dark)
+  })
+
+  it('keeps a newer OS event when the initial theme query resolves late', async () => {
+    MockUsePreferenceUtils.setPreferenceValue('ui.theme_mode', ThemeMode.system)
+    stubMatchMedia(false)
+    let resolveTheme!: (theme: ThemeMode) => void
+    ipcMocks.request.mockReturnValue(
+      new Promise<ThemeMode>((resolve) => {
+        resolveTheme = resolve
+      })
+    )
+    render(
+      <ThemeProvider>
+        <ThemeProbe />
+      </ThemeProvider>
+    )
+    act(() => {
+      ipcMocks.useIpcOn.mock.calls.at(-1)![1](ThemeMode.dark)
+    })
+    await act(async () => resolveTheme(ThemeMode.light))
+    expect(renderedThemes.at(-1)).toBe(ThemeMode.dark)
   })
 })

@@ -9,7 +9,7 @@ import {
   AccordionTrigger,
   Alert,
   Button,
-  Scrollbar
+  ScrollArea
 } from '@cherrystudio/ui'
 import { useEnableKnowledgeBaseEmbedding } from '@renderer/hooks/useKnowledgeBase'
 import { toast } from '@renderer/services/toast'
@@ -25,7 +25,6 @@ import { buildKnowledgeRagConfigPatch } from '../../utils/rag'
 import { getKnowledgeRagConfigFormState } from '../../utils/validate'
 import ChunkingSection from './ChunkingSection'
 import EmbeddingSection from './EmbeddingSection'
-import FileProcessingSection from './FileProcessingSection'
 import RerankSection from './RerankSection'
 import RetrievalSection from './RetrievalSection'
 
@@ -69,7 +68,7 @@ const FailedRagConfigPanel = ({ base, onRestoreBase }: RagConfigPanelProps) => {
   const failureReason = getKnowledgeBaseFailureReason(base, t)
 
   return (
-    <Scrollbar className="flex h-full min-h-0 items-center justify-center">
+    <ScrollArea className="h-full min-h-0" contentProps={{ className: 'flex min-h-full items-center justify-center' }}>
       <div className="w-full max-w-120 px-5 py-4">
         <Alert
           type="error"
@@ -83,13 +82,13 @@ const FailedRagConfigPanel = ({ base, onRestoreBase }: RagConfigPanelProps) => {
           }
         />
       </div>
-    </Scrollbar>
+    </ScrollArea>
   )
 }
 
 const ActiveRagConfigPanel = ({ base, itemCount, onRestoreBase }: RagConfigPanelProps) => {
   const { t } = useTranslation()
-  const { initialValues, fileProcessorOptions, save, isLoading } = useKnowledgeRagConfig(base)
+  const { initialValues, save, isLoading } = useKnowledgeRagConfig(base)
   const { fetchDimensions, isFetchingDimensions } = useEmbeddingDimensions()
   const { enableEmbedding, isEnabling } = useEnableKnowledgeBaseEmbedding()
   const [values, setValues] = useState(initialValues)
@@ -167,17 +166,8 @@ const ActiveRagConfigPanel = ({ base, itemCount, onRestoreBase }: RagConfigPanel
 
   return (
     <KnowledgePanelShell>
-      <Scrollbar className="min-h-0 flex-1 px-6 py-5">
+      <ScrollArea className="min-h-0 flex-1 px-6 py-5">
         <div className="flex flex-col gap-4">
-          <FileProcessingSection
-            fileProcessorId={values.fileProcessorId}
-            initialFileProcessorId={initialValues.fileProcessorId}
-            fileProcessorOptions={fileProcessorOptions}
-            onFileProcessorChange={(fileProcessorId) =>
-              setValues((currentValues) => ({ ...currentValues, fileProcessorId }))
-            }
-          />
-
           <EmbeddingSection
             embeddingModelId={values.embeddingModelId}
             onEmbeddingModelChange={(embeddingModelId) =>
@@ -231,7 +221,7 @@ const ActiveRagConfigPanel = ({ base, itemCount, onRestoreBase }: RagConfigPanel
             </AccordionItem>
           </Accordion>
         </div>
-      </Scrollbar>
+      </ScrollArea>
 
       <KnowledgeDialogFooter className="shrink-0 border-t border-border-subtle px-6 py-4">
         <Button

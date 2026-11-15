@@ -14,10 +14,7 @@ import { ipcApi } from '@renderer/ipc'
 import { popup } from '@renderer/services/popup'
 import { toast } from '@renderer/services/toast'
 import { getBackupErrorTitleKey, getLocalizedBackupErrorMessage } from '@renderer/utils/backup'
-import { uuid } from '@renderer/utils/uuid'
 import type { AutoBackupType } from '@shared/types/backup'
-
-import { notificationService } from './notification'
 
 const logger = loggerService.withContext('BackupService')
 
@@ -30,8 +27,7 @@ export interface RemoteSyncState {
 let backupSyncState: Record<AutoBackupType, RemoteSyncState> = {
   webdav: { lastSyncTime: null, syncing: false, lastSyncError: null },
   s3: { lastSyncTime: null, syncing: false, lastSyncError: null },
-  local: { lastSyncTime: null, syncing: false, lastSyncError: null },
-  nutstore: { lastSyncTime: null, syncing: false, lastSyncError: null }
+  local: { lastSyncTime: null, syncing: false, lastSyncError: null }
 }
 const backupSyncListeners = new Set<() => void>()
 
@@ -71,22 +67,12 @@ export async function backup(skipBackupFile = false) {
 }
 
 export async function restore() {
-  // notificationService is imported as a module-level singleton
   const file = await window.api.file.open({ filters: [{ name: '备份文件', extensions: ['zip'] }] })
 
   if (file) {
     try {
       await window.api.backup.restore(file.filePath)
 
-      void notificationService.send({
-        id: uuid(),
-        type: 'success',
-        title: i18n.t('common.success'),
-        message: i18n.t('message.restore.success'),
-        silent: false,
-        timestamp: Date.now(),
-        source: 'backup'
-      })
       // The main process has committed the restore journal and will relaunch.
       return
     } catch (error) {
@@ -151,15 +137,6 @@ export async function backupToWebdav({ customFileName = '' }: ManualBackupOption
         toast.warning(message)
       } else {
         setWebDAVSyncState({ lastSyncError: null })
-        void notificationService.send({
-          id: uuid(),
-          type: 'success',
-          title: i18n.t('common.success'),
-          message: i18n.t('message.backup.success'),
-          silent: false,
-          timestamp: Date.now(),
-          source: 'backup'
-        })
         toast.success(i18n.t('message.backup.success'))
       }
     } else {
@@ -169,15 +146,6 @@ export async function backupToWebdav({ customFileName = '' }: ManualBackupOption
     }
   } catch (error: any) {
     const message = getLocalizedBackupErrorMessage(error, 'message.backup.failed', { tlsCertificateHint: true })
-    void notificationService.send({
-      id: uuid(),
-      type: 'error',
-      title: i18n.t('message.backup.failed'),
-      message,
-      silent: false,
-      timestamp: Date.now(),
-      source: 'backup'
-    })
     setWebDAVSyncState({ lastSyncError: message })
     toast.error(message)
     logger.error('[Backup] backupToWebdav: Error uploading file to WebDAV:', error)
@@ -243,15 +211,6 @@ export async function backupToS3({ customFileName = '' }: ManualBackupOptions = 
         toast.warning(message)
       } else {
         setS3SyncState({ lastSyncError: null })
-        void notificationService.send({
-          id: uuid(),
-          type: 'success',
-          title: i18n.t('common.success'),
-          message: i18n.t('message.backup.success'),
-          silent: false,
-          timestamp: Date.now(),
-          source: 'backup'
-        })
         toast.success(i18n.t('message.backup.success'))
       }
     } else {
@@ -261,15 +220,6 @@ export async function backupToS3({ customFileName = '' }: ManualBackupOptions = 
     }
   } catch (error: any) {
     const message = getLocalizedBackupErrorMessage(error)
-    void notificationService.send({
-      id: uuid(),
-      type: 'error',
-      title: i18n.t('message.backup.failed'),
-      message,
-      silent: false,
-      timestamp: Date.now(),
-      source: 'backup'
-    })
     setS3SyncState({ lastSyncError: message })
     logger.error('backupToS3: Error uploading file to S3:', error)
     toast.error(message)
@@ -343,15 +293,6 @@ export async function backupToLocal({ customFileName = '' }: ManualBackupOptions
         toast.warning(message)
       } else {
         setLocalBackupSyncState({ lastSyncError: null })
-        void notificationService.send({
-          id: uuid(),
-          type: 'success',
-          title: i18n.t('common.success'),
-          message: i18n.t('message.backup.success'),
-          silent: false,
-          timestamp: Date.now(),
-          source: 'backup'
-        })
       }
     } else {
       const message = i18n.t('message.backup.failed')

@@ -13,9 +13,7 @@ sources:
 
 # Text Translation
 
-This document covers one-shot text translation through `translate.open`.
-PDF translation uses the separate `translate.pdf.*` routes and
-`PdfTranslationService`.
+TinyCherry supports text translation from the chat message menu and the selection assistant through `translate.open`.
 
 ## Active flow
 
@@ -33,9 +31,7 @@ MessageMenuBar
             -> ai.stream.chunk / done / error
 ```
 
-Other renderer surfaces, including TranslatePage and selection translation,
-reach the same `translateText` helper through `useTranslate`. They consume the
-returned text locally instead of attaching it to a chat message.
+The selection assistant calls the same `translateText` helper through `useTranslate` and displays the result in its own window.
 
 ## Ownership
 
@@ -80,9 +76,7 @@ Model parameters do not cross the wire either. Temperature, top-p and reasoning
 effort live in Preference under `feature.translate.*`, so Main
 reads them itself — every caller of `translate.open` gets the same settings
 without having to pass them, and a renderer cannot ask for a value the user did
-not configure. (Layout-preserving PDF translation does not go through this
-route: `PdfTranslationService` drives BabelDoc via the API gateway and reads
-none of `feature.translate.*`.)
+not configure.
 
 ## Home message persistence
 

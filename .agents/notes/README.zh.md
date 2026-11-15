@@ -10,7 +10,7 @@ Note 位于 `{lifecycle}/{class}/yyyy-mm-dd-topic.md`。
 
 生命周期：
 
-- `proposed/` — 等待或已经获得批准的 Spec；实现尚未完成。
+- `proposed/` — 正在讨论或实现的决策。
 - `implemented/` — 已发布事实，并持续保持事实准确。
 - `rejected/` — 被明确否决的提案；只有理由仍能防止可信的重复错误时才保留。
 
@@ -27,71 +27,33 @@ Note 位于 `{lifecycle}/{class}/yyyy-mm-dd-topic.md`。
 
 不存在 `refactor` 类别。包含持久删除决策的 refactor 属于 simplification；机械 refactor 不需要 note。
 
-### 初始生命周期选择
+### 选择初始状态
 
-Class 描述决策的主题；它不要求每条 note 都从 proposed 开始。根据是否需要前置批准以及交付状态选择初始结果：
-
-| 变更形态 | 初始结果 |
-|---|---|
-| 恢复已有契约的局部或机械修改 | 不写 note；在 PR 中声明 `N/A — <reason>`。 |
-| 在同一 PR 中交付并验证的持久 bugfix | 直接创建 implemented `bug-fix` note。 |
-| 无需在实现前批准目标的小型已完成 testing 或其他持久决策 | 直接在归属 class 中创建 implemented note。 |
-| 重大 feature、architecture、process 或 simplification | 实现前创建 proposed Spec。 |
-| 任何需要人类在实现前对目标行为、ownership、AC、替代方案或风险达成一致的决策 | 无论 class 为何，都创建 proposed Spec。 |
-
-`N/A` 是 PR 分类，不是 note 生命周期。`rejected` 绝不是初始状态；它记录人类对已有 proposal 的明确裁决。
+仍在讨论或实现的决策放入 `proposed/`。决策已交付且有验证证据时，放入 `implemented/`。只有明确否决已有提案时，才使用 `rejected/`。
 
 ### 状态转换
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Classify
-    Classify --> NoNote: mechanical or existing contract
-    Classify --> Proposed: prior target approval required
-    Classify --> Implemented: durable decision already delivered
-
-    NoNote --> [*]: PR records N/A reason
-    Proposed --> Proposed: material edit requires re-approval
-    Proposed --> Implemented: final layer covers every AC
+    [*] --> Proposed: planning record
+    [*] --> Implemented: decision already delivered
+    Proposed --> Proposed: update the proposal
+    Proposed --> Implemented: implementation is verified
     Proposed --> Rejected: explicit human rejection
-    Proposed --> [*]: unmerged exploration has no durable value
-
     Implemented --> Implemented: keep shipped facts current
-    Implemented --> Successor: decision is reversed or fully superseded
+    Implemented --> Successor: decision is reversed or superseded
     Rejected --> Successor: new evidence reopens the question
-    Successor --> Proposed: successor requires prior approval
-    Successor --> Implemented: successor is already delivered
-
-    Implemented --> Archived: future only; no longer an active owner
-    Rejected --> Archived: future only; rationale absorbed by successor
-    Archived --> [*]: historical search only
 ```
 
-图中的 `Successor` 表示创建一条新的、双向链接的 note；旧的 implemented 或 rejected 记录不会退回 proposed 或 implemented。
+`Successor` 表示新建一条相互链接的 note，并保留已有决策记录。
 
-## 何时需要 note
+## 何时使用 note
 
-每个人工创建的 PR 都在模板中声明 Agent Note 或明确的 `N/A` 原因。自动化创建的 PR（仓库 workflow 与 Dependabot）免除此元数据要求，但不免除常规验证。架构选择、跨模块契约、磁盘/配置/wire format、流程政策、重大 feature 和可能被再次讨论的替代方案都必须写 note。
+TinyCherry 按需使用 Agent Note。架构、兼容性、持久数据等长期决策，或维护者日后可能重新讨论修复理由时，可以写一条。优先更新已有的决策记录。
 
-简单 bugfix 在恢复已有文档契约、且没有引入失败语义、所有权、兼容策略或持久取舍时使用 `N/A`。当修复需要在可信方案间选择、改变持久契约、保护安全/并发/原子性/生命周期，或未来维护者缺少根因时可能合理改回去，就直接写 implemented `bug-fix` note。
+## 可选的规划与评审
 
-优先更新当前归属决策的 note。不要为每个 commit 新建 note，也不要重复 PR 叙述。
-
-## Spec-first stack
-
-重大 feature、architecture、process 和 simplification 按以下顺序进行：
-
-1. 创建底层 Spec PR，只包含 proposed 双语 Agent Note。
-2. 为每个验收标准分配稳定的 `AC1`、`AC2` 等标识，并写明验证所有者。
-3. 等待人类对当前 Spec head 明确 Approval；不要求先合并 Spec。
-4. 在该 branch 上堆叠 implementation PR；每层链接 Spec 并列出覆盖的 AC。
-5. 行为、所有权、AC、替代方案或风险发生实质变化时，在 Spec branch 修改、重排 stack 并重新获得 Approval。
-6. 中间层保持 note 为 proposed。
-7. 满足全部 AC 的最终层把 note 移动并重写为 implemented。
-
-Approval 绑定一个精确 Spec head。沉默、`CHANGES_REQUESTED` 和讨论都不表示 rejection。
-
-Agent 根据整个 stack 而不是单个 PR 判断生命周期。运行 `gh stack view --json`；退出码 2 只表示当前 checkout 缺少本地 stack 元数据，并不能证明已有 PR 在 GitHub 上是 standalone。按照 `gh-stack` skill 发现并初始化远端拓扑，然后重新运行 view，再对 PR 作出分类。对于 stack，检查当前层及每个 downstack implementation PR，只汇总有实际 verification 支撑的 AC；只有最终层的累计证据覆盖已批准 Spec 的全部 AC 时，才转换 note。Stack 同步不代表完成验证：`gh stack sync` 后，对每个存活层重新运行 change scope 和被改写范围影响的检查。
+可以在 Issue、实现 PR 中讨论方案，也可以单独讨论。Spec PR 和堆叠 PR 都是可选的。如果工作分散在多个 PR 中，等各 PR 的验证合起来覆盖了该决策，再将 note 标为 implemented。
 
 ## 文件格式
 
@@ -150,9 +112,9 @@ Status: rejected — <one-line decisive reason>
 
 ## 否决与删除
 
-只有明确的人类决策能把 `proposed` 移到 `rejected`。部分否决修改 proposed note 并重新 Approval；讨论中的落选方案留在 `Alternatives considered`。
+只有明确的人类决策能把 `proposed` 移到 `rejected`。部分否决时，更新 proposed note 以反映决策。讨论中的落选方案保留在 `Alternatives considered`。
 
-如果 rejection 理由可以防止可信的重复错误，应在关闭 Spec PR 前转换并合并 rejected note。如果探索没有持久价值，直接关闭未合并 PR，不向仓库增加噪音。Implemented decision 永远不会改标 rejected；应由新 note 取代它。
+如果否决理由有助于避免重复错误，就保留一条 rejected note。如果探索没有持久价值，直接关闭未合并 PR，不向仓库增加噪音。Implemented decision 永远不会改标 rejected；应由新 note 取代它。
 
 ## 取代关系
 

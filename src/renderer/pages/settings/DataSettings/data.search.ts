@@ -188,62 +188,10 @@ export const entries: SettingsSearchEntry[] = [
     groupKey: 'settings.data.markdown_export.title'
   },
   {
-    anchorId: 'notion-api-key',
-    titleKey: 'settings.data.notion.api_key',
-    panel: 'notion',
-    groupKey: 'settings.data.notion.title',
-    aliases: ['notion']
-  },
-  {
-    anchorId: 'notion-database-id',
-    titleKey: 'settings.data.notion.database_id',
-    panel: 'notion',
-    groupKey: 'settings.data.notion.title'
-  },
-  {
-    anchorId: 'yuque-token',
-    titleKey: 'settings.data.yuque.token',
-    panel: 'yuque',
-    groupKey: 'settings.data.yuque.title',
-    aliases: ['yuque', '语雀']
-  },
-  {
-    anchorId: 'yuque-repo-url',
-    titleKey: 'settings.data.yuque.repo_url',
-    panel: 'yuque',
-    groupKey: 'settings.data.yuque.title'
-  },
-  {
-    anchorId: 'joplin-url',
-    titleKey: 'settings.data.joplin.url',
-    panel: 'joplin',
-    groupKey: 'settings.data.joplin.title',
-    aliases: ['joplin']
-  },
-  {
-    anchorId: 'joplin-token',
-    titleKey: 'settings.data.joplin.token',
-    panel: 'joplin',
-    groupKey: 'settings.data.joplin.title'
-  },
-  {
     anchorId: 'obsidian-default-vault',
     titleKey: 'settings.data.obsidian.default_vault',
     panel: 'obsidian',
     groupKey: 'settings.data.obsidian.title',
     aliases: ['obsidian']
-  },
-  {
-    anchorId: 'siyuan-api-url',
-    titleKey: 'settings.data.siyuan.api_url',
-    panel: 'siyuan',
-    groupKey: 'settings.data.siyuan.title',
-    aliases: ['siyuan', '思源笔记']
-  },
-  {
-    anchorId: 'siyuan-token',
-    titleKey: 'settings.data.siyuan.token.label',
-    panel: 'siyuan',
-    groupKey: 'settings.data.siyuan.title'
   }
 ]

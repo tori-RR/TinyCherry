@@ -8,7 +8,6 @@ import type { CherryUIMessage } from '@shared/data/types/message'
 import type { CustomSelectionAction, SelectionAction } from '@shared/types/selection'
 
 const state = vi.hoisted(() => ({
-  readAloud: vi.fn(async () => undefined),
   assistant: undefined as { id: string } | undefined,
   fallbackAssistant: undefined as { id: string } | undefined,
   quickAssistantId: '' as string,
@@ -22,8 +21,6 @@ const state = vi.hoisted(() => ({
   liveAssistants: [] as CherryUIMessage[],
   isPending: false
 }))
-
-vi.mock('@renderer/services/voice', () => ({ readTextAloud: state.readAloud }))
 
 import ActionGeneral from '../ActionGeneral'
 
@@ -41,8 +38,8 @@ vi.mock('../ActionResultContent', () => {
   }
 })
 
-vi.mock('@ai-sdk/react', () => ({
-  useChat: ({ id, onError }: { id: string; onError?: (error: Error) => void }) => {
+vi.mock('@renderer/hooks/useStreamCommands', () => ({
+  useStreamCommands: (id: string, _initial: unknown, onError?: (error: Error) => void) => {
     state.useChatIds.push(id)
     state.onError = onError
     return {
@@ -165,7 +162,6 @@ describe('ActionGeneral', () => {
     state.onError = undefined
     state.liveAssistants = []
     state.isPending = false
-    state.readAloud.mockClear()
   })
 
   afterEach(() => {
@@ -178,7 +174,7 @@ describe('ActionGeneral', () => {
   // before any result has ever rendered is what makes this assertion prove
   // the mount preload specifically.
   it('preloads the result-content chunk on mount, before any result arrives', async () => {
-    render(<ActionGeneral sourceEntityId="test-session" action={createBuiltinAction()} />)
+    render(<ActionGeneral action={createBuiltinAction()} />)
 
     // liveAssistants stays empty in this setup, so nothing result-related is
     // rendered — the chunk import must still fire so its download overlaps the
@@ -187,7 +183,7 @@ describe('ActionGeneral', () => {
   })
 
   it('leases a no-assistant temporary topic and sends for default model actions', async () => {
-    render(<ActionGeneral sourceEntityId="test-session" action={createBuiltinAction()} />)
+    render(<ActionGeneral action={createBuiltinAction()} />)
 
     await waitFor(() => expect(state.sendMessage).toHaveBeenCalledTimes(1))
     expect(state.temporaryTopicOptions.at(-1)).toEqual({ enabled: true, assistantId: undefined })
@@ -197,7 +193,7 @@ describe('ActionGeneral', () => {
     const selectedText = "$$E=mc^2$$ | $& | $` | $' | {{text}}"
     const prompt = 'Before {{text}} / {{text}} after'
 
-    render(<ActionGeneral sourceEntityId="test-session" action={createCustomAction({ prompt, selectedText })} />)
+    render(<ActionGeneral action={createCustomAction({ prompt, selectedText })} />)
 
     await waitFor(() => expect(state.sendMessage).toHaveBeenCalledTimes(1))
     expect(state.sendMessage).toHaveBeenCalledWith({ text: `Before ${selectedText} / ${selectedText} after` })
@@ -206,14 +202,14 @@ describe('ActionGeneral', () => {
   it('waits for a configured assistant before leasing and sending', async () => {
     state.isChosenLoading = true
     const action = createCustomAction({ runner: 'assistant', assistantId: 'assistant-1' })
-    const { rerender } = render(<ActionGeneral sourceEntityId="test-session" action={action} />)
+    const { rerender } = render(<ActionGeneral action={action} />)
 
     expect(state.temporaryTopicOptions.at(-1)).toEqual({ enabled: false, assistantId: undefined })
     expect(state.sendMessage).not.toHaveBeenCalled()
 
     state.isChosenLoading = false
     state.assistant = { id: 'assistant-1' }
-    rerender(<ActionGeneral sourceEntityId="test-session" action={{ ...action }} />)
+    rerender(<ActionGeneral action={{ ...action }} />)
 
     await waitFor(() => expect(state.sendMessage).toHaveBeenCalledTimes(1))
     expect(state.temporaryTopicOptions.at(-1)).toEqual({ enabled: true, assistantId: 'assistant-1' })
@@ -221,12 +217,7 @@ describe('ActionGeneral', () => {
 
   it('ignores the remembered assistant of an action that runs on the default model', async () => {
     state.assistant = { id: 'assistant-1' }
-    render(
-      <ActionGeneral
-        sourceEntityId="test-session"
-        action={createCustomAction({ runner: 'default', assistantId: 'assistant-1' })}
-      />
-    )
+    render(<ActionGeneral action={createCustomAction({ runner: 'default', assistantId: 'assistant-1' })} />)
 
     await waitFor(() => expect(state.sendMessage).toHaveBeenCalledTimes(1))
     expect(state.temporaryTopicOptions.at(-1)).toEqual({ enabled: true, assistantId: undefined })
@@ -236,7 +227,7 @@ describe('ActionGeneral', () => {
     state.quickAssistantId = 'fallback-1'
     state.fallbackAssistant = { id: 'fallback-1' }
 
-    render(<ActionGeneral sourceEntityId="test-session" action={createBuiltinAction()} />)
+    render(<ActionGeneral action={createBuiltinAction()} />)
 
     await waitFor(() => expect(state.sendMessage).toHaveBeenCalledTimes(1))
     expect(state.temporaryTopicOptions.at(-1)).toEqual({ enabled: true, assistantId: 'fallback-1' })
@@ -247,14 +238,14 @@ describe('ActionGeneral', () => {
     state.fallbackAssistant = undefined
     state.isFallbackLoading = true
 
-    const { rerender } = render(<ActionGeneral sourceEntityId="test-session" action={createBuiltinAction()} />)
+    const { rerender } = render(<ActionGeneral action={createBuiltinAction()} />)
 
     expect(state.temporaryTopicOptions.at(-1)).toEqual({ enabled: false, assistantId: undefined })
     expect(state.sendMessage).not.toHaveBeenCalled()
 
     state.isFallbackLoading = false
     state.fallbackAssistant = { id: 'fallback-1' }
-    rerender(<ActionGeneral sourceEntityId="test-session" action={createBuiltinAction()} />)
+    rerender(<ActionGeneral action={createBuiltinAction()} />)
 
     await waitFor(() => expect(state.sendMessage).toHaveBeenCalledTimes(1))
     expect(state.temporaryTopicOptions.at(-1)).toEqual({ enabled: true, assistantId: 'fallback-1' })
@@ -264,12 +255,7 @@ describe('ActionGeneral', () => {
     state.quickAssistantId = 'fallback-1'
     state.fallbackAssistant = { id: 'fallback-1' }
 
-    render(
-      <ActionGeneral
-        sourceEntityId="test-session"
-        action={createCustomAction({ prompt: 'hello', selectedText: 'hi' })}
-      />
-    )
+    render(<ActionGeneral action={createCustomAction({ prompt: 'hello', selectedText: 'hi' })} />)
 
     await waitFor(() => expect(state.sendMessage).toHaveBeenCalledTimes(1))
     expect(state.temporaryTopicOptions.at(-1)).toEqual({ enabled: true, assistantId: undefined })
@@ -280,25 +266,25 @@ describe('ActionGeneral', () => {
     state.fallbackAssistant = undefined
     state.isFallbackLoading = false
 
-    render(<ActionGeneral sourceEntityId="test-session" action={createBuiltinAction()} />)
+    render(<ActionGeneral action={createBuiltinAction()} />)
 
     await waitFor(() => expect(state.sendMessage).toHaveBeenCalledTimes(1))
     expect(state.temporaryTopicOptions.at(-1)).toEqual({ enabled: true, assistantId: undefined })
   })
 
   it('localizes a known error and leaves space above it', () => {
-    render(<ActionGeneral sourceEntityId="test-session" action={createBuiltinAction()} />)
+    render(<ActionGeneral action={createBuiltinAction()} />)
 
     act(() => state.onError?.(new Error("Model with id 'provider/model' not found")))
 
-    expect(screen.getByText('error.diagnosis.model:')).toHaveClass('mt-3')
+    expect(screen.getByText('error.diagnosis.model:')).toBeInTheDocument()
   })
 
   it('advances the visible processing time for a temporary streamed message', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-07-25T00:00:00.000Z'))
 
-    const view = render(<ActionGeneral sourceEntityId="test-session" action={createBuiltinAction()} />)
+    const view = render(<ActionGeneral action={createBuiltinAction()} />)
     state.isPending = true
     state.liveAssistants = [
       {
@@ -308,7 +294,7 @@ describe('ActionGeneral', () => {
       }
     ]
     await act(async () => {
-      view.rerender(<ActionGeneral sourceEntityId="test-session" action={createBuiltinAction()} />)
+      view.rerender(<ActionGeneral action={createBuiltinAction()} />)
       await vi.dynamicImportSettled()
     })
     expect(screen.getByText('Processing 0 seconds')).toBeInTheDocument()
@@ -325,7 +311,7 @@ describe('ActionGeneral', () => {
     vi.setSystemTime(new Date('2026-07-25T00:00:00.000Z'))
 
     const action = createBuiltinAction()
-    const view = render(<ActionGeneral sourceEntityId="test-session" action={action} />)
+    const view = render(<ActionGeneral action={action} />)
     state.isPending = true
     state.liveAssistants = [
       {
@@ -335,7 +321,7 @@ describe('ActionGeneral', () => {
       }
     ]
     await act(async () => {
-      view.rerender(<ActionGeneral sourceEntityId="test-session" action={{ ...action }} />)
+      view.rerender(<ActionGeneral action={{ ...action }} />)
       await vi.dynamicImportSettled()
     })
     act(() => {
@@ -344,7 +330,7 @@ describe('ActionGeneral', () => {
     expect(screen.getByText('Processing 3 seconds')).toBeInTheDocument()
 
     state.isPending = false
-    view.rerender(<ActionGeneral sourceEntityId="test-session" action={{ ...action }} />)
+    view.rerender(<ActionGeneral action={{ ...action }} />)
     fireEvent.click(screen.getByRole('button', { name: 'regenerate' }))
 
     state.isPending = true
@@ -356,31 +342,10 @@ describe('ActionGeneral', () => {
       }
     ]
     await act(async () => {
-      view.rerender(<ActionGeneral sourceEntityId="test-session" action={{ ...action }} />)
+      view.rerender(<ActionGeneral action={{ ...action }} />)
       await vi.dynamicImportSettled()
     })
 
     expect(screen.getByText('Processing 0 seconds')).toBeInTheDocument()
-  })
-  it('reads only a completed general result with an opaque action identity', async () => {
-    const view = render(
-      <ActionGeneral action={createBuiltinAction('PRIVATE_ORIGINAL')} sourceEntityId="opaque-session" />
-    )
-    expect(state.readAloud).not.toHaveBeenCalled()
-    state.isPending = true
-    view.rerender(<ActionGeneral action={createBuiltinAction('PRIVATE_ORIGINAL')} sourceEntityId="opaque-session" />)
-    state.liveAssistants = [{ id: 'result', role: 'assistant', parts: [{ type: 'text', text: 'PRIVATE_RESULT' }] }]
-    expect(screen.queryByRole('button', { name: /selection.action.voice.read_result/ })).not.toBeInTheDocument()
-    state.isPending = false
-    view.rerender(<ActionGeneral action={createBuiltinAction('PRIVATE_ORIGINAL')} sourceEntityId="opaque-session" />)
-    fireEvent.click(await screen.findByRole('button', { name: /selection.action.voice.read_result/ }))
-    expect(state.readAloud).toHaveBeenCalledWith(
-      expect.objectContaining({
-        text: 'PRIVATE_RESULT',
-        mode: 'document',
-        sourceLabel: 'preview',
-        sourceEntityId: 'opaque-session'
-      })
-    )
   })
 })

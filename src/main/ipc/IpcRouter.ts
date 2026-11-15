@@ -17,7 +17,7 @@ import type { IpcContext, IpcHandlersFor } from '@shared/ipc/types'
 export class IpcRouter<S extends Record<string, RouteDef>> {
   constructor(
     private readonly schemas: S,
-    private readonly handlers: IpcHandlersFor<S>
+    private readonly handlers: Partial<IpcHandlersFor<S>>
   ) {}
 
   async dispatch(route: string, input: unknown, ctx: IpcContext): Promise<unknown> {
@@ -25,17 +25,18 @@ export class IpcRouter<S extends Record<string, RouteDef>> {
     // (__proto__, constructor, toString, …) to truthy Object.prototype values, which
     // would slip past a plain truthiness check and surface as an INTERNAL TypeError.
     // Any non-own key is simply an unknown route.
-    if (!Object.hasOwn(this.schemas, route)) {
+    if (!Object.hasOwn(this.schemas, route) || !Object.hasOwn(this.handlers, route)) {
       throw new IpcError(IpcErrorCode.ROUTE_NOT_FOUND, `Unknown IpcApi route: ${route}`)
     }
     const def = this.schemas[route as keyof S]
+    const handler = this.handlers[route as keyof S]
+    if (!handler) throw new IpcError(IpcErrorCode.ROUTE_NOT_FOUND, `Unknown IpcApi route: ${route}`)
 
     const parsed = def.input.safeParse(input)
     if (!parsed.success) {
       throw new IpcError(IpcErrorCode.VALIDATION_FAILED, `Invalid input for ${route}`, { issues: parsed.error.issues })
     }
 
-    const handler = this.handlers[route as keyof S]
     // `parsed.data` is `unknown` here — the generic bound cannot narrow the inferred
     // input type inside the mapped handler signature. Soundness is guaranteed at the
     // constructor boundary by the `IpcHandlersFor<S>` constraint, not at this call.

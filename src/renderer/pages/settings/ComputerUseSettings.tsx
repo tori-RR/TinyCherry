@@ -15,12 +15,14 @@ import {
   SettingsContentColumn
 } from '@renderer/components/SettingsPrimitives'
 import { ipcApi } from '@renderer/ipc'
+import { isEvoStack } from '@renderer/utils/platform'
 
 const logger = loggerService.withContext('ComputerUseSettings')
 const PERMISSION_KEY = 'computer_use.get_permission_status'
 
 export function ComputerUseSettings() {
   const { t } = useTranslation()
+  const [approvedApps] = usePreference('app.computer_use.approved_apps')
   const [enabled, setEnabled] = usePreference('app.computer_use.agent_control.enabled')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(false)
@@ -52,6 +54,12 @@ export function ComputerUseSettings() {
     }
   )
   const busy = isLoading || isValidating || isMutating
+  const controlUnavailable = isEvoStack && data?.controlAvailable !== true
+  const controlHelpKey = isEvoStack
+    ? controlUnavailable
+      ? 'settings.computerUse.previewHelp'
+      : 'settings.computerUse.nativeHelp'
+    : 'settings.computerUse.controlHelp'
 
   return (
     <SettingsContentColumn>
@@ -62,17 +70,16 @@ export function ComputerUseSettings() {
         <SettingRow className="flex-nowrap items-start">
           <div className="min-w-0 flex-1">
             <SettingRowTitle id="computer-use-control-title">{t('settings.computerUse.control')}</SettingRowTitle>
-            <SettingDescription id="computer-use-control-help">
-              {t('settings.computerUse.controlHelp')}
-            </SettingDescription>
+            <SettingDescription id="computer-use-control-help">{t(controlHelpKey)}</SettingDescription>
           </div>
           <Switch
             className="mt-0.5"
             checked={enabled}
-            disabled={saving}
+            disabled={saving || (controlUnavailable && !enabled)}
             aria-labelledby="computer-use-control-title"
             aria-describedby="computer-use-control-help"
             onCheckedChange={async (value) => {
+              if (value && controlUnavailable) return
               setSaving(true)
               setSaveError(false)
               try {
@@ -150,6 +157,36 @@ export function ComputerUseSettings() {
             {t('settings.computerUse.recheck')}
           </Button>
         </div>
+      </SettingGroup>
+      <SettingGroup>
+        <SettingRowTitle>{t('settings.computerUse.approval.saved')}</SettingRowTitle>
+        {approvedApps.length === 0 && (
+          <SettingDescription>{t('settings.computerUse.approval.empty')}</SettingDescription>
+        )}
+        {approvedApps.map((identity) => (
+          <SettingRow key={identity}>
+            <span className="min-w-0 flex-1 break-all text-sm">{identity}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label={`${t('common.delete')} ${identity}`}
+              disabled={saving}
+              onClick={async () => {
+                setSaving(true)
+                setSaveError(false)
+                try {
+                  await ipcApi.request('computer_use.revoke_approval', { identity })
+                } catch (error) {
+                  logger.warn('Failed to revoke application approval', error as Error)
+                  setSaveError(true)
+                } finally {
+                  setSaving(false)
+                }
+              }}>
+              {t('common.delete')}
+            </Button>
+          </SettingRow>
+        ))}
       </SettingGroup>
     </SettingsContentColumn>
   )

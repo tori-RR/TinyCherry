@@ -1,5 +1,8 @@
 import { useTranslation } from 'react-i18next'
 
+import { Button } from '@cherrystudio/ui'
+import { isEvoStack } from '@renderer/utils/platform'
+
 import { isRerankModel, KnowledgeModelSelect } from '../../components/KnowledgeModelSelect'
 import { RagFieldLabel } from './panelPrimitives'
 
@@ -14,14 +17,20 @@ const RerankSection = ({ rerankModelId, onRerankModelChange }: RerankSectionProp
   return (
     <div>
       <RagFieldLabel label={t('knowledge.rag.rerank_model')} hint={t('knowledge.rag.hints.rerank_model')} />
-      <KnowledgeModelSelect
-        aria-label={t('knowledge.rag.rerank_model')}
-        value={rerankModelId}
-        placeholder={t('knowledge.rag.rerank_disabled')}
-        noneOptionLabel={t('knowledge.rag.rerank_disabled')}
-        filter={isRerankModel}
-        onChange={onRerankModelChange}
-      />
+      {isEvoStack ? (
+        <Button type="button" variant="outline" disabled className="h-8 w-full justify-start font-normal">
+          {t('knowledge.rag.rerank_disabled')}
+        </Button>
+      ) : (
+        <KnowledgeModelSelect
+          aria-label={t('knowledge.rag.rerank_model')}
+          value={rerankModelId}
+          placeholder={t('knowledge.rag.rerank_disabled')}
+          noneOptionLabel={t('knowledge.rag.rerank_disabled')}
+          filter={isRerankModel}
+          onChange={onRerankModelChange}
+        />
+      )}
     </div>
   )
 }

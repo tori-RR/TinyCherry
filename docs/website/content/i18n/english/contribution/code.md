@@ -57,9 +57,9 @@ Bug fixes should add a test that reproduces the problem; new features should cov
 {% endstep %}
 
 {% step %}
-### 4. Commit and sign off
+### 4. Commit
 
-Write commit messages that state the type of change and the module, and add a DCO sign-off with `git commit --signoff`. Signing off means you have the right to submit this content under the project's license.
+Write commit messages that state the type of change and the module.
 {% endstep %}
 
 {% step %}

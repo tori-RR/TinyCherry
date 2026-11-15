@@ -1,17 +1,24 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
-afterEach(() => vi.unstubAllGlobals())
+import { settingsMenu } from '@renderer/components/settingsMenu'
 
-describe('settings menu edition', () => {
-  it.each([
-    { edition: 'global', hasProfile: true },
-    { edition: 'cn', hasProfile: false }
-  ])('shows personal information only in the $edition edition', async ({ edition, hasProfile }) => {
-    vi.resetModules()
-    vi.stubGlobal('__APP_EDITION__', edition)
-
-    const { settingsMenu } = await import('@renderer/components/settingsMenu')
-
-    expect(settingsMenu.some(({ route }) => route === '/settings/profile')).toBe(hasProfile)
+describe('TinyCherry settings menu', () => {
+  it('omits retired sections and keeps model services', () => {
+    const routes = settingsMenu.map(({ route }) => route)
+    for (const section of [
+      'profile',
+      'api-gateway',
+      'file-processing',
+      'channels',
+      'device-connections',
+      'screenshot',
+      'voice',
+      'local-models',
+      'notifications',
+      'ocr'
+    ]) {
+      expect(routes).not.toContain('/settings/' + section)
+    }
+    expect(routes).toEqual(expect.arrayContaining(['/settings/provider']))
   })
 })

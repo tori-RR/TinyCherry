@@ -16,7 +16,7 @@ import {
   SelectValue
 } from '@cherrystudio/ui'
 import { useCloseBeforeAction } from '@renderer/hooks/useCloseBeforeAction'
-import { DEFAULT_KNOWLEDGE_GROUP_LABEL_KEY } from '@renderer/pages/knowledge/utils/group'
+import { DEFAULT_KNOWLEDGE_GROUP_LABEL_KEY, supportsKnowledgeGroups } from '@renderer/pages/knowledge/utils/group'
 import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
 import type { Group } from '@shared/data/types/group'
 import type { CreateKnowledgeBaseDto, KnowledgeBase } from '@shared/data/types/knowledge'
@@ -107,8 +107,10 @@ const CreateKnowledgeBaseDialogRoot = ({
   onCreated
 }: CreateKnowledgeBaseDialogProps) => {
   const { t } = useTranslation()
+  const groupingEnabled = supportsKnowledgeGroups()
   const groupIds = useMemo(() => new Set(groups.map((group) => group.id)), [groups])
-  const normalizedInitialGroupId = initialGroupId && groupIds.has(initialGroupId) ? initialGroupId : undefined
+  const normalizedInitialGroupId =
+    groupingEnabled && initialGroupId && groupIds.has(initialGroupId) ? initialGroupId : undefined
   const [values, setValues] = useState<CreateKnowledgeBaseFormValues>(() =>
     createInitialInput(normalizedInitialGroupId)
   )
@@ -153,7 +155,7 @@ const CreateKnowledgeBaseDialogRoot = ({
       name: values.name
     }
 
-    if (values.groupId && groupIds.has(values.groupId)) {
+    if (groupingEnabled && values.groupId && groupIds.has(values.groupId)) {
       createInput.groupId = values.groupId
     }
 
@@ -216,7 +218,7 @@ const CreateKnowledgeBaseDialogRoot = ({
               />
             </KnowledgeDialogField>
 
-            {groups.length > 0 ? (
+            {groupingEnabled && groups.length > 0 ? (
               <KnowledgeDialogField>
                 <Label>{t('knowledge.add.group')}</Label>
                 <Select

@@ -2,7 +2,7 @@
  * Floating toolbar, right-aligned to the selection (clamped to the display's left edge)
  * and flipped above it when there is no room below.
  *
- * Groups, left to right: annotation tools · undo/redo · OCR affordance · save/cancel/ok.
+ * Groups, left to right: annotation tools · undo/redo · save/cancel/ok.
  */
 
 import { Check, Copy, Download, MessageSquare, MoveUpRight, Pencil, Redo2, Square, Type, Undo2, X } from 'lucide-react'
@@ -33,13 +33,6 @@ interface ToolbarProps {
   onCopy: () => void
   onSubmitResult?: (text: string) => Promise<void>
   onCancel: () => void
-  /**
-   * OCR affordance, rendered with its own divider when present.
-   *
-   * A slot rather than a status prop: the toolbar has no business knowing the OCR
-   * state machine, and the caller already decides whether the icon shows at all.
-   */
-  ocrSlot?: ReactNode
   /** Reports geometry for the property panel and the dimension label. */
   onLayout?: (info: { top: number; height: number; left: number; width: number; below: boolean }) => void
 }
@@ -100,7 +93,6 @@ export const Toolbar = memo(function Toolbar({
   onCopy,
   onSubmitResult,
   onCancel,
-  ocrSlot,
   onLayout
 }: ToolbarProps) {
   const { t } = useTranslation()
@@ -178,13 +170,6 @@ export const Toolbar = memo(function Toolbar({
         disabled={!canRedo}
         onClick={onRedo}
       />
-
-      {ocrSlot && (
-        <>
-          <ToolbarDivider />
-          {ocrSlot}
-        </>
-      )}
 
       <ToolbarDivider />
 

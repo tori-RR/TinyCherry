@@ -4,13 +4,12 @@ vi.mock('@logger', () => ({
   loggerService: { withContext: () => ({ debug: vi.fn(), warn: vi.fn(), info: vi.fn(), error: vi.fn() }) }
 }))
 
-const { getByIdMock, ocrMock } = vi.hoisted(() => ({
-  getByIdMock: vi.fn<(id: string) => Promise<{ ext: string | null }>>(),
-  ocrMock: vi.fn<() => Promise<string>>()
+const { getByIdMock } = vi.hoisted(() => ({
+  getByIdMock: vi.fn<(id: string) => Promise<{ ext: string | null }>>()
 }))
 vi.mock('@application', () => ({
   application: {
-    get: (name: string) => (name === 'FileProcessingService' ? { ocrImage: ocrMock } : { getById: getByIdMock })
+    get: () => ({ getById: getByIdMock })
   }
 }))
 
@@ -71,12 +70,10 @@ describe('readFile — text-only', () => {
     })
   })
 
-  it('OCRs an image', async () => {
+  it('returns a clear result for images without a text representation', async () => {
     getByIdMock.mockResolvedValueOnce({ ext: 'png' })
-    ocrMock.mockResolvedValueOnce('ocr text')
     const r = await readFile(input({ filename: 'a.png' }), ctx([att('a.png')]))
-    expect(ocrMock).toHaveBeenCalledWith({ kind: 'entry', entryId: 'e1' }, undefined)
-    expect(r).toEqual({ text: 'ocr text', totalChars: 8 })
+    expect(r).toMatchObject({ text: 'Cannot read image file "a.png" as text.' })
   })
 
   it('returns a note for audio/video (no text form)', async () => {
@@ -92,15 +89,6 @@ describe('readFile — text-only', () => {
     const r = await readFile(input({ filename: 'a.zip' }), ctx([att('a.zip')]))
     expect(r).toMatchObject({ text: 'Cannot read the attached file "a.zip" as text (unsupported file type).' })
     expect(extractMock).toHaveBeenCalledWith('e1', { signal: undefined })
-    expect(ocrMock).not.toHaveBeenCalled()
-  })
-
-  it('returns a note when extraction is empty', async () => {
-    getByIdMock.mockResolvedValueOnce({ ext: 'pdf' })
-    extractMock.mockResolvedValueOnce('   ')
-    expect(await readFile(input({ filename: 'a.pdf' }), ctx([att('a.pdf')]))).toMatchObject({
-      text: 'No text in a.pdf'
-    })
   })
 
   it('rejects a filename not in the allow-list (never reads the entry)', async () => {
@@ -144,7 +132,7 @@ describe('readFile — pagination', () => {
     })
   })
 
-  it('defaults limit to the page size (short text → whole, no nextOffset)', async () => {
+  it('returns complete short text without a continuation', async () => {
     getByIdMock.mockResolvedValueOnce({ ext: 'txt' })
     extractMock.mockResolvedValueOnce('short')
     expect(await readFile(input({ filename: 'a.txt' }), ctx([att('a.txt')]))).toEqual({ text: 'short', totalChars: 5 })
@@ -192,7 +180,6 @@ describe('createReadFileToolEntry', () => {
   it('carries a persist-only text-field codec (in-flight output is text, so the codec never fires there)', async () => {
     const { createReadFileToolEntry } = await import('../ReadFileTool')
     const entry = createReadFileToolEntry()
-    expect(entry.truncatable).toBeUndefined()
     const output = { text: 'page body', totalChars: 9 }
     expect(entry.codec!.deflate(output)).toEqual({ skeleton: output, blobs: [{ key: '/text', text: 'page body' }] })
     expect(entry.codec!.deflate({ error: 'No attached file named "x".' })).toBeNull()

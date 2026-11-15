@@ -4,18 +4,15 @@ import { useMemo } from 'react'
 import { usePreference } from '@data/hooks/usePreference'
 import { CodeStyleProvider } from '@renderer/components/CodeStyleProvider'
 import { CommandContextKeyProvider, CommandProvider } from '@renderer/components/command'
-import { DictationShortcutHost } from '@renderer/components/DictationShortcutHost'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 import { FileEditSessionProvider } from '@renderer/components/FileEditSessionProvider'
 import { McpInteractionHost } from '@renderer/components/McpInteractionHost'
 import { PopupHost } from '@renderer/components/PopupHost'
 import { ThemeProvider } from '@renderer/components/ThemeProvider'
 import ToastHost from '@renderer/components/ToastHost'
-import { VoicePlaybackHost } from '@renderer/components/VoicePlaybackHost'
 import { WindowFatalFallback } from '@renderer/components/WindowFatalFallback'
 import { useDataChange, useQuery } from '@renderer/data/hooks/useDataApi'
 import { useAgentSessionAutoRenameSync } from '@renderer/hooks/agent/useSession'
-import { useAutoReadPreferenceSync } from '@renderer/hooks/useAutoReadPreferenceSync'
 import { useCustomCss } from '@renderer/hooks/useCustomCss'
 import { useLanguageSync } from '@renderer/hooks/useLanguageSync'
 import { useSelectionAgents } from '@renderer/hooks/useSelectionAgents'
@@ -32,7 +29,6 @@ function SelectionAgentRuntime(): null {
   useCustomCss()
   useDayjsLocaleSync()
   useAppPathSnapshot()
-  useAutoReadPreferenceSync()
   useAgentSessionAutoRenameSync()
   // A pooled window loads what the compose bar labels while it waits, so a fresh bar shows its
   // agent and workspace at once instead of fallbacks. The agent read must match the bar's own.
@@ -68,8 +64,6 @@ const SelectionAgentApp: FC = () => {
                 <McpInteractionHost />
                 <PopupHost />
                 <ToastHost />
-                <DictationShortcutHost />
-                <VoicePlaybackHost />
               </CommandProvider>
             </CommandContextKeyProvider>
           </FileEditSessionProvider>

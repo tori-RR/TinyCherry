@@ -35,14 +35,6 @@
       "opts": { "chunkSize": 6, "latency": 0 }
     },
     {
-      "match": { "userMessage": "CherryStudio Neptune 27182 TRANSLATION_MARKER" },
-      "response": { "content": "CherryStudio Neptune 27182 TRANSLATION_MARKER" }
-    },
-    {
-      "match": { "userMessage": "PDF_TRANSLATION_MARKER_314159" },
-      "response": { "content": "PDF_TRANSLATION_MARKER_314159" }
-    },
-    {
       "match": { "userMessage": "first line of the draft" },
       "response": { "content": "DRAFT_REPLY_PASS" }
     },

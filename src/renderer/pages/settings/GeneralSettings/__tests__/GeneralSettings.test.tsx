@@ -1,21 +1,57 @@
+vi.mock('@renderer/components/cherryCloud/useCherryCloudModelSelectorData', () => ({
+  useCherryCloudModelSelectorData: () => mockUseModelSelectorData()
+}))
+vi.mock('@renderer/components/cherryCloud/CherryCloudModelSelector', async () => {
+  const selector = await import('@renderer/components/ModelSelector')
+  return {
+    CherryCloudModelSelector: selector.ModelSelector
+  }
+})
+
 import { mockUsePreference, MockUsePreferenceUtils } from '@test-mocks/renderer/usePreference'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type * as CherryStudioUi from '@cherrystudio/ui'
 import { toast } from '@renderer/services/toast'
+import type * as RendererPlatform from '@renderer/utils/platform'
+import type { UniqueModelId } from '@shared/data/types/model'
 
 import GeneralSettings from '../GeneralSettings'
 
+const mockUseModelSelectorData = vi.fn(() => ({
+  resolvedSelectedModelIds: [] as UniqueModelId[],
+  isLoading: false,
+  modelsError: undefined as Error | undefined,
+  providersError: undefined as Error | undefined,
+  cloudAvailabilityReady: true,
+  cloudAvailabilityError: undefined as Error | undefined
+}))
 const defaultPreferenceImplementation = mockUsePreference.getMockImplementation()!
-const { ipcRequestMock } = vi.hoisted(() => ({ ipcRequestMock: vi.fn() }))
+const { ipcRequestMock, translationSpy } = vi.hoisted(() => ({ ipcRequestMock: vi.fn(), translationSpy: vi.fn() }))
+const i18nMock = vi.hoisted(() => ({
+  language: 'zh-CN',
+  resolvedLanguage: 'zh-CN',
+  changeLanguage: vi.fn().mockResolvedValue(undefined)
+}))
+
+vi.mock('@renderer/i18n/resolver', () => ({ default: i18nMock }))
+
+const platform = vi.hoisted(() => ({ native: false }))
+vi.mock('@renderer/utils/platform', async (original) => ({
+  ...(await original<typeof RendererPlatform>()),
+  get isEvoStack() {
+    return platform.native
+  }
+}))
 
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: vi.fn() },
   useTranslation: () => ({
     t: (key: string, options?: { address?: string; route?: string }) => {
+      translationSpy(key, options)
       const translations: Record<string, string> = {
         'settings.developer.cdp.title': 'Local automation (CDP)',
         'settings.developer.cdp.description': `Local tools can connect at ${options?.address}. Requires a restart.`,
@@ -65,9 +101,15 @@ vi.mock('@renderer/components/Selector', () => ({
   )
 }))
 
-vi.mock('@renderer/components/ModelSelector', () => ({
-  ModelSelector: ({ trigger }: { trigger: ReactNode }) => trigger
-}))
+vi.mock('@renderer/components/ModelSelector', async () => {
+  const selection = await import('@renderer/components/ModelSelector/selection')
+  return {
+    ModelSelector: ({ trigger }: { trigger: ReactNode }) => trigger,
+    countStaleSelectedModelIds: selection.countStaleSelectedModelIds,
+    hasStaleSelectedModelIds: selection.hasStaleSelectedModelIds,
+    useModelSelectorData: () => mockUseModelSelectorData()
+  }
+})
 
 vi.mock('../ContextManagementSettings', () => ({
   ContextManagementSettings: () => (
@@ -100,7 +142,8 @@ vi.mock('@renderer/services/toast', () => ({
 }))
 
 vi.mock('@cherrystudio/ui', async (importOriginal) => {
-  const { InputNumber } = await importOriginal<typeof CherryStudioUi>()
+  const { InputNumber, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } =
+    await importOriginal<typeof CherryStudioUi>()
   return {
     Button: ({ children, loading, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { loading?: boolean }) => (
       <button type="button" data-loading={loading || undefined} {...props}>
@@ -133,6 +176,11 @@ vi.mock('@cherrystudio/ui', async (importOriginal) => {
     ),
     Input: (props: InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
     InputNumber,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
     Switch: ({
       checked,
       onCheckedChange,
@@ -150,10 +198,25 @@ vi.mock('@cherrystudio/ui', async (importOriginal) => {
 
 const requestedRoutes = () => vi.mocked(window.api.ipcApi.request).mock.calls.map(([route]) => route)
 
+beforeAll(() => {
+  HTMLElement.prototype.scrollIntoView = vi.fn()
+})
+
 describe('GeneralSettings', () => {
   beforeEach(() => {
+    platform.native = false
     vi.clearAllMocks()
+    i18nMock.language = 'zh-CN'
+    i18nMock.resolvedLanguage = 'zh-CN'
     mockUsePreference.mockImplementation(defaultPreferenceImplementation)
+    mockUseModelSelectorData.mockReturnValue({
+      resolvedSelectedModelIds: [],
+      isLoading: false,
+      modelsError: undefined,
+      providersError: undefined,
+      cloudAvailabilityReady: true,
+      cloudAvailabilityError: undefined
+    })
     MockUsePreferenceUtils.resetMocks()
     MockUsePreferenceUtils.setMultiplePreferenceValues({
       'BootConfig.app.remote_debugging.enabled': false,
@@ -164,6 +227,7 @@ describe('GeneralSettings', () => {
       'app.tray.on_launch': true,
       'feature.quick_assistant.click_tray_to_show': true
     })
+    mockUseModelSelectorData.mockReset()
     ipcRequestMock.mockReset()
     ipcRequestMock.mockResolvedValue({
       target: 'https://www.gstatic.com/generate_204',
@@ -411,6 +475,14 @@ describe('GeneralSettings', () => {
   })
 
   it('renders model retry settings in General and persists changes', async () => {
+    mockUseModelSelectorData.mockReturnValue({
+      resolvedSelectedModelIds: ['openai::gpt-4o'],
+      isLoading: false,
+      modelsError: undefined,
+      providersError: undefined,
+      cloudAvailabilityReady: true,
+      cloudAvailabilityError: undefined
+    })
     MockUsePreferenceUtils.setMultiplePreferenceValues({
       'chat.retry.enabled': true,
       'chat.retry.max_attempts': 3,
@@ -431,6 +503,223 @@ describe('GeneralSettings', () => {
     })
   })
 
+  it('marks persisted fallback model ids missing from the catalog as unavailable', () => {
+    MockUsePreferenceUtils.setMultiplePreferenceValues({
+      'chat.retry.enabled': true,
+      'chat.retry.fallback_model_ids': ['openai::deleted-model']
+    })
+
+    render(<GeneralSettings />)
+
+    const fallbackTrigger = screen.getByText('settings.models.retry.fallback_models_unavailable').closest('button')
+    expect(fallbackTrigger).toBeInTheDocument()
+    expect(fallbackTrigger).toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('does not mark fallback models unavailable while the model catalog is still loading', () => {
+    mockUseModelSelectorData.mockReturnValue({
+      resolvedSelectedModelIds: [],
+      isLoading: true,
+      modelsError: undefined,
+      providersError: undefined,
+      cloudAvailabilityReady: true,
+      cloudAvailabilityError: undefined
+    })
+    MockUsePreferenceUtils.setMultiplePreferenceValues({
+      'chat.retry.enabled': true,
+      'chat.retry.fallback_model_ids': ['openai::deleted-model']
+    })
+
+    render(<GeneralSettings />)
+
+    expect(screen.getByText('settings.models.retry.fallback_models_count')).toBeInTheDocument()
+    expect(screen.queryByText('settings.models.retry.fallback_models_unavailable')).not.toBeInTheDocument()
+    expect(screen.getByText('settings.models.retry.fallback_models_count').closest('button')).not.toHaveAttribute(
+      'aria-invalid',
+      'true'
+    )
+  })
+
+  it('does not mark fallback models unavailable when the model catalog request failed', () => {
+    mockUseModelSelectorData.mockReturnValue({
+      resolvedSelectedModelIds: [],
+      isLoading: false,
+      modelsError: new Error('network'),
+      providersError: undefined,
+      cloudAvailabilityReady: true,
+      cloudAvailabilityError: undefined
+    })
+    MockUsePreferenceUtils.setMultiplePreferenceValues({
+      'chat.retry.enabled': true,
+      'chat.retry.fallback_model_ids': ['openai::deleted-model']
+    })
+
+    render(<GeneralSettings />)
+
+    expect(screen.getByText('settings.models.retry.fallback_models_count')).toBeInTheDocument()
+    expect(screen.queryByText('settings.models.retry.fallback_models_unavailable')).not.toBeInTheDocument()
+    expect(screen.getByText('settings.models.retry.fallback_models_count').closest('button')).not.toHaveAttribute(
+      'aria-invalid',
+      'true'
+    )
+  })
+
+  it('does not mark fallback models unavailable when the provider catalog request failed', () => {
+    mockUseModelSelectorData.mockReturnValue({
+      resolvedSelectedModelIds: [],
+      isLoading: false,
+      modelsError: undefined,
+      providersError: new Error('network'),
+      cloudAvailabilityReady: true,
+      cloudAvailabilityError: undefined
+    })
+    MockUsePreferenceUtils.setMultiplePreferenceValues({
+      'chat.retry.enabled': true,
+      'chat.retry.fallback_model_ids': ['openai::gpt-4o']
+    })
+
+    render(<GeneralSettings />)
+
+    expect(screen.getByText('settings.models.retry.fallback_models_count')).toBeInTheDocument()
+    expect(screen.queryByText('settings.models.retry.fallback_models_unavailable')).not.toBeInTheDocument()
+    expect(screen.getByText('settings.models.retry.fallback_models_count').closest('button')).not.toHaveAttribute(
+      'aria-invalid',
+      'true'
+    )
+  })
+
+  it('defers stale fallback classification while the Cherry Cloud availability snapshot is pending', () => {
+    mockUseModelSelectorData.mockReturnValue({
+      resolvedSelectedModelIds: [],
+      isLoading: false,
+      modelsError: undefined,
+      providersError: undefined,
+      cloudAvailabilityReady: false,
+      cloudAvailabilityError: undefined
+    })
+    MockUsePreferenceUtils.setMultiplePreferenceValues({
+      'chat.retry.enabled': true,
+      'chat.retry.fallback_model_ids': ['cherryai-subscription::managed-model']
+    })
+
+    render(<GeneralSettings />)
+
+    expect(screen.getByText('settings.models.retry.fallback_models_count')).toBeInTheDocument()
+    expect(screen.queryByText('settings.models.retry.fallback_models_unavailable')).not.toBeInTheDocument()
+    expect(screen.getByText('settings.models.retry.fallback_models_count').closest('button')).not.toHaveAttribute(
+      'aria-invalid',
+      'true'
+    )
+  })
+
+  it('defers stale fallback classification when the Cherry Cloud availability sync failed', () => {
+    mockUseModelSelectorData.mockReturnValue({
+      resolvedSelectedModelIds: [],
+      isLoading: false,
+      modelsError: undefined,
+      providersError: undefined,
+      cloudAvailabilityReady: false,
+      cloudAvailabilityError: new Error('sync failed')
+    })
+    MockUsePreferenceUtils.setMultiplePreferenceValues({
+      'chat.retry.enabled': true,
+      'chat.retry.fallback_model_ids': ['cherryai-subscription::managed-model']
+    })
+
+    render(<GeneralSettings />)
+
+    expect(screen.getByText('settings.models.retry.fallback_models_count')).toBeInTheDocument()
+    expect(screen.queryByText('settings.models.retry.fallback_models_unavailable')).not.toBeInTheDocument()
+  })
+
+  it.each([
+    { ready: false, error: undefined },
+    { ready: false, error: new Error('sync failed') },
+    { ready: true, error: new Error('refresh failed') }
+  ])('still warns on known stale non-Cloud selections with Cloud state %j', ({ ready, error }) => {
+    mockUseModelSelectorData.mockReturnValue({
+      resolvedSelectedModelIds: [],
+      isLoading: false,
+      modelsError: undefined,
+      providersError: undefined,
+      cloudAvailabilityReady: ready,
+      cloudAvailabilityError: error
+    })
+    const configuredIds: UniqueModelId[] = ['openai::deleted-model', 'openai::deleted-model']
+    MockUsePreferenceUtils.setMultiplePreferenceValues({
+      'chat.retry.enabled': true,
+      'chat.retry.fallback_model_ids': configuredIds
+    })
+
+    render(<GeneralSettings />)
+
+    expect(screen.getByText('settings.models.retry.fallback_models_unavailable').closest('button')).toHaveAttribute(
+      'aria-invalid',
+      'true'
+    )
+    expect(translationSpy).toHaveBeenCalledWith('settings.models.retry.fallback_models_unavailable', { count: 1 })
+    expect(MockUsePreferenceUtils.getPreferenceValue('chat.retry.fallback_model_ids')).toEqual(configuredIds)
+  })
+
+  it.each([false, true])(
+    'keeps unknown Cloud IDs neutral alongside known stale IDs (resolved non-Cloud: %s)',
+    (hasResolved) => {
+      mockUseModelSelectorData.mockReturnValue({
+        resolvedSelectedModelIds: hasResolved ? ['openai::available-model'] : [],
+        isLoading: false,
+        modelsError: undefined,
+        providersError: undefined,
+        cloudAvailabilityReady: false,
+        cloudAvailabilityError: new Error('sync failed')
+      })
+      const configuredIds = [
+        ...(hasResolved ? ['openai::available-model'] : []),
+        'cherryai-subscription::managed::model',
+        'cherryai-subscription::managed::model',
+        'openai::deleted-model',
+        'malformed-id',
+        'malformed-id'
+      ] as UniqueModelId[]
+      MockUsePreferenceUtils.setMultiplePreferenceValues({
+        'chat.retry.enabled': true,
+        'chat.retry.fallback_model_ids': configuredIds
+      })
+
+      render(<GeneralSettings />)
+
+      expect(
+        screen.getByText('settings.models.retry.fallback_models_count_with_invalid').closest('button')
+      ).toHaveAttribute('aria-invalid', 'true')
+      expect(translationSpy).toHaveBeenCalledWith('settings.models.retry.fallback_models_count_with_invalid', {
+        valid: hasResolved ? 2 : 1,
+        invalid: 2
+      })
+      expect(screen.queryByText('settings.models.retry.fallback_models_unavailable')).not.toBeInTheDocument()
+      expect(MockUsePreferenceUtils.getPreferenceValue('chat.retry.fallback_model_ids')).toEqual(configuredIds)
+    }
+  )
+
+  it('marks configured Cherry Cloud fallback models unavailable once availability is ready', () => {
+    mockUseModelSelectorData.mockReturnValue({
+      resolvedSelectedModelIds: [],
+      isLoading: false,
+      modelsError: undefined,
+      providersError: undefined,
+      cloudAvailabilityReady: true,
+      cloudAvailabilityError: undefined
+    })
+    MockUsePreferenceUtils.setMultiplePreferenceValues({
+      'chat.retry.enabled': true,
+      'chat.retry.fallback_model_ids': ['cherryai-subscription::managed-model']
+    })
+
+    render(<GeneralSettings />)
+
+    const fallbackTrigger = screen.getByText('settings.models.retry.fallback_models_unavailable').closest('button')
+    expect(fallbackTrigger).toBeInTheDocument()
+    expect(fallbackTrigger).toHaveAttribute('aria-invalid', 'true')
+  })
+
   it('turns off every tray-dependent preference when the tray is disabled', async () => {
     render(<GeneralSettings />)
 
@@ -444,6 +733,29 @@ describe('GeneralSettings', () => {
       expect(MockUsePreferenceUtils.getPreferenceValue('app.tray.on_launch')).toBe(false)
       expect(MockUsePreferenceUtils.getPreferenceValue('feature.quick_assistant.click_tray_to_show')).toBe(false)
     })
+  })
+
+  it('shows the resolved interface language in its own module when no preference is saved', () => {
+    MockUsePreferenceUtils.setPreferenceValue('app.language', null)
+    render(<GeneralSettings />)
+
+    const languageModule = screen.getByRole('heading', { name: 'common.language' }).closest('section')!
+    expect(within(languageModule).getByRole('combobox', { name: '中文' })).toBeInTheDocument()
+    expect(within(languageModule).queryByText('settings.general.sections.startup')).not.toBeInTheDocument()
+  })
+
+  it('persists a selected interface language and applies it immediately', async () => {
+    const user = userEvent.setup()
+    MockUsePreferenceUtils.setPreferenceValue('app.language', 'zh-CN')
+    render(<GeneralSettings />)
+
+    screen.getByRole('combobox', { name: '中文' }).focus()
+    await user.keyboard('{Enter}')
+    screen.getByRole('option', { name: /English$/ }).focus()
+    await user.keyboard('{Enter}')
+
+    await waitFor(() => expect(MockUsePreferenceUtils.getPreferenceValue('app.language')).toBe('en-US'))
+    expect(i18nMock.changeLanguage).toHaveBeenCalledWith('en-US')
   })
 
   it('renders the agent reply language row defaulting to follow conversation', () => {
@@ -505,6 +817,83 @@ describe('GeneralSettings', () => {
       })
     })
     expect(MockUsePreferenceUtils.getPreferenceValue('app.proxy.bypass_rules')).toBe('localhost')
+  })
+
+  it('keeps an old native SOCKS4 value visible and rejects saving an unsupported scheme', async () => {
+    platform.native = true
+    const user = userEvent.setup()
+    MockUsePreferenceUtils.setMultiplePreferenceValues({
+      'app.proxy.mode': 'custom',
+      'app.proxy.url': 'socks4://old.example:1080'
+    })
+    render(<GeneralSettings />)
+    const input = screen.getByDisplayValue('socks4://old.example:1080')
+    expect(screen.getByText('settings.proxy.native_protocols')).toBeVisible()
+    expect(MockUsePreferenceUtils.getPreferenceValue('app.proxy.url')).toBe('socks4://old.example:1080')
+    await user.clear(input)
+    await user.type(input, 'socks4://new.example:1080')
+    await user.tab()
+    expect(toast.error).toHaveBeenCalledWith('settings.proxy.native_protocols')
+    expect(MockUsePreferenceUtils.getPreferenceValue('app.proxy.url')).toBe('socks4://old.example:1080')
+  })
+
+  it.each(['http', 'https', 'socks', 'socks5', 'socks5h'])(
+    'saves the supported native %s proxy scheme',
+    async (scheme) => {
+      platform.native = true
+      const user = userEvent.setup()
+      MockUsePreferenceUtils.setMultiplePreferenceValues({
+        'app.proxy.mode': 'custom',
+        'app.proxy.url': 'http://old.example:8080'
+      })
+      render(<GeneralSettings />)
+      const input = screen.getByDisplayValue('http://old.example:8080')
+      const value = `${scheme}://new.example:1080`
+      await user.clear(input)
+      await user.type(input, value)
+      await user.tab()
+      await waitFor(() => expect(MockUsePreferenceUtils.getPreferenceValue('app.proxy.url')).toBe(value))
+      expect(toast.error).not.toHaveBeenCalled()
+    }
+  )
+
+  it('preserves Electron SOCKS4 proxy support', async () => {
+    const user = userEvent.setup()
+    MockUsePreferenceUtils.setMultiplePreferenceValues({
+      'app.proxy.mode': 'custom',
+      'app.proxy.url': 'http://old.example:8080'
+    })
+    render(<GeneralSettings />)
+    const input = screen.getByDisplayValue('http://old.example:8080')
+    await user.clear(input)
+    await user.type(input, 'socks4://legacy.example:1080')
+    await user.tab()
+    await waitFor(() =>
+      expect(MockUsePreferenceUtils.getPreferenceValue('app.proxy.url')).toBe('socks4://legacy.example:1080')
+    )
+    expect(screen.queryByText('settings.proxy.native_protocols')).not.toBeInTheDocument()
+  })
+
+  it('disables native model replay settings while retaining the saved retry values', async () => {
+    platform.native = true
+    const user = userEvent.setup()
+    const saved = {
+      'chat.retry.enabled': true,
+      'chat.retry.max_attempts': 4,
+      'chat.retry.backoff_enabled': true,
+      'chat.retry.fallback_model_ids': ['saved::model']
+    }
+    MockUsePreferenceUtils.setMultiplePreferenceValues(saved)
+    render(<GeneralSettings />)
+    expect(screen.getByText('settings.models.retry.native_unavailable')).toBeVisible()
+    expect(screen.getByRole('group', { name: 'settings.general.sections.retry' })).toBeDisabled()
+    const retry = screen.getByRole('switch', { name: 'settings.general.retry.enabled' })
+    expect(retry).toBeDisabled()
+    expect(screen.getByLabelText('settings.models.retry.max_attempts')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'settings.models.retry.fallback_models_unavailable' })).toBeDisabled()
+    await user.click(retry)
+    for (const [key, value] of Object.entries(saved))
+      expect(MockUsePreferenceUtils.getPreferenceValue(key as keyof typeof saved)).toEqual(value)
   })
 
   it('persists edited bypass rules when tabbing to the next setting without testing', async () => {

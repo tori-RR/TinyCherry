@@ -389,7 +389,8 @@ export class KnowledgeIngestionService implements KnowledgeItemScheduler {
       return
     }
 
-    const plan = planKnowledgeItemSource(base, item, options)
+    // Keep saved processor preferences for compatibility. New indexing uses the built-in readers.
+    const plan = planKnowledgeItemSource({ ...base, fileProcessorId: null }, item, options)
     if (plan.kind === 'invalid') {
       knowledgeItemService.updateStatus(itemId, 'failed', { error: plan.reason })
       return

@@ -1,6 +1,6 @@
 ---
 name: find-simplifications
-description: Use when asked to find or plan Cherry Studio cleanup, simplification, refactoring, dead-code removal, duplicated state removal, unnecessary APIs, speculative generality, or library replacements, especially when the result should become evidence-backed proposed Agent Notes.
+description: Use when asked to find or plan Cherry Studio cleanup, simplification, refactoring, dead-code removal, duplicated state removal, unnecessary APIs, speculative generality, or library replacements.
 ---
 
 # Find Simplifications
@@ -27,6 +27,6 @@ Search exact symbols, wire names, config keys, paths, dynamic registration, test
 
 ## Output
 
-Small local improvements may be reported inline. A durable removal or redesign becomes one proposed `simplification` note through the `agent-notes` workflow, including current consumers, exact removal, strongest counterargument, observable ACs, risks, and verification owners. Do not create a duplicate note for an existing owner.
+Report the current consumers, proposed removal, tradeoffs, and verification for each strong candidate. Use an optional Agent Note when the reasoning is worth keeping with the project.
 
 Report surveyed areas, evidence-backed candidates, rejected candidates worth preserving, deliberate exclusions, and checks actually run.

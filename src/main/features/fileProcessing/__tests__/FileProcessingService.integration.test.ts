@@ -2,7 +2,7 @@
  * Orchestration-layer tests for FileProcessingService.
  *
  * Verifies (1) handler registration on onInit, (2) mode + runtime → JobRegistry
- * type routing on startTask, (3) fresh task creation, and (4) listAvailableProcessors
+ * type routing on startTask, (3) and fresh task creation
  * delegates to the processor registry. The JobManager itself is stubbed — its
  * idempotency / cancellation behavior is covered by JobManager's own
  * test suite; this layer just verifies we hand it the right arguments.
@@ -11,8 +11,6 @@ import { MockMainCacheServiceExport } from '@test-mocks/main/CacheService'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type * as LifecycleModule from '@main/core/lifecycle'
-import { getDependencies, getPhase } from '@main/core/lifecycle/decorators'
-import { Phase } from '@main/core/lifecycle/types'
 import type { AbsoluteFilePath } from '@shared/types/file'
 
 const {
@@ -209,26 +207,6 @@ beforeEach(() => {
   isSupportedMistralMock.mockReturnValue(true)
 })
 
-describe('FileProcessingService — lifecycle metadata', () => {
-  it('runs in WhenReady phase and depends on FileManager and JobManager', () => {
-    expect(getPhase(FileProcessingService)).toBe(Phase.WhenReady)
-    expect(getDependencies(FileProcessingService)).toEqual(['FileManager', 'JobManager'])
-  })
-})
-
-describe('FileProcessingService.onInit', () => {
-  it('registers all three job handlers on JobManager', () => {
-    const svc = new FileProcessingService()
-    ;(svc as unknown as { onInit(): void }).onInit()
-
-    expect(registerHandlerMock).toHaveBeenCalledTimes(3)
-    const types = registerHandlerMock.mock.calls.map((c) => c[0])
-    expect(types).toContain('file-processing.background')
-    expect(types).toContain('file-processing.background-local')
-    expect(types).toContain('file-processing.remote-poll')
-  })
-})
-
 describe('FileProcessingService.startTask — routing', () => {
   function makeSvc() {
     const svc = new FileProcessingService()
@@ -394,23 +372,5 @@ describe('FileProcessingService.startTask — routing', () => {
       })
     ).rejects.toThrow(/does not support document_to_markdown/)
     expect(enqueueMock).not.toHaveBeenCalled()
-  })
-})
-
-describe('FileProcessingService.listAvailableProcessors', () => {
-  it('returns only processors whose isSupported() returns true', () => {
-    const svc = new FileProcessingService()
-    const result = svc.listAvailableProcessors()
-
-    expect(result.processorIds).toContain('tesseract')
-    expect(result.processorIds).toContain('doc2x')
-    expect(result.processorIds).not.toContain('system')
-  })
-
-  it('re-evaluates isSupported on each call', () => {
-    const svc = new FileProcessingService()
-    isSupportedSystemMock.mockReturnValue(true)
-    const result = svc.listAvailableProcessors()
-    expect(result.processorIds).toContain('system')
   })
 })

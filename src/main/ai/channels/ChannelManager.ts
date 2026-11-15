@@ -28,11 +28,6 @@ export class ChannelManager extends BaseService {
   private readonly channelLogs = new ChannelLogBuffer()
   private acceptingConnections = false
 
-  protected async onReady(): Promise<void> {
-    this.registerDisposable(application.get('PowerService').onResume(() => this.handleSystemResume()))
-    await this.start()
-  }
-
   protected async onStop(): Promise<void> {
     await this.stop()
   }
@@ -127,10 +122,6 @@ export class ChannelManager extends BaseService {
     return this.channelLogs.get(channelId)
   }
 
-  private handleSystemResume(): void {
-    for (const runtime of this.runtimes.values()) runtime.adapter?.handleSystemResume()
-  }
-
   private getOrCreateRuntime(channelId: string): ChannelRuntime {
     const existing = this.runtimes.get(channelId)
     if (existing) return existing
@@ -159,6 +150,7 @@ export class ChannelManager extends BaseService {
   }
 
   reconcileAgent(agentId: string, clearSessionTracker = false): void {
+    if (!this.acceptingConnections) return
     if (clearSessionTracker) channelMessageHandler.clearSessionTracker(agentId)
     const channelIds = new Set<string>()
     for (const [channelId, runtime] of this.runtimes) {

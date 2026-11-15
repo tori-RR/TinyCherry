@@ -1,7 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router'
-
-import ChannelsSettings from '@renderer/pages/settings/ChannelsSettings/ChannelsSettings'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/settings/channels')({
-  component: ChannelsSettings
+  beforeLoad: () => {
+    throw redirect({ to: '/settings/provider', replace: true })
+  }
 })

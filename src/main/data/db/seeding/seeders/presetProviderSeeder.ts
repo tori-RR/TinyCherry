@@ -7,12 +7,13 @@ import { providerService } from '@data/services/ProviderService'
 import { generateOrderKeySequenceBetween } from '@data/services/utils/orderKey'
 import { resolveRegistryPaths } from '@data/services/utils/registryDataPaths'
 import { loggerService } from '@logger'
+import { isExcludedProviderPreset } from '@shared/data/presets/providerCatalog'
 import type { AuthConfig } from '@shared/data/types/provider'
 
 import type { DbType, ISeeder } from '../../types'
 
 const logger = loggerService.withContext('PresetProviderSeeder')
-const SEEDER_REVISION = 1
+const SEEDER_REVISION = 2
 const LEGACY_INVALID_ORDER_KEY = 'zz'
 
 /**
@@ -77,7 +78,7 @@ export class PresetProviderSeeder implements ISeeder {
       throw new Error('PresetProviderSeeder: failed to load registry providers', { cause: error })
     }
 
-    const rows = rawProviders.map(toDbRow)
+    const rows = rawProviders.filter((provider) => !isExcludedProviderPreset(provider.id)).map(toDbRow)
 
     db.transaction((tx) => {
       const invalidProviders = tx

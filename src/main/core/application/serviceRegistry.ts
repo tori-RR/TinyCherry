@@ -8,11 +8,6 @@ import { AgentSessionDeliveryService } from '@main/ai/agentSession/AgentSessionD
 import { AgentSessionRuntimeService } from '@main/ai/agentSession/AgentSessionRuntimeService'
 import { AiService } from '@main/ai/AiService'
 import { ChannelManager } from '@main/ai/channels'
-import { TtsInferenceService } from '@main/ai/localModel'
-import { AsrInferenceService } from '@main/ai/localModel'
-import { EmbeddingInferenceService } from '@main/ai/localModel'
-import { LocalModelService } from '@main/ai/localModel'
-import { OcrInferenceService } from '@main/ai/localModel'
 import { McpCatalogService } from '@main/ai/mcp/McpCatalogService'
 import { McpPackageService } from '@main/ai/mcp/McpPackageService'
 import { McpRuntimeService } from '@main/ai/mcp/McpRuntimeService'
@@ -23,8 +18,8 @@ import {
   ClaudeCodeSessionStateService,
   ClaudeCodeWarmQueryManager
 } from '@main/ai/runtime/claudeCode'
+import { SkillSubscriptionService } from '@main/ai/skills/SkillSubscriptionService'
 import { AiStreamManager } from '@main/ai/streamManager'
-import { VoiceSessionService } from '@main/ai/voice/VoiceSessionService'
 import { RuntimeActivityService } from '@main/core/application/RuntimeActivityService'
 import { JobManager } from '@main/core/job/JobManager'
 import type { ServiceConstructor } from '@main/core/lifecycle'
@@ -34,7 +29,7 @@ import { UtilityProcessManager } from '@main/core/utilityProcess/UtilityProcessM
 import { WindowManager } from '@main/core/window/WindowManager'
 import { ApiGatewayService } from '@main/features/apiGateway/ApiGatewayService'
 import { BrowserSessionService } from '@main/features/browser'
-import { FileProcessingService, TesseractRuntimeService } from '@main/features/fileProcessing'
+import { FileProcessingService } from '@main/features/fileProcessing'
 import { KnowledgeService, KnowledgeVectorStoreService } from '@main/features/knowledge'
 import { MiniAppRuntimeService } from '@main/features/miniApp/runtime/MiniAppRuntimeService'
 import { IpcApiService } from '@main/ipc/IpcApiService'
@@ -45,12 +40,14 @@ import { AppUpdaterService } from '@main/services/AppUpdaterService'
 import { AutoBackupService } from '@main/services/AutoBackupService'
 import { AutomationReplService } from '@main/services/automation'
 import { BinaryManager } from '@main/services/binaryManager'
+import { CherryCloudNotificationService } from '@main/services/cherryCloud/CherryCloudNotificationService'
 import { CherryCloudService } from '@main/services/cherryCloud/CherryCloudService'
 import { CitationPreviewService } from '@main/services/CitationPreviewService'
 import { CodeCliService } from '@main/services/codeCli'
 import { CommandService } from '@main/services/CommandService'
 import { ComputerUseService } from '@main/services/ComputerUseService'
 import { ConversationNavigationService } from '@main/services/ConversationNavigationService'
+import { ConversationNotificationService } from '@main/services/ConversationNotificationService'
 import { DeepSeekHarnessService } from '@main/services/deepSeekHarness'
 import { DoctorAgentService, DoctorService } from '@main/services/diagnostics'
 import { DirectoryTreeManager, FileManager, FileIntakeService, FileEditService } from '@main/services/file'
@@ -62,9 +59,9 @@ import { MediaProtocolService } from '@main/services/mediaProtocol'
 import { NetworkService } from '@main/services/network'
 import { NotificationService } from '@main/services/NotificationService'
 import { OAuthRuntimeService } from '@main/services/oauth/runtime/OAuthRuntimeService'
+import { OfficialAnnouncementService } from '@main/services/OfficialAnnouncementService'
 import { OpenClawService } from '@main/services/OpenClawService'
 import { OvmsManager } from '@main/services/OvmsManager'
-import { PdfTranslationService } from '@main/services/PdfTranslationService'
 import { ProtocolService } from '@main/services/protocol/ProtocolService'
 import { ProviderRegistryUpdaterService } from '@main/services/ProviderRegistryUpdaterService'
 import { ProxyService } from '@main/services/proxy/ProxyService'
@@ -83,6 +80,7 @@ import { SubWindowService } from '@main/services/SubWindowService'
 import { ThemeService } from '@main/services/ThemeService'
 import { TrashService } from '@main/services/trash'
 import { TrayService } from '@main/services/TrayService'
+import { UsageBudgetNotificationService } from '@main/services/UsageBudgetNotificationService'
 import { WebSearchService } from '@main/services/webSearch'
 import { WebviewService } from '@main/services/webview'
 
@@ -123,15 +121,16 @@ export const services = {
   SubWindowService,
   PreferenceService,
   SentryLogService,
-  TesseractRuntimeService,
   AnalyticsService,
   AppMenuService,
   AppService,
+  SkillSubscriptionService,
   CodeCliService,
   CommandService,
   ConversationNavigationService,
   CitationPreviewService,
   CherryCloudService,
+  CherryCloudNotificationService,
   DeepSeekHarnessService,
   HermesDashboardService,
   FileManager,
@@ -169,13 +168,15 @@ export const services = {
   OAuthRuntimeService,
   MainWindowService,
   NotificationService,
+  ConversationNotificationService,
+  UsageBudgetNotificationService,
+  OfficialAnnouncementService,
   QuickAssistantService,
   McpPackageService,
   McpRuntimeService,
   McpCatalogService,
   BinaryManager,
   OpenClawService,
-  PdfTranslationService,
   ClaudeCodeBinaryService,
   ClaudeCodeProcessManager,
   AgentSessionRuntimeService,
@@ -184,15 +185,9 @@ export const services = {
   AgentLifecycleService,
   ChannelManager,
   AiService,
-  VoiceSessionService,
   ClaudeCodeWarmQueryManager,
   ClaudeCodeSessionStateService,
   AiStreamManager,
-  AsrInferenceService,
-  TtsInferenceService,
-  EmbeddingInferenceService,
-  OcrInferenceService,
-  LocalModelService,
   KnowledgeService,
   KnowledgeVectorStoreService,
   MiniAppRuntimeService,
@@ -210,5 +205,7 @@ export type ServiceRegistry = {
   [K in keyof typeof services]: InstanceType<(typeof services)[K]>
 }
 
-/** Service list for Application.registerAll() */
-export const serviceList = Object.values(services) as ServiceConstructor[]
+/** Runtime registry. The service map also supplies types for inherited contracts and tests. */
+export const serviceList = Object.values(services).filter(
+  (service) => service !== ScreenshotOverlayService && service !== ScreenshotChatService
+) as ServiceConstructor[]

@@ -15,6 +15,10 @@ describe('dataPanelSearchSchema', () => {
     expect(dataPanelSearchSchema.parse({ panel: 42 })).toEqual({ panel: undefined })
   })
 
+  it.each(['nutstore', 'notion', 'yuque', 'joplin', 'siyuan'])('falls back for the retired %s panel', (panel) => {
+    expect(dataPanelSearchSchema.parse({ panel })).toEqual({ panel: undefined })
+  })
+
   it('treats a missing panel as optional', () => {
     expect(dataPanelSearchSchema.parse({})).toEqual({})
   })

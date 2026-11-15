@@ -11,13 +11,20 @@ const {
   mainWindowServiceMock,
   mcpServerServiceMock,
   openSettingsInMainWindowMock,
+  profileMock,
+  protocolHandlers,
   platformMock,
   windowManagerMock
 } = vi.hoisted(() => {
+  const protocolHandlers = new Map<string, { executable?: string; args?: string[] }>()
+  const profileMock = { root: undefined as string | undefined }
   const appMock = {
     on: vi.fn(),
     removeListener: vi.fn(),
-    setAsDefaultProtocolClient: vi.fn()
+    setAsDefaultProtocolClient: vi.fn((scheme: string, executable?: string, args?: string[]) => {
+      protocolHandlers.set(scheme, { executable, args })
+      return true
+    })
   }
   const loggerMock = {
     debug: vi.fn(),
@@ -57,6 +64,8 @@ const {
     mainWindowServiceMock,
     mcpServerServiceMock,
     openSettingsInMainWindowMock,
+    profileMock,
+    protocolHandlers,
     platformMock,
     windowManagerMock
   }
@@ -106,6 +115,12 @@ vi.mock('@main/services/mainWindowNavigation', () => ({
 
 vi.mock('@main/core/platform', () => platformMock)
 
+vi.mock('@main/core/paths/constants', () => ({
+  get DEV_PROFILE_ROOT() {
+    return profileMock.root
+  }
+}))
+
 vi.mock('../handlers/mcpInstall', () => ({
   parseMcpInstallProtocolUrl: handlersMock.parseMcpInstallProtocolUrl
 }))
@@ -142,6 +157,8 @@ describe('ProtocolService', () => {
     originalArgv = process.argv
     originalDefaultApp = (process as NodeJS.Process & { defaultApp?: boolean }).defaultApp
     vi.clearAllMocks()
+    profileMock.root = undefined
+    protocolHandlers.clear()
     platformMock.isLinux = false
     platformMock.isPortable = false
     platformMock.isWin = false
@@ -157,7 +174,7 @@ describe('ProtocolService', () => {
   it('logs malformed protocol URLs instead of throwing', async () => {
     await markProtocolHandlingReady()
 
-    expect(() => (service as any).handleProtocolUrl('not a url')).not.toThrow()
+    expect(() => (service as any).handleProtocolUrl('tinycherry://[invalid')).not.toThrow()
 
     expect(loggerMock.error).toHaveBeenCalledWith('Failed to handle protocol URL', expect.any(TypeError))
   })
@@ -169,7 +186,16 @@ describe('ProtocolService', () => {
     await (service as any).onInit()
 
     expect(appMock.setAsDefaultProtocolClient).toHaveBeenCalledTimes(1)
-    expect(appMock.setAsDefaultProtocolClient).toHaveBeenCalledWith('cherrystudio')
+    expect(appMock.setAsDefaultProtocolClient).toHaveBeenCalledWith('tinycherry')
+  })
+
+  it('ignores links owned by the installed Cherry Studio', async () => {
+    await markProtocolHandlingReady()
+
+    ;(service as any).handleProtocolUrl('cherrystudio://navigate/agents')
+
+    expect(handlersMock.handleNavigateProtocolUrl).not.toHaveBeenCalled()
+    expect(ipcApiServiceMock.broadcast).not.toHaveBeenCalled()
   })
 
   it('registers the stable launcher for packaged Windows portable builds', async () => {
@@ -182,7 +208,7 @@ describe('ProtocolService', () => {
 
     expect(appMock.setAsDefaultProtocolClient).toHaveBeenCalledTimes(1)
     expect(appMock.setAsDefaultProtocolClient).toHaveBeenCalledWith(
-      'cherrystudio',
+      'tinycherry',
       'D:\\Apps\\Cherry Studio Portable.exe',
       []
     )
@@ -195,7 +221,7 @@ describe('ProtocolService', () => {
     await (service as any).onInit()
 
     expect(appMock.setAsDefaultProtocolClient).toHaveBeenCalledTimes(1)
-    expect(appMock.setAsDefaultProtocolClient).toHaveBeenCalledWith('cherrystudio', process.execPath, [
+    expect(appMock.setAsDefaultProtocolClient).toHaveBeenCalledWith('tinycherry', process.execPath, [
       path.resolve(process.cwd(), '.')
     ])
   })
@@ -205,20 +231,43 @@ describe('ProtocolService', () => {
     handlersMock.handleProvidersProtocolUrl.mockRejectedValueOnce(error)
     await markProtocolHandlingReady()
 
-    ;(service as any).handleProtocolUrl('cherrystudio://providers/api-keys?v=1&data=abc')
+    ;(service as any).handleProtocolUrl('tinycherry://providers/api-keys?v=1&data=abc')
 
     await vi.waitFor(() => {
       expect(loggerMock.error).toHaveBeenCalledWith('Failed to handle providers protocol URL', error)
     })
   })
 
+  it.each([false, true])(
+    'preserves the installed protocol handler in an isolated profile (defaultApp=%s)',
+    async (defaultApp) => {
+      setDefaultApp(defaultApp)
+      process.argv = ['electron', '.', 'tinycherry://navigate/agents']
+      profileMock.root = '/private/tmp/isolated-tinycherry-profile'
+      const installedHandler = { executable: '/Applications/TinyCherry.app', args: [] }
+      const cherryHandler = { executable: '/Applications/Cherry Studio.app', args: [] }
+      protocolHandlers.set('tinycherry', installedHandler)
+      protocolHandlers.set('cherrystudio', cherryHandler)
+      const navigations: string[] = []
+      handlersMock.handleNavigateProtocolUrl.mockImplementation((url: URL) => navigations.push(url.href))
+
+      await (service as any).onInit()
+      await markProtocolHandlingReady()
+
+      expect(appMock.setAsDefaultProtocolClient).not.toHaveBeenCalled()
+      expect(protocolHandlers.get('tinycherry')).toBe(installedHandler)
+      expect(protocolHandlers.get('cherrystudio')).toBe(cherryHandler)
+      expect(navigations).toEqual(['tinycherry://navigate/agents'])
+    }
+  )
+
   it('broadcasts unknown protocol hosts to all windows', async () => {
     await markProtocolHandlingReady()
 
-    ;(service as any).handleProtocolUrl('cherrystudio://unknown/path?foo=bar')
+    ;(service as any).handleProtocolUrl('tinycherry://unknown/path?foo=bar')
 
     expect(ipcApiServiceMock.broadcast).toHaveBeenCalledWith('navigation.protocol_data', {
-      url: 'cherrystudio://unknown/path?foo=bar',
+      url: 'tinycherry://unknown/path?foo=bar',
       params: { foo: 'bar' }
     })
   })
@@ -236,7 +285,7 @@ describe('ProtocolService', () => {
       const handler = getOpenUrlHandler()
       const event = { preventDefault: vi.fn() }
 
-      handler(event, 'cherrystudio://mcp/install?servers=abc')
+      handler(event, 'tinycherry://mcp/install?servers=abc')
 
       expect(event.preventDefault).toHaveBeenCalledTimes(1)
       expect(handlersMock.parseMcpInstallProtocolUrl).not.toHaveBeenCalled()
@@ -250,18 +299,16 @@ describe('ProtocolService', () => {
       service.onMainRendererReady('main-1')
 
       expect(handlersMock.parseMcpInstallProtocolUrl).toHaveBeenCalledTimes(1)
-      expect(handlersMock.parseMcpInstallProtocolUrl.mock.calls[0][0].href).toBe(
-        'cherrystudio://mcp/install?servers=abc'
-      )
+      expect(handlersMock.parseMcpInstallProtocolUrl.mock.calls[0][0].href).toBe('tinycherry://mcp/install?servers=abc')
     })
 
     it('handles a hot-start URL immediately', async () => {
       await markProtocolHandlingReady()
 
-      ;(service as any).handleProtocolUrl('cherrystudio://navigate/agents')
+      ;(service as any).handleProtocolUrl('tinycherry://navigate/agents')
 
       expect(handlersMock.handleNavigateProtocolUrl).toHaveBeenCalledTimes(1)
-      expect(handlersMock.handleNavigateProtocolUrl.mock.calls[0][0].href).toBe('cherrystudio://navigate/agents')
+      expect(handlersMock.handleNavigateProtocolUrl.mock.calls[0][0].href).toBe('tinycherry://navigate/agents')
     })
 
     it('keeps MCP install payloads in Main until installation succeeds', async () => {
@@ -279,7 +326,7 @@ describe('ProtocolService', () => {
       handlersMock.parseMcpInstallProtocolUrl.mockReturnValueOnce(servers)
       await markProtocolHandlingReady()
 
-      ;(service as any).handleProtocolUrl('cherrystudio://mcp/install?servers=secret')
+      ;(service as any).handleProtocolUrl('tinycherry://mcp/install?servers=secret')
 
       const path = openSettingsInMainWindowMock.mock.calls[0][0] as string
       expect(path).toMatch(/^\/settings\/mcp\/servers\?protocolInstallRequestId=[0-9a-f-]+$/)
@@ -311,7 +358,7 @@ describe('ProtocolService', () => {
         throw new Error('duplicate server')
       })
       await markProtocolHandlingReady()
-      ;(service as any).handleProtocolUrl('cherrystudio://mcp/install?servers=duplicate')
+      ;(service as any).handleProtocolUrl('tinycherry://mcp/install?servers=duplicate')
       const [request] = service.listPendingMcpInstallRequests('main-1')
 
       expect(() => service.installPendingMcpInstallRequest('main-1', request.requestId)).toThrow('duplicate server')
@@ -338,22 +385,22 @@ describe('ProtocolService', () => {
 
       listeners.emit('did-start-loading')
       listeners.emit('did-start-navigation', {}, 'https://child.test/', false, false)
-      ;(service as any).handleProtocolUrl('cherrystudio://navigate/agents')
+      ;(service as any).handleProtocolUrl('tinycherry://navigate/agents')
       expect(handlersMock.handleNavigateProtocolUrl).toHaveBeenCalledOnce()
       handlersMock.handleNavigateProtocolUrl.mockClear()
       listeners.emit('did-start-navigation', {}, 'http://localhost:5173/#route', true, true)
-      ;(service as any).handleProtocolUrl('cherrystudio://navigate/agents')
+      ;(service as any).handleProtocolUrl('tinycherry://navigate/agents')
       expect(handlersMock.handleNavigateProtocolUrl).toHaveBeenCalledOnce()
       handlersMock.handleNavigateProtocolUrl.mockClear()
       listeners.emit('did-start-navigation', {}, 'http://localhost:5173/', false, true)
-      ;(service as any).handleProtocolUrl('cherrystudio://navigate/agents')
+      ;(service as any).handleProtocolUrl('tinycherry://navigate/agents')
       expect(handlersMock.handleNavigateProtocolUrl).not.toHaveBeenCalled()
 
       service.onMainRendererReady('main-1')
       expect(handlersMock.handleNavigateProtocolUrl).toHaveBeenCalledTimes(1)
 
       listeners.emit('render-process-gone')
-      ;(service as any).handleProtocolUrl('cherrystudio://navigate/knowledge')
+      ;(service as any).handleProtocolUrl('tinycherry://navigate/knowledge')
       expect(handlersMock.handleNavigateProtocolUrl).toHaveBeenCalledTimes(1)
 
       service.onMainRendererReady('main-1')
@@ -368,9 +415,9 @@ describe('ProtocolService', () => {
       })
       handlersMock.handleNavigateProtocolUrl.mockImplementation((url: URL) => handledUrls.push(url.href))
 
-      ;(service as any).handleProtocolUrl('cherrystudio://mcp/install?servers=first')
-      ;(service as any).handleProtocolUrl('not a url')
-      ;(service as any).handleProtocolUrl('cherrystudio://navigate/agents')
+      ;(service as any).handleProtocolUrl('tinycherry://mcp/install?servers=first')
+      ;(service as any).handleProtocolUrl('tinycherry://[invalid')
+      ;(service as any).handleProtocolUrl('tinycherry://navigate/agents')
 
       await (service as any).onAllReady()
 
@@ -378,12 +425,12 @@ describe('ProtocolService', () => {
 
       service.onMainRendererReady('main-1')
 
-      expect(handledUrls).toEqual(['cherrystudio://mcp/install?servers=first', 'cherrystudio://navigate/agents'])
+      expect(handledUrls).toEqual(['tinycherry://mcp/install?servers=first', 'tinycherry://navigate/agents'])
       expect(loggerMock.error).toHaveBeenCalledWith('Failed to handle protocol URL', expect.any(TypeError))
     })
 
     it('waits for services when the main renderer becomes ready first', async () => {
-      ;(service as any).handleProtocolUrl('cherrystudio://navigate/agents')
+      ;(service as any).handleProtocolUrl('tinycherry://navigate/agents')
 
       service.onMainRendererReady('main-1')
       expect(handlersMock.handleNavigateProtocolUrl).not.toHaveBeenCalled()
@@ -396,7 +443,7 @@ describe('ProtocolService', () => {
     it('ignores readiness notifications from non-main windows', async () => {
       windowManagerMock.getWindowType.mockReturnValueOnce('subWindow')
       await (service as any).onAllReady()
-      ;(service as any).handleProtocolUrl('cherrystudio://navigate/agents')
+      ;(service as any).handleProtocolUrl('tinycherry://navigate/agents')
 
       service.onMainRendererReady('subwindow-1')
 
@@ -411,15 +458,15 @@ describe('ProtocolService', () => {
       return call[1] as (event: unknown, argv: string[]) => void
     }
 
-    it('dispatches the URL when argv carries a cherrystudio:// deep link', async () => {
+    it('dispatches the URL when argv carries a tinycherry:// deep link', async () => {
       await (service as any).onInit()
       await markProtocolHandlingReady()
       const handler = getSecondInstanceHandler()
 
-      handler({}, ['/path/to/electron', '.', 'cherrystudio://navigate/agents'])
+      handler({}, ['/path/to/electron', '.', 'tinycherry://navigate/agents'])
 
       expect(mainWindowServiceMock.showMainWindow).not.toHaveBeenCalled()
-      expect(handlersMock.handleNavigateProtocolUrl).toHaveBeenCalledWith(new URL('cherrystudio://navigate/agents'))
+      expect(handlersMock.handleNavigateProtocolUrl).toHaveBeenCalledWith(new URL('tinycherry://navigate/agents'))
       expect(ipcApiServiceMock.broadcast).not.toHaveBeenCalled()
     })
 
@@ -428,7 +475,7 @@ describe('ProtocolService', () => {
       await markProtocolHandlingReady()
       const handler = getSecondInstanceHandler()
 
-      handler({}, ['/path/to/electron', '.', 'cherrystudio://oauth/callback?code=private-code&state=old-state'])
+      handler({}, ['/path/to/electron', '.', 'tinycherry://oauth/callback?code=private-code&state=old-state'])
 
       expect(ipcApiServiceMock.broadcast).not.toHaveBeenCalled()
       expect(mainWindowServiceMock.showMainWindow).not.toHaveBeenCalled()
@@ -443,5 +490,11 @@ describe('ProtocolService', () => {
       expect(mainWindowServiceMock.showMainWindow).toHaveBeenCalledTimes(1)
       expect(ipcApiServiceMock.broadcast).not.toHaveBeenCalled()
     })
+  })
+
+  it('handles malformed protocol URLs without throwing', async () => {
+    await markProtocolHandlingReady()
+
+    expect(() => (service as any).handleProtocolUrl('not a url')).not.toThrow()
   })
 })

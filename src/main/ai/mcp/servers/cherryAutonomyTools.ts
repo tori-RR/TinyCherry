@@ -1,36 +1,22 @@
 /**
- * Agent autonomy tools (cron / notify / config / session_*) hosted by the in-process
+ * Agent autonomy tools (cron / config / session_*) hosted by the in-process
  * `cherry-tools` MCP server (see `cherryBuiltinTools.ts`).
  *
  * Unlike the stateless builtin lookup tools, these act on behalf of a specific
- * agent (schedule its tasks, notify through its channels, delegate to other Sessions,
+ * agent (schedule its tasks, delegate to other Sessions,
  * manage its own configuration), so they take the per-session agent context.
  */
 
 import type { CallToolResult, McpServer } from '@modelcontextprotocol/server'
-import QRCode from 'qrcode'
 import * as z from 'zod'
 
 import { application } from '@application'
-import { agentChannelService as channelService } from '@data/services/AgentChannelService'
 import { agentService } from '@data/services/AgentService'
 import { AgentSessionDeliveryRoutingError, agentSessionMessageService } from '@data/services/AgentSessionMessageService'
 import { agentSessionService } from '@data/services/AgentSessionService'
 import { agentTaskService as taskService } from '@data/services/AgentTaskService'
 import { loggerService } from '@logger'
 import { buildAgentSessionTopicId } from '@main/ai/agentSession/topic'
-import {
-  createAgentChannel,
-  createAgentChannelAndWaitForQr,
-  deleteAgentChannel,
-  reconnectAgentChannel,
-  reconnectAgentChannelWithQr,
-  type ChannelAdapter,
-  resolveWorkspaceFile,
-  sanitizeChannelOutput,
-  updateAgentChannel,
-  updateAgentChannelAndWaitForQr
-} from '@main/ai/channels'
 import { conversationEvidence } from '@main/ai/messages/conversationEvidence'
 import { findPersistedToolOutput } from '@main/ai/messages/persistedToolOutput'
 import { readConversation, type ReadConversationInput } from '@main/ai/messages/readConversation'
@@ -47,11 +33,9 @@ import {
   SESSION_SEARCH_TOOL_NAME,
   SESSION_SEND_TOOL_NAME
 } from '@shared/ai/agentSessionDelivery'
-import { CONFIG_TOOL_NAME, CRON_TOOL_NAME, NOTIFY_TOOL_NAME } from '@shared/ai/builtinTools'
-import { TimeoutMinutesAtomSchema } from '@shared/data/api/schemas/agents'
+import { CONFIG_TOOL_NAME, CRON_TOOL_NAME } from '@shared/ai/builtinTools'
 import { AGENT_WORKSPACE_TYPE, type AgentSessionWorkspaceSource } from '@shared/data/api/schemas/agentWorkspaces'
 import { JOB_ERROR_CODES, type Trigger } from '@shared/data/api/schemas/jobs'
-import { ChannelConfigSchema } from '@shared/data/types/channel'
 
 const logger = loggerService.withContext('McpServer:CherryAutonomyTools')
 
@@ -114,14 +98,20 @@ const CronInputSchema = z.object({
     .describe(
       "RFC3339 timestamp for a one-time job, e.g. '2024-01-15T14:30:00+08:00' (use at OR cron OR every, not combined)"
     ),
-  channel_ids: z
-    .array(z.string())
-    .optional()
-    .describe(
-      'Channel IDs to send task results to. On add, omit to use this turn’s configured notification recipients; on update, omit to keep existing recipients; use an empty array [] to skip channel delivery. Explicit IDs must be configured recipients, except a source-channel session may select another live channel owned by this Agent.'
-    ),
-  timeout_minutes: TimeoutMinutesAtomSchema.describe(
-    'Timeout in minutes before the task is aborted. Default is 2 on add; omit on update to keep the current timeout. Use null for no timeout.'
+  // Gemini's function-declaration schema rejects a nullable union (`anyOf: [number, null]`)
+  // with "didn't specify the schema type field". Agent runtimes consume this schema straight
+  // from MCP tools/list, without the provider middleware that rewrites such unions, so
+  // advertise a plain number. 0 already means "no timeout" in AgentJobsService; preprocess
+  // keeps older callers that send null working.
+  timeout_minutes: z.preprocess(
+    (value) => (value === null ? 0 : value),
+    z
+      .number()
+      .min(0)
+      .optional()
+      .describe(
+        'Timeout in minutes before the task is aborted. Default is 2 on add; omit on update to keep the current timeout. Use 0 for no timeout.'
+      )
   ),
   reuse_session: z
     .boolean()
@@ -133,131 +123,11 @@ const CronInputSchema = z.object({
 })
 type CronInput = z.output<typeof CronInputSchema>
 
-const NOTIFY_DESCRIPTION =
-  'Send a message or workspace file to configured IM recipients. Omit channel_id to reach all; files need file_path.'
-
-// ponytail: no root union — some providers (xAI) reject union root schemas; the handler
-// enforces "message or file_path" on the trimmed values anyway.
-const NotifyInputSchema = z.object({
-  message: z
-    .string()
-    .optional()
-    .describe('The notification message to send to the user. Optional if file_path is provided.'),
-  file_path: z
-    .string()
-    .optional()
-    .describe(
-      'A workspace file to deliver. Provide this, message, or both. Use a relative path or an absolute path inside the session workspace.'
-    ),
-  channel_id: z
-    .string()
-    .optional()
-    .describe('Optional explicit destination channel. Omit to deliver to all configured recipients for this turn.')
-})
-type NotifyInput = z.output<typeof NotifyInputSchema>
-
-/** Per-adapter-type config schema descriptions (for agent self-documentation). */
-const CHANNEL_CONFIG_SCHEMAS: Record<string, { required: string[]; optional: string[]; description: string }> = {
-  dingtalk: {
-    required: ['client_id', 'client_secret', 'robot_code'],
-    optional: ['allowed_chat_ids', 'allowed_user_ids', 'card_template_id'],
-    description:
-      'DingTalk internal app robot. Enable Stream mode. Chat IDs: dm:<senderStaffId> or group:<conversationId>. Both allowlists must match when configured. Optional AI card template uses msgContent and flowStatus fields.'
-  },
-  telegram: {
-    required: ['bot_token'],
-    optional: ['allowed_chat_ids'],
-    description: 'Telegram Bot. Get bot_token from @BotFather.'
-  },
-  feishu: {
-    required: ['app_id', 'app_secret', 'encrypt_key', 'verification_token', 'domain'],
-    optional: ['allowed_chat_ids', 'mention_only'],
-    description:
-      'Feishu/Lark bot. Set auth_mode to "qr" to register interactively without config. For credential setup, provide all required fields and set domain to "feishu" or "lark".'
-  },
-  qq: {
-    required: ['app_id', 'client_secret'],
-    optional: ['allowed_chat_ids'],
-    description: 'QQ official bot via QQ Open Platform.'
-  },
-  wechat: {
-    required: ['token_path'],
-    optional: ['allowed_chat_ids'],
-    description:
-      'WeChat via local WeChat desktop client bridge. Set auth_mode to "qr" to log in interactively without config. For an existing login, provide its token_path.'
-  },
-  discord: {
-    required: ['bot_token'],
-    optional: ['allowed_channel_ids'],
-    description: [
-      'Discord bot via WebSocket gateway.',
-      'Setup steps:',
-      '1. Go to https://discord.com/developers/applications and click "New Application".',
-      '2. Go to the "Bot" tab, click "Reset Token" to generate a new token — this is your bot_token.',
-      '3. Under "Privileged Gateway Intents", enable "MESSAGE CONTENT INTENT".',
-      '4. Go to "OAuth2 > URL Generator", select scopes: "bot", and bot permissions: "Send Messages", "Read Message History", "View Channels".',
-      '5. Copy the generated URL, open it in a browser to invite the bot to your server.',
-      '6. allowed_channel_ids format: "channel:<channel_id>" for guild channels, "dm:<channel_id>" for DMs. Send /whoami in Discord to get the correct ID.'
-    ].join(' ')
-  },
-  slack: {
-    required: ['bot_token', 'app_token'],
-    optional: ['allowed_channel_ids'],
-    description: [
-      'Slack bot via Socket Mode (WebSocket).',
-      'Setup steps:',
-      '1. Go to https://api.slack.com/apps and click "Create New App" > "From scratch".',
-      '2. Go to "OAuth & Permissions", add Bot Token Scopes: "chat:write", "reactions:write", "channels:history", "groups:history", "im:history", "mpim:history", "users:read", "files:read".',
-      '3. Click "Install to Workspace" and copy the "Bot User OAuth Token" (xoxb-...) — this is your bot_token.',
-      '4. Go to "Socket Mode" and enable it. Generate an App-Level Token with scope "connections:write" — this is your app_token (xapp-...).',
-      '5. Go to "Event Subscriptions", enable events, and subscribe to bot events: "message.channels", "message.groups", "message.im", "message.mpim", "app_mention".',
-      '6. Invite the bot to channels by typing /invite @YourBotName in the desired Slack channel.',
-      '7. allowed_channel_ids is optional — leave empty to allow all channels the bot is in.'
-    ].join(' ')
-  }
-}
-
-const CONFIG_DESCRIPTION =
-  'Inspect or change your agent config: status, rename, add/update/remove/reconnect channels, complete or reset bootstrap.'
+const CONFIG_DESCRIPTION = 'Inspect agent configuration, rename the agent, or update its bootstrap status.'
 
 const ConfigInputSchema = z.object({
-  action: z
-    .enum([
-      'status',
-      'rename',
-      'add_channel',
-      'update_channel',
-      'remove_channel',
-      'reconnect_channel',
-      'complete_bootstrap',
-      'reset_bootstrap'
-    ])
-    .describe('The action to perform'),
-  type: z
-    .enum(Object.keys(CHANNEL_CONFIG_SCHEMAS) as [string, ...string[]])
-    .optional()
-    .describe("Channel adapter type (required for 'add_channel')"),
-  name: z
-    .string()
-    .optional()
-    .describe("For 'rename': the new agent display name. For 'add_channel': human-readable channel name."),
-  channel_id: z.string().optional().describe("Channel ID (required for 'update_channel' and 'remove_channel')"),
-  config: z
-    .record(z.string(), z.unknown())
-    .optional()
-    .describe(
-      "Adapter-specific configuration (required for credential-based 'add_channel', optional for QR authentication and 'update_channel')"
-    ),
-  auth_mode: z
-    .enum(['credentials', 'qr'])
-    .optional()
-    .describe(
-      'Authentication mode for add_channel. Use "qr" only with WeChat or Feishu for interactive setup; defaults to "credentials".'
-    ),
-  enabled: z
-    .boolean()
-    .optional()
-    .describe('Enable or disable the channel (optional; defaults to true on add, unchanged when omitted on update)')
+  action: z.enum(['status', 'rename', 'complete_bootstrap', 'reset_bootstrap']).describe('The action to perform'),
+  name: z.string().optional().describe('New agent display name for rename')
 })
 type ConfigInput = z.output<typeof ConfigInputSchema>
 
@@ -579,24 +449,6 @@ function sendSessionMessage(ctx: AutonomyToolsContext, args: z.output<typeof Ses
   }
 }
 
-function getNotifyChannelAccess(
-  ctx: AutonomyToolsContext,
-  channelId: string,
-  adapters?: readonly { channelId: string; connected: boolean }[]
-): 'allowed' | 'not-owned' | 'not-granted' {
-  const channel = channelService.getChannel(channelId)
-  if (!channel || channel.agentId !== ctx.agentId) return 'not-owned'
-  if (ctx.trustedNotifyChannels.some((trustedChannel) => trustedChannel.id === channelId)) return 'allowed'
-  // A dropped adapter stays registered for reconnection, so require a live connection here —
-  // otherwise this fallback authorizes an offline channel the turn was never granted.
-  return ctx.allowAnyOwnedNotifyChannel &&
-    (adapters ?? application.get('ChannelManager').getAgentAdapters(ctx.agentId)).some(
-      (adapter) => adapter.channelId === channelId && adapter.connected
-    )
-    ? 'allowed'
-    : 'not-granted'
-}
-
 function saveJob(ctx: AutonomyToolsContext, args: CronInput, action: 'add' | 'update'): CallToolResult {
   const {
     name,
@@ -630,27 +482,12 @@ function saveJob(ctx: AutonomyToolsContext, args: CronInput, action: 'add' | 'up
     trigger = { kind: 'once', at: date.getTime() }
   }
 
-  let channelIds = args.channel_ids
-  if (channelIds === undefined && action === 'add' && ctx.trustedNotifyChannels.length > 0) {
-    channelIds = ctx.trustedNotifyChannels.map((channel) => channel.id)
-  }
-
-  // Task targets have the same live ownership and turn authority requirements as immediate notifications.
-  for (const channelId of channelIds ?? []) {
-    const access = getNotifyChannelAccess(ctx, channelId)
-    if (access === 'not-owned') throw new Error(`Channel "${channelId}" not found`)
-    if (access === 'not-granted') {
-      throw new Error(`Channel "${channelId}" is not a configured notification recipient for this turn`)
-    }
-  }
-
   const service = application.get('AgentJobsService')
   const patch = {
     name,
     prompt: message,
     trigger,
     timeoutMinutes,
-    channelIds,
     ...(reuseSession !== undefined ? { reuseSession } : {})
   }
   const task =
@@ -660,8 +497,7 @@ function saveJob(ctx: AutonomyToolsContext, args: CronInput, action: 'add' | 'up
           name: name!,
           prompt: message!,
           trigger: trigger!,
-          workspace: ctx.workspaceSource,
-          channelIds: channelIds?.length ? channelIds : undefined
+          workspace: ctx.workspaceSource
         })
       : service.updateTask(ctx.agentId, id!, patch)
   if (!task) throw new Error(`Job "${id}" not found`)
@@ -718,378 +554,21 @@ async function runCron(ctx: AutonomyToolsContext, args: CronInput): Promise<Call
   }
 }
 
-async function sendNotification(ctx: AutonomyToolsContext, args: NotifyInput): Promise<CallToolResult> {
-  const message = args.message?.trim()
-  const filePath = args.file_path?.trim()
-  if (!message && !filePath) {
-    throw new Error("Provide 'message', 'file_path', or both for notify")
-  }
-
-  const explicitChannelId = args.channel_id?.trim()
-  if (args.channel_id !== undefined && !explicitChannelId) {
-    throw new Error("'channel_id' must not be empty")
-  }
-  const targetChannelIds = explicitChannelId
-    ? [explicitChannelId]
-    : ctx.trustedNotifyChannels.map((channel) => channel.id)
-  const targetChannelIdSet = new Set(targetChannelIds)
-  const allAgentAdapters = application.get('ChannelManager').getAgentAdapters(ctx.agentId)
-  for (const channelId of targetChannelIdSet) {
-    if (getNotifyChannelAccess(ctx, channelId, allAgentAdapters) !== 'allowed') {
-      throw new Error(`Channel "${channelId}" is not a configured notification recipient for this turn`)
-    }
-  }
-
-  const adapters = allAgentAdapters.filter((adapter) => targetChannelIdSet.has(adapter.channelId))
-  const availableChannelIds = new Set(adapters.map((adapter) => adapter.channelId))
-  const unavailableChannelIds = [...targetChannelIdSet].filter((channelId) => !availableChannelIds.has(channelId))
-  if (unavailableChannelIds.length > 0) {
-    const recipients = unavailableChannelIds.join(', ')
-    throw new Error(
-      unavailableChannelIds.length === 1
-        ? `Configured notification recipient is unavailable: ${recipients}.`
-        : `Configured notification recipients are unavailable: ${recipients}.`
-    )
-  }
-
-  // Resolve the file once after recipient validation so a bad path fails before dispatch.
-  const file = filePath ? await resolveWorkspaceFile(ctx.workspacePath, filePath) : undefined
-  const sanitizedMessage = message ? sanitizeChannelOutput(message).text : undefined
-
-  let messagesSent = 0
-  let filesSent = 0
-  const errors: string[] = []
-
-  const recordError = (adapter: ChannelAdapter, chatId: string, what: string, err: unknown) => {
-    const errMsg = err instanceof Error ? err.message : String(err)
-    errors.push(`${adapter.channelId}/${chatId} (${what}): ${errMsg}`)
-    // Log the raw error, not just its message, so the SDK's cause chain and any
-    // attached `response` payload survive to the logs for diagnosis.
-    logger.warn(`Failed to send ${what} via notify`, {
-      agentId: ctx.agentId,
-      channelId: adapter.channelId,
-      chatId,
-      error: err
-    })
-  }
-
-  for (const adapter of adapters) {
-    for (const chatId of adapter.notifyChatIds) {
-      // Message and file are independent — one failing must not skip the other.
-      if (sanitizedMessage) {
-        try {
-          await adapter.sendMessage(chatId, sanitizedMessage)
-          messagesSent++
-        } catch (err) {
-          recordError(adapter, chatId, 'message', err)
-        }
-      }
-      if (file) {
-        try {
-          await adapter.sendFile(chatId, file)
-          filesSent++
-        } catch (err) {
-          recordError(adapter, chatId, 'file', err)
-        }
-      }
-    }
-  }
-
-  const parts: string[] = []
-  if (sanitizedMessage) parts.push(`Message sent to ${messagesSent} chat(s).`)
-  if (file) parts.push(`File "${file.filename}" sent to ${filesSent} chat(s).`)
-  if (errors.length > 0) parts.push(`Errors: ${errors.join('; ')}`)
-
-  logger.info('Notification sent via notify tool', {
-    agentId: ctx.agentId,
-    messagesSent,
-    filesSent,
-    errors: errors.length
-  })
-
-  // A requested payload that reached nobody because every attempt failed is a failed
-  // tool call — otherwise the agent sees success while the user received nothing
-  // (unsupported adapter, platform size reject, etc.). Zero recipients with no failed
-  // attempts (no chats configured) stays a normal result.
-  const messageFailed = sanitizedMessage !== undefined && messagesSent === 0
-  const fileFailed = file !== undefined && filesSent === 0
-  const deliveryFailed = errors.length > 0 && (messageFailed || fileFailed)
-
-  return {
-    content: [{ type: 'text', text: parts.join(' ') }],
-    ...(deliveryFailed ? { isError: true } : {})
-  }
-}
-
-// ── Config tool handlers ──────────────────────────────────────────
-
 function configStatus(ctx: AutonomyToolsContext): CallToolResult {
   const agent = agentService.getAgent(ctx.agentId)
   if (!agent) throw new Error(`Agent not found: ${ctx.agentId}`)
 
   const config = agent.configuration
-  const channels = channelService.listChannels({ agentId: ctx.agentId })
-
-  const adapterStatuses = application.get('ChannelManager').getAdapterStatuses(ctx.agentId)
-  const statusMap = new Map(adapterStatuses.map((s) => [s.channelId, s.connected]))
-
-  const channelSummary = channels.map((ch) => ({
-    id: ch.id,
-    type: ch.type,
-    name: ch.name,
-    enabled: ch.isActive,
-    connected: statusMap.get(ch.id) ?? false
-  }))
-
   const result = {
     agentId: agent.id,
     name: agent.name,
     model: agent.model,
-    supported_channel_types: Object.entries(CHANNEL_CONFIG_SCHEMAS).map(([type, schema]) => ({
-      type,
-      description: schema.description,
-      required_fields: schema.required,
-      optional_fields: schema.optional
-    })),
-    channels: channelSummary,
     heartbeat_enabled: isHeartbeatEnabled(config ?? {})
   }
 
   logger.info('Config status queried', { agentId: ctx.agentId })
   return {
     content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
-  }
-}
-
-async function configAddChannel(ctx: AutonomyToolsContext, args: ConfigInput): Promise<CallToolResult> {
-  const { type, name, enabled, config: rawConfig } = args
-  const authMode = args.auth_mode ?? 'credentials'
-
-  if (!type) throw new Error("'type' is required for add_channel")
-  if (!name) throw new Error("'name' is required for add_channel")
-
-  const schema = CHANNEL_CONFIG_SCHEMAS[type]
-  if (authMode === 'qr' && type !== 'wechat' && type !== 'feishu') {
-    throw new Error(`QR authentication is not supported for ${type} channels`)
-  }
-  if (authMode === 'qr' && enabled === false) {
-    throw new Error('QR authentication requires the channel to be enabled')
-  }
-
-  let cfg: Record<string, unknown> = rawConfig ?? {}
-  if (authMode === 'qr' && type === 'wechat') {
-    cfg = { ...rawConfig, token_path: '' }
-  } else if (authMode === 'qr' && type === 'feishu') {
-    const unverifiedChannels = channelService
-      .listChannels({ agentId: ctx.agentId, type: 'feishu' })
-      .filter((channel) => channel.type === 'feishu' && !(channel.config.app_id && channel.config.app_secret))
-
-    if (unverifiedChannels.length > 1) {
-      const channelIds = unverifiedChannels.map((channel) => channel.id).join(', ')
-      throw new Error(
-        `Multiple unverified Feishu channels already exist (${channelIds}). Use reconnect_channel with the intended channel_id instead of creating another channel.`
-      )
-    }
-
-    const existingChannel = unverifiedChannels[0]
-    cfg = {
-      allowed_chat_ids: [],
-      domain: 'feishu',
-      ...existingChannel?.config,
-      ...rawConfig,
-      app_id: '',
-      app_secret: '',
-      encrypt_key: '',
-      verification_token: ''
-    }
-
-    if (existingChannel) {
-      const config = ChannelConfigSchema.parse({ type, ...cfg })
-      const { qrUrl } = await updateAgentChannelAndWaitForQr(
-        existingChannel.id,
-        ctx.agentId,
-        { name, config, isActive: true },
-        30_000
-      )
-      return await configReconnectChannel(ctx, existingChannel.id, qrUrl)
-    }
-  }
-  if (authMode === 'credentials') {
-    for (const field of schema.required) {
-      if (!cfg[field]) {
-        throw new Error(`Missing required config field "${field}" for ${type} channel`)
-      }
-    }
-  }
-
-  const config = ChannelConfigSchema.parse({ type, ...cfg })
-  const channelType = config.type
-
-  // For channels that use QR-based setup (WeChat login, Feishu app registration),
-  // connect is blocking (waits for QR scan), so run sync in background
-  // and wait only for the QR URL to return it to the agent.
-  if (authMode === 'qr') {
-    const channelLabel = type === 'wechat' ? 'WeChat' : 'Feishu'
-    const scanHint =
-      type === 'wechat'
-        ? 'scan with WeChat to log in'
-        : 'scan with Feishu to create a bot app and obtain credentials automatically'
-
-    try {
-      const { channel: newChannel, qrUrl } = await createAgentChannelAndWaitForQr(
-        {
-          type: channelType,
-          name,
-          agentId: ctx.agentId,
-          workspace: ctx.workspaceSource,
-          config,
-          isActive: enabled ?? true
-        },
-        30_000
-      )
-      const qrDataUrl = await QRCode.toDataURL(qrUrl, { width: 300, margin: 2 })
-      // Extract base64 from data URI: "data:image/png;base64,..."
-      const base64 = qrDataUrl.split(',')[1]
-
-      logger.info(`${channelLabel} channel added, QR code generated`, {
-        agentId: ctx.agentId,
-        channelId: newChannel.id
-      })
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `${channelLabel} channel created (ID: ${newChannel.id}). QR code generated — display it to the user so they can ${scanHint}.`
-          },
-          {
-            type: 'image',
-            data: base64,
-            mimeType: 'image/png'
-          }
-        ]
-      }
-    } catch (err) {
-      logger.warn(`Failed to get ${channelLabel} QR code`, {
-        agentId: ctx.agentId,
-        error: err instanceof Error ? err.message : String(err)
-      })
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Failed to set up ${channelLabel} channel: ${err instanceof Error ? err.message : String(err)}. The channel was not saved. Please try again.`
-          }
-        ],
-        isError: true
-      }
-    }
-  }
-
-  const newChannel = createAgentChannel({
-    type: channelType,
-    name,
-    agentId: ctx.agentId,
-    workspace: ctx.workspaceSource,
-    config,
-    isActive: enabled ?? true
-  })
-
-  logger.info('Channel added via config tool', { agentId: ctx.agentId, channelId: newChannel.id, type })
-  return {
-    content: [
-      {
-        type: 'text',
-        text: `Channel added and activated:\n${JSON.stringify({ id: newChannel.id, type, name, enabled: newChannel.isActive }, null, 2)}`
-      }
-    ]
-  }
-}
-
-/** Resolve a channel owned by this Agent; another Agent's channel reads as missing so existence never leaks. */
-function getOwnedChannel(ctx: AutonomyToolsContext, channelId: string | undefined, action: string) {
-  if (!channelId) throw new Error(`'channel_id' is required for ${action}`)
-  const channel = channelService.getChannel(channelId)
-  if (!channel || channel.agentId !== ctx.agentId) throw new Error(`Channel "${channelId}" not found`)
-  return channel
-}
-
-function configUpdateChannel(ctx: AutonomyToolsContext, args: ConfigInput): CallToolResult {
-  const existing = getOwnedChannel(ctx, args.channel_id, 'update_channel')
-
-  const updates: Record<string, unknown> = {}
-  if (args.name !== undefined) updates.name = args.name
-  if (args.enabled !== undefined) updates.isActive = args.enabled
-  if (args.config !== undefined) {
-    updates.config = { ...existing.config, ...args.config }
-  }
-
-  updateAgentChannel(existing.id, updates)
-
-  logger.info('Channel updated via config tool', { agentId: ctx.agentId, channelId: existing.id })
-  return {
-    content: [{ type: 'text', text: `Channel "${existing.id}" updated and reloaded.` }]
-  }
-}
-
-async function configRemoveChannel(ctx: AutonomyToolsContext, args: ConfigInput): Promise<CallToolResult> {
-  const channel = getOwnedChannel(ctx, args.channel_id, 'remove_channel')
-
-  await deleteAgentChannel(channel.id)
-
-  logger.info('Channel removed via config tool', { agentId: ctx.agentId, channelId: channel.id, type: channel.type })
-  return {
-    content: [{ type: 'text', text: `Channel "${channel.id}" (${channel.name}) removed.` }]
-  }
-}
-
-async function configReconnectChannel(
-  ctx: AutonomyToolsContext,
-  channelId: string | undefined,
-  preparedQrUrl?: string
-): Promise<CallToolResult> {
-  const channel = getOwnedChannel(ctx, channelId, 'reconnect_channel')
-
-  const needsQr =
-    channel.type === 'wechat' || (channel.type === 'feishu' && !(channel.config.app_id && channel.config.app_secret))
-
-  if (!needsQr) {
-    await reconnectAgentChannel(channel.id)
-    return {
-      content: [{ type: 'text', text: `Channel "${channel.id}" reconnected.` }]
-    }
-  }
-
-  const channelLabel = channel.type === 'wechat' ? 'WeChat' : 'Feishu'
-
-  try {
-    const qrUrl = preparedQrUrl ?? (await reconnectAgentChannelWithQr(ctx.agentId, channel.id, 30_000))
-    const qrDataUrl = await QRCode.toDataURL(qrUrl, { width: 300, margin: 2 })
-    const base64 = qrDataUrl.split(',')[1]
-
-    logger.info(`${channelLabel} channel reconnect QR generated`, { agentId: ctx.agentId, channelId: channel.id })
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `${channelLabel} channel "${channel.id}" needs re-authentication. Display this QR code for the user to scan.`
-        },
-        {
-          type: 'image',
-          data: base64,
-          mimeType: 'image/png'
-        }
-      ]
-    }
-  } catch (err) {
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Failed to generate QR for reconnect: ${err instanceof Error ? err.message : String(err)}`
-        }
-      ],
-      isError: true
-    }
   }
 }
 
@@ -1132,14 +611,6 @@ async function runConfig(ctx: AutonomyToolsContext, args: ConfigInput): Promise<
       return configStatus(ctx)
     case 'rename':
       return configRename(ctx, args)
-    case 'add_channel':
-      return configAddChannel(ctx, args)
-    case 'update_channel':
-      return configUpdateChannel(ctx, args)
-    case 'remove_channel':
-      return configRemoveChannel(ctx, args)
-    case 'reconnect_channel':
-      return configReconnectChannel(ctx, args.channel_id)
     case 'complete_bootstrap':
       return configSetBootstrap(ctx, true)
     case 'reset_bootstrap':
@@ -1151,15 +622,6 @@ export function registerAutonomyTools(server: McpServer, ctx: AutonomyToolsConte
   server.registerTool(CRON_TOOL_NAME, { description: CRON_DESCRIPTION, inputSchema: CronInputSchema }, (args) =>
     runCron(ctx, args)
   )
-  // Without recipients there is nothing notify could reach, so the tool is not offered at all.
-  if (ctx.trustedNotifyChannels.length > 0) {
-    const recipients = ctx.trustedNotifyChannels.map((channel) => `${channel.type} (${channel.id})`).join(', ')
-    server.registerTool(
-      NOTIFY_TOOL_NAME,
-      { description: `${NOTIFY_DESCRIPTION} Configured recipients: ${recipients}.`, inputSchema: NotifyInputSchema },
-      (args) => sendNotification(ctx, args)
-    )
-  }
   server.registerTool(CONFIG_TOOL_NAME, { description: CONFIG_DESCRIPTION, inputSchema: ConfigInputSchema }, (args) =>
     runConfig(ctx, args)
   )

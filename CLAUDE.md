@@ -19,7 +19,7 @@ How to approach any coding task in this repo.
 - No "flexibility" or "configurability" that was not requested.
 - No error handling for impossible scenarios.
 - If you wrote 200 lines and it could be 50, rewrite it.
-- Inline comments cap at 2 lines. Needing more means the code is a patch — fix the implementation instead of narrating it. Say *why*, never restate *what*; no changelogs, no rationale essays, no pasted chat/review replies. (Doc comments on an exported API — TSDoc `@param`/`@returns`/`@deprecated` — are documentation, not narration, and are exempt.)
+- Use comments to explain constraints or decisions the code alone cannot convey.
 
 #### Surgical Changes
 
@@ -49,31 +49,30 @@ Project-specific tools, paths, and conventions.
 
 - **Keep it clear**: Write code that is easy to read, maintain, and explain.
 - **Read local READMEs first**: Before editing code in a directory, check for a `README.md` in that directory (and its parents) and read it — these files capture local conventions, invariants, and entry points that aren't obvious from the code alone.
-- **Fix upstream, don't hack downstream**: When a new feature hits an existing module's limitation, flag the upstream improvement for the user's decision before proposing a downstream workaround.
+- **Fix the root cause**: Make the appropriate fix in TinyCherry. Discuss contributing it upstream when useful.
 - **Library-first, custom-last**: Before writing custom code, check library/framework docs for built-in options or existing solutions. Write custom code only when no adequate alternative exists.
 - **Build with Tailwind CSS & Shadcn UI**: Use components from `@cherrystudio/ui` (located in `packages/ui`, Shadcn UI + Tailwind CSS) for every new UI component.
 - **Log centrally**: Route all logging through `loggerService` with the right context—no `console.log`.
 - **Access paths centrally**: Use `application.getPath('namespace.key', filename?)` for all main-process filesystem paths—never call `app.getPath()`, `os.homedir()`, or construct paths ad-hoc. Import the singleton via `import { application } from '@application'`.
-- **Check what you changed, not the whole repo**: for local PR work, run only tests covering changed files and their affected consumers, with explicit test file paths (see Testing below). Use `pnpm check --plan` to inspect scope against the merge base with `origin/main`, including staged, unstaged, and untracked changes (`--base <ref>` for a stacked branch). The planner selects whole test projects and can fall back to the full gate; do not automatically execute `pnpm check` after inspecting it. Keep lint and formatting scoped to changed files; docs-only changes need documentation and changed-file formatting checks, no Vitest run.
-- **Inspect one explicit change scope**: before push, PR creation, review, and after a stack rewrite, run `pnpm change:scope --base <verified-ref>`; never guess the base or infer scope from the latest commit alone.
-- **Declare Agent Note or N/A**: every human-authored PR fills the Agent Note/Spec fields; automation-authored PRs (repository workflows and Dependabot) are exempt from this metadata requirement, not from normal validation. Substantial feature, architecture, process, and simplification work needs an approved proposed Spec before implementation; simple local bug fixes may use an explicit `N/A` reason. Follow [the Agent Note rules](.agents/notes/README.md).
-- **Keep docs and code aligned**: run `pnpm docs:affected --base <verified-ref>` for code changes and inspect every candidate semantically. In-scope bilingual docs update English, Chinese, and sidecar together under [the pairing contract](docs/dev/i18n/README.md).
+- **Validate the change**: Check changed assets directly. For docs and rules, check the affected text, links, and formatting. For code, run focused checks and tests for affected behavior. Build when packaging or packaged runtime behavior needs verification. Report checks actually run and any gaps.
+- **Inspect the actual diff**: Use `git diff` for small changes. For PRs or changes spanning commits, compare against a verified base and use `pnpm change:scope --base <verified-ref>` when a scope report helps.
+- **Record decisions when useful**: Major changes may benefit from a short design or decision record in an issue, PR, relevant doc, or optional [Agent Note](.agents/notes/README.md).
+- **Keep docs and code aligned**: Check affected documentation when documented behavior or contracts change. Use `pnpm docs:affected --base <verified-ref>` when the impact is unclear. Update both languages and the sidecar for in-scope pairs under [the pairing contract](docs/dev/i18n/README.md).
 - **Write conventional commits**: Commit small, focused changes using Conventional Commit messages (e.g., `feat(data-api):`, `fix(lifecycle):`, `refactor(quick-assistant):`, `docs(testing):`, `chore(deps):`, `test(window-manager):`). Scope must be a specific kebab-case module, never generic like `main` — when `git log` conflicts with this rule, this rule wins.
-- **Sign commits and sign off**: Every commit must be both cryptographically signed and DCO-signed off. Use `git commit -S --signoff` (not `--signoff` alone), verify the commit object contains a `gpgsig` header with `git cat-file commit HEAD`, and verify the pushed PR commits show `Verified` on GitHub.
 - **Target the right branch**: `main` is the default branch for all active development — submit features, refactors, optimizations, and fixes here.
 
 ## Development
 
 ### Commands
 
-Run `pnpm install` first (Node and pnpm versions are pinned in `package.json` — let it enforce them). For every other script, read `package.json` — the ones you must know:
+Run `pnpm install` when a build or selected check needs workspace dependencies. Use the Node and pnpm versions specified in `package.json` and read the relevant script there before running it.
 
 - `pnpm check` — affected checks and whole-project tests, with full-gate fallback; use `--plan` to inspect selection, not as the default local PR validation command
 - `pnpm lint` — read-only Oxlint + ESLint; `pnpm lint:fix` explicitly applies lint fixes
 - `pnpm typecheck` — all typecheck projects, run serially to limit local memory usage
 - `pnpm test` — run all Vitest tests; not for local PR validation unless the user explicitly requests a full run
 - `pnpm format` — Oxfmt format (write mode)
-- `pnpm docs:check` — links + structure/frontmatter + Agent Note format + bilingual pairing + terminology/index freshness. Run it for docs/markdown edits instead of the full gate. Reference docs carry `description`/`sources`; contrib/governance docs carry `description`. `docs/dev/README.md`, `docs/dev/sources-index.json`, and `docs/dev/i18n/terminology.md` are generated — edit their owners and run the matching generator.
+- `pnpm docs:check` — links + structure/frontmatter + Agent Note format + bilingual pairing + terminology/index freshness. Use it when edits affect these checks. Reference docs carry `description`/`sources`; contrib/governance docs carry `description`. `docs/dev/README.md`, `docs/dev/sources-index.json`, and `docs/dev/i18n/terminology.md` are generated — edit their owners and run the matching generator.
 - `pnpm change:scope --base <ref>` — versioned committed/staged/unstaged/untracked path report against an explicit merge base.
 - `pnpm docs:affected --base <ref>` — candidate docs whose `sources` prefixes intersect that change scope; candidates require semantic inspection, not automatic edits.
 - `pnpm check:all` / `pnpm build:check` — full checks and tests; leave these to CI unless the user explicitly requests a full local run. Format changed files with `pnpm exec oxfmt --write <files>`; sync and translate locale keys with `pnpm i18n:sync`.
@@ -81,9 +80,9 @@ Run `pnpm install` first (Node and pnpm versions are pinned in `package.json` �
 
 ### Testing
 
-- **Local PR validation**: when implementing, fixing, creating, or updating a PR, use per-project wrappers with explicit test file paths, e.g. `pnpm test:main <test-file>` or `pnpm test:renderer <test-file>` (likewise `test:aicore`, `test:shared`, `test:pkg:ui`, `test:scripts`), or `pnpm exec vitest run <test-file>`. Include existing tests for affected consumers, not just test files modified in the diff. Never omit the file filter or run a full local suite unless the user explicitly requests it, even if a skill suggests broader validation. If scope is uncertain or no relevant tests exist, report that gap and rely on CI for broader coverage instead of falling back to a full local run. Report the exact checks run and their results in the PR.
+- **Focused tests**: When code behavior changes, run tests for affected behavior and consumers using explicit file paths, such as `pnpm test:main <test-file>`, `pnpm test:renderer <test-file>`, or `pnpm exec vitest run <test-file>`. Report missing coverage and any CI checks actually observed on the revision under review.
 - Tests run with Vitest 5 (see `vitest.config.*` for project setup).
-- **No behavior-pinning tests**: a test whose only assertion records what the code currently does — a snapshot of whatever came out, `toHaveBeenCalled` on a mock, an expected value re-derived the way the implementation derives it — has zero value. It cannot fail for a real reason, it breaks on every refactor, and it certifies existing bugs as "expected". Assert the contract instead: real input → the outcome the feature promises, plus the failure and edge cases. Before writing a test, state the bug it would catch; if you cannot, do not write it. **The existing suite is full of these** — delete the ones in a file you are already editing rather than keeping them green; a repo-wide purge is its own task, not a side effect of an unrelated PR.
+- **Test the contract**: Use realistic inputs and assert observable behavior, including relevant failure and edge cases. Change existing tests when needed for the work in scope.
 - **Frontend Tests — MUST READ**: [Frontend Testing Guidelines](docs/dev/references/testing/frontend-testing.md).
 - **Test Mocking**: Use the unified mock system — do NOT create ad-hoc mocks for `application`, services, or data layers. See [tests/__mocks__/README.md](tests/__mocks__/README.md) for available mocks, usage patterns, and best practices.
 - **Database Tests**: For any service/handler/seeder that reads or writes SQLite, use `setupTestDatabase()` from `@test-helpers/db` — it provides a real file-backed DB with production migrations. Do NOT hand-write `CREATE TABLE` SQL, override `@application`, or stub Drizzle chains. See [docs/dev/references/testing/database-testing.md](docs/dev/references/testing/database-testing.md).
@@ -92,19 +91,23 @@ Run `pnpm install` first (Node and pnpm versions are pinned in `package.json` �
 
 Before upgrading any dependency, check `patches/` for custom patches.
 
+### Main-Process Dependencies
+
+New packages go in `devDependencies`; the main build bundles them. Put a package in `dependencies` only when it ships native code, loads its own package files by path, spawns binaries from its package, or must share one instance with an external package (R1–R4 in the [bundling Agent Note](.agents/notes/implemented/architecture/2026-11-03-main-dependency-bundling.md)). Everything in `dependencies` is copied whole into the app.
+
 ## GitHub
 
 ### Pull Requests
 
-Use the `gh-create-pr` skill. Fallback: read `.agents/skills/gh-create-pr/SKILL.md` directly.
+For TinyCherry PRs, describe the change and the verification actually run. Use the [PR skill](.agents/skills/gh-create-pr/SKILL.md), template, or stacked branches when helpful. Follow the destination repository's contribution rules for upstream PRs.
 
 ### Code Review
 
-When reviewing a GitHub PR, do NOT run `pnpm lint` / `pnpm test` / `pnpm format` locally — its CI already ran them; inspect via `gh` instead.
+Check which CI results exist for the revision under review. Use those results where they cover the change, and run focused local checks when they can fill a meaningful gap.
 
 ### Issues
 
-Use the `gh-create-issue` skill. Fallback: read `.agents/skills/gh-create-issue/SKILL.md` directly.
+Describe the problem or proposal and include the details needed to act on it. Use the [issue skill](.agents/skills/gh-create-issue/SKILL.md) or a template when helpful.
 
 ## Conventions
 

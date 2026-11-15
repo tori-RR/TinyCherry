@@ -140,8 +140,8 @@ const IMAGE_EXTENSION_PRESETS = [
 
 /**
  * Image-endpoint origin for AIGC transports that hang off the chat host: strip the
- * `/compatible-mode/v1` suffix so `https://dashscope-intl.aliyuncs.com/compatible-mode/v1/`
- * yields `https://dashscope-intl.aliyuncs.com` (intl/custom hosts track the user config).
+ * `/compatible-mode/v1` suffix so `https://maas.qwencloudapi.com/compatible-mode/v1/`
+ * yields `https://maas.qwencloudapi.com` (chat/custom hosts track the user config).
  */
 function deriveImageBaseURL(provider: Provider): string {
   const baseURL = formatBaseURL(
@@ -251,18 +251,11 @@ export async function resolveProviderAiSdkConfig(
       build: withoutCredential((ctx) => buildCherryCloudProviderConfig(ctx.endpointType, ctx.endpoint, ctx.model.id))
     },
     { match: (p) => p.id === CHERRYAI_PROVIDER_ID, build: withSelectedApiKey(buildCherryAIConfig) },
-    // Local embedding runs fully in-process (transformers.js in a worker): no
-    // endpoint, baseURL, or apiKey. Without this entry it falls through to the
-    // openai-compatible builder, which hands ai-core an empty baseURL and throws
-    // "Invalid URL". Route it to its own registered provider so embed calls reach
-    // LocalEmbeddingModel.doEmbed directly.
     {
       match: (p) => p.id === LOCAL_EMBEDDING_PROVIDER_ID,
-      build: withoutCredential((ctx) => ({
-        providerId: LOCAL_EMBEDDING_PROVIDER_ID,
-        endpoint: ctx.endpoint,
-        providerSettings: {}
-      }))
+      build: () => {
+        throw new Error('The built-in local embedding provider has been removed')
+      }
     },
     { match: (p) => isOllamaProvider(p), build: withSelectedApiKey(buildOllamaConfig) },
     // ComfyUI has no OpenAI fallback; its key is for partner nodes, not the server.

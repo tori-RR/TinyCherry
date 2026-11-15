@@ -8,7 +8,7 @@ metadata:
 
 # GitHub Stack
 
-Use `gh stack` for branch topology and synchronization. Use the repository's `gh-create-pr` skill for Cherry-specific PR bodies, Spec approval, AC coverage, verification, and Agent Note lifecycle.
+Use `gh stack` for branch topology and synchronization when a stack is useful for the task. Use `gh-create-pr` for PR descriptions and verification.
 
 ## Availability and prerequisites
 
@@ -59,7 +59,7 @@ All commands must be non-interactive:
 - Always supply branch names to `init`, `add`, and `checkout`.
 - Always use `--auto` with `submit` if that command is explicitly allowed.
 - Pass `--remote <name>` to `push`, `submit`, `sync`, or `link` when more than one remote exists.
-- Use ordinary `git add` and `git commit -S --signoff` so each layer is staged deliberately.
+- Use `git add` and `git commit` so each layer is staged deliberately.
 
 Common operations:
 
@@ -78,18 +78,9 @@ Exit code `2` from `gh stack view --json` means only that the current checkout h
 
 Exit code `3` means a conflict, but recovery depends on the command. `gh stack rebase` leaves active recovery state, so resolve the conflict and run `gh stack rebase --continue`, or `gh stack rebase --abort`. `gh stack sync` rolls the attempted rebase back before returning; start a new `gh stack rebase` to resolve that conflict, and do not use `--continue` or `--abort` unless a rebase is active. Exit code `9` means GitHub stacked PRs are unavailable for the repository; stop instead of silently publishing a different PR shape.
 
-## Cherry PR creation
+## Creating stacked PRs
 
-Do not use `gh stack submit --auto` to create human-authored Cherry PRs. It creates PRs before the required body preview and auto-generates bodies that do not satisfy the repository template.
-
-Create a compliant stack bottom-up:
-
-1. Push the branches with `gh stack push --remote <remote>`.
-2. Invoke `gh-create-pr` for each layer, using the parent branch as that layer's base.
-3. After every PR has its approved title and body, link the existing PRs with `gh stack link --remote <remote> <bottom-pr> <higher-pr> [...]`.
-4. Verify the resulting topology with `gh stack view --json`.
-
-`gh stack submit --auto` is allowed only for an explicitly authorized automation workflow that is exempt from the human PR template. It is not a shortcut around Cherry's preview requirement.
+When authorized to publish a stack, push the branches, create each PR against its parent branch, then link the PRs with `gh stack link --remote <remote> <bottom-pr> <higher-pr> [...]`. Verify the topology with `gh stack view --json`. Use automated submission only when explicitly authorized.
 
 ## Changes to an existing stack
 
@@ -105,4 +96,4 @@ After `gh stack sync`, inspect its output and run `gh stack view --json`; a succ
 
 ## Lifecycle boundary
 
-Follow `.agents/skills/agent-notes/SKILL.md` for Spec approval and lifecycle transitions. Intermediate implementation layers keep the note proposed. Only the final layer whose cumulative, actually-run evidence covers every approved AC may move the bilingual note triplet to `implemented/`.
+If the stack implements an existing Agent Note, keep it proposed until verification across the relevant layers covers the decision. See the [Agent Notes guide](../../notes/README.md) for the optional lifecycle workflow.

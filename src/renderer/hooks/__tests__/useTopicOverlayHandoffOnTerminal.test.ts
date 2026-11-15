@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { TopicStreamStatus } from '@shared/ai/transport'
 
-const mockEntry = vi.fn<() => { status: TopicStreamStatus | undefined } | undefined>()
+const mockEntry = vi.fn<() => { status: TopicStreamStatus | undefined; lastCompletedAt?: number | null } | undefined>()
 
 // Mock at the cache layer (intra-module calls can't be intercepted at the hook).
 // The main-owned status entry is observed read-only via useSharedCacheValue.
@@ -13,7 +13,8 @@ vi.mock('@renderer/data/hooks/useCache', () => ({
 
 import { useTopicOverlayHandoffOnTerminal } from '../useTopicStreamStatus'
 
-const setStatus = (status: TopicStreamStatus | undefined) => mockEntry.mockReturnValue({ status })
+const setStatus = (status: TopicStreamStatus | undefined, lastCompletedAt?: number | null) =>
+  mockEntry.mockReturnValue({ status, lastCompletedAt })
 
 describe('useTopicOverlayHandoffOnTerminal', () => {
   beforeEach(() => {
@@ -49,6 +50,50 @@ describe('useTopicOverlayHandoffOnTerminal', () => {
       rerender()
     })
     expect(handoff).not.toHaveBeenCalled()
+  })
+
+  it('hands off a first reply whose live state is skipped by a React batch', async () => {
+    const handoff = vi.fn(async () => {})
+    setStatus(undefined)
+    const { rerender } = renderHook(() => useTopicOverlayHandoffOnTerminal('t', handoff))
+
+    await act(async () => {
+      setStatus('pending')
+      rerender()
+      setStatus('done', 101)
+      rerender()
+    })
+
+    expect(handoff).toHaveBeenCalledTimes(1)
+    await act(async () => rerender())
+    expect(handoff).toHaveBeenCalledTimes(1)
+  })
+
+  it('observes new completion identities while consecutive fast replies render as done', async () => {
+    const handoff = vi.fn(async () => {})
+    setStatus('done', 101)
+    const { rerender } = renderHook(() => useTopicOverlayHandoffOnTerminal('t', handoff))
+    expect(handoff).not.toHaveBeenCalled()
+
+    await act(async () => {
+      setStatus('pending', 101)
+      rerender()
+      setStatus('done', 102)
+      rerender()
+    })
+    expect(handoff).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      setStatus('done', 102)
+      rerender()
+    })
+    expect(handoff).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      setStatus('done', 103)
+      rerender()
+    })
+    expect(handoff).toHaveBeenCalledTimes(2)
   })
 
   it('fires on the later live → done edge after a continue stream resumes an approval', async () => {

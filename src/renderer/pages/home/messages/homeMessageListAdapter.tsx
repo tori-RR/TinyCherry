@@ -7,6 +7,7 @@ import { usePreference } from '@data/hooks/usePreference'
 import { loggerService } from '@logger'
 import { useMessageEditing } from '@renderer/components/chat/editing/MessageEditingContext'
 import { resolvePartFromParts } from '@renderer/components/chat/messages/blocks/MessagePartsContext'
+import { useMessageAuthorAvatarSources } from '@renderer/components/chat/messages/hooks/useMessageAuthorAvatarSources'
 import { useMessageListAdapterCapabilities } from '@renderer/components/chat/messages/hooks/useMessageListAdapterCapabilities'
 import {
   pickMessageHeaderActions,
@@ -32,7 +33,9 @@ import {
   runMessageImageAction
 } from '@renderer/components/chat/messages/utils/messageImageRuntimeActions'
 import { getMessageListItemModel, toMessageListItem } from '@renderer/components/chat/messages/utils/messageListItem'
-import { ModelSelector, type ModelSelectorFilter } from '@renderer/components/ModelSelector'
+import { CherryCloudModelSelector as ModelSelector } from '@renderer/components/cherryCloud/CherryCloudModelSelector'
+import { useOptionalOpenFilePreviewTab } from '@renderer/components/FilePreview'
+import { type ModelSelectorFilter } from '@renderer/components/ModelSelector'
 import { useChatWrite } from '@renderer/hooks/chat/ChatWriteContext'
 import { useCommandHandler } from '@renderer/hooks/command'
 import { SiblingsContext } from '@renderer/hooks/SiblingsContext'
@@ -46,9 +49,11 @@ import type { Assistant } from '@renderer/types/assistant'
 import type { ExportMessagesToObsidian } from '@renderer/types/messageExport'
 import type { Topic } from '@renderer/types/topic'
 import { formatErrorMessageWithPrefix, isAbortError } from '@renderer/utils/error'
+import { normalizeFilePreviewPath } from '@renderer/utils/filePreview'
 import { createComposerRichClipboardContentFromParts } from '@renderer/utils/message/composerClipboard'
 import { getComposerTextFromParts } from '@renderer/utils/message/composerTokens'
 import { isVisionModel } from '@renderer/utils/model'
+import { isEvoStack } from '@renderer/utils/platform'
 import { translateText } from '@renderer/utils/translate'
 import type { TranslateLangCode } from '@shared/data/preference/preferenceTypes'
 import type { CherryMessagePart, CherryUIMessage } from '@shared/data/types/message'
@@ -83,6 +88,7 @@ interface HomeMessageListParams {
   hasOlder?: boolean
   selectAllPagination?: MessageListSelectAllPagination
   openCitationsPanel?: MessageListActions['openCitationsPanel']
+  addGeneratedImageToComposer?: MessageListActions['addGeneratedImageToComposer']
   imageActionConsumer?: 'capture'
   onBindRuntime?: MessageListActions['bindRuntime']
   onStartBranchDraft?: MessageListActions['startMessageBranch']
@@ -102,6 +108,7 @@ export function useHomeMessageListProviderValue({
   hasOlder = false,
   selectAllPagination,
   openCitationsPanel,
+  addGeneratedImageToComposer,
   imageActionConsumer,
   onBindRuntime,
   onStartBranchDraft,
@@ -475,9 +482,19 @@ export function useHomeMessageListProviderValue({
     [requireChatWrite, t]
   )
 
-  const openPath = useCallback((path: string) => {
-    return ipcApi.request('system.shell.open_path', path)
-  }, [])
+  const openFilePreviewTab = useOptionalOpenFilePreviewTab()
+  const openPath = useCallback(
+    async (path: string) => {
+      if (!isEvoStack) return ipcApi.request('system.shell.open_path', path)
+      const filePath = normalizeFilePreviewPath(path)
+      const metadata = await ipcApi.request('file.get_metadata', { kind: 'path', path: filePath })
+      if (metadata?.kind !== 'file' || metadata.mime !== 'text/markdown' || !openFilePreviewTab) {
+        throw new Error('EVOSTACK_NOT_MIGRATED: local file preview')
+      }
+      openFilePreviewTab(filePath)
+    },
+    [openFilePreviewTab]
+  )
 
   const abortTool = useCallback(
     (toolId: string) => {
@@ -657,7 +674,15 @@ export function useHomeMessageListProviderValue({
       if (!group || group.length < 2) return null
 
       const activeIndex = group.findIndex((message) => message.id === messageId)
-      return { group, activeIndex: activeIndex >= 0 ? activeIndex : 0 }
+      return {
+        group: group.map((message) => ({
+          id: message.id,
+          preview: getComposerTextFromParts(message.data.parts ?? [])
+            .replace(/\s+/g, ' ')
+            .trim()
+        })),
+        activeIndex: activeIndex >= 0 ? activeIndex : 0
+      }
     },
     [siblingsContext]
   )
@@ -770,6 +795,10 @@ export function useHomeMessageListProviderValue({
           multiple={false}
           value={currentMentionModel}
           filter={mentionModelFilter}
+          offerFilter={(offer) =>
+            !messageParts.some((part) => part.type === 'file' && part.mediaType?.startsWith('image/')) ||
+            Boolean(offer.capabilities?.includes('image-recognition'))
+          }
           onSelect={onSelectMentionModel}
           trigger={trigger}
           onOpenChange={onOpenChange}
@@ -838,6 +867,7 @@ export function useHomeMessageListProviderValue({
       bindMessageRuntime,
       bindMessageGroupRuntime,
       locateMessage,
+      addGeneratedImageToComposer: normalInteractionsEnabled ? addGeneratedImageToComposer : undefined,
       ...(canStartNewContext && { startNewContext }),
       saveCodeBlock,
       ...exportActions,
@@ -876,6 +906,7 @@ export function useHomeMessageListProviderValue({
       bindMessageRuntime,
       bindRuntime,
       canStartNewContext,
+      addGeneratedImageToComposer,
       copyBranchToNewTopic,
       getMessageDeleteAvailability,
       deleteMessage,
@@ -910,14 +941,18 @@ export function useHomeMessageListProviderValue({
     ]
   )
 
+  const assistantAvatarSources = useMessageAuthorAvatarSources(messageItems, topic.id)
   const meta = useMemo<MessageListMeta>(
     () => ({
       selectionLayer: true,
       userProfile: headerCapabilities.userProfile,
-      assistantProfile: assistant ? { name: assistant.name, avatar: assistant.emoji } : undefined,
+      assistantProfile: assistant
+        ? { name: assistant.name, avatar: assistant.avatarSrc ?? assistant.emoji }
+        : undefined,
+      assistantAvatarSources,
       imageExportFileName: topic.name
     }),
-    [assistant, headerCapabilities.userProfile, topic.name]
+    [assistant, assistantAvatarSources, headerCapabilities.userProfile, topic.name]
   )
 
   return useMemo(() => ({ state, actions, meta }), [actions, meta, state])

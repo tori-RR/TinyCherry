@@ -12,7 +12,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  Scrollbar,
+  ScrollArea,
   Select,
   SelectContent,
   SelectItem,
@@ -35,13 +35,13 @@ import { ProviderSettingsPage, useProviderModelSync } from '@renderer/pages/sett
 import { oauthWithCherryIn } from '@renderer/services/oauth'
 import { toast } from '@renderer/services/toast'
 import { getAppEdition } from '@renderer/utils/appEdition'
-import { isWin } from '@renderer/utils/platform'
+import { isEvoStack, isWin } from '@renderer/utils/platform'
 import { isProtectedBuiltinAgentRole } from '@shared/ai/builtinAgent'
 import type { OnboardingProviderSetupStatus } from '@shared/data/preference/preferenceTypes'
 import { CHERRYAI_DEFAULT_UNIQUE_MODEL_ID, isManagedCherryProviderId } from '@shared/data/presets/cherryai'
 import type { Model, UniqueModelId } from '@shared/data/types/model'
 import type { CherryCloudStatus } from '@shared/ipc/schemas/cherryCloud'
-import { LATEST_PRIVACY_POLICY_VERSION } from '@shared/utils/constants'
+import { APP_NAME, LATEST_PRIVACY_POLICY_VERSION } from '@shared/utils/constants'
 import { defaultLanguage } from '@shared/utils/languages'
 import { isNonChatModel } from '@shared/utils/model'
 
@@ -102,7 +102,7 @@ export default function OnboardingPage({
   const cloudStatusRef = useRef<CherryCloudStatus | null>(null)
   const hasRoutedCloudLoginRef = useRef(false)
   const isCnEdition = appEdition === 'cn'
-  const shouldUseCherryAccountLogin = isCnEdition && enableCherryAccountLogin
+  const shouldUseCherryAccountLogin = !isEvoStack && isCnEdition && enableCherryAccountLogin
   const {
     status: cloudStatus,
     login: handleCherryCloudLogin,
@@ -182,6 +182,7 @@ export default function OnboardingPage({
   }
 
   const persistPrivacyChoice = useCallback(async (): Promise<boolean> => {
+    if (isEvoStack) return true
     setIsUpdatingPrivacy(true)
     try {
       if (privacyAccepted && policyVersion === LATEST_PRIVACY_POLICY_VERSION) {
@@ -257,12 +258,12 @@ export default function OnboardingPage({
     async (modelId: UniqueModelId, expectedStatus: CherryCloudStatus) => {
       setIsCompleting(true)
       try {
-        if (!(await persistPrivacyChoice()) || expectedStatus !== cloudStatusRef.current) return
+        if (!(await persistPrivacyChoice()) || expectedStatus.scopeId !== cloudStatusRef.current?.scopeId) return
         await updateSeededAgentModels(modelId)
-        if (expectedStatus !== cloudStatusRef.current) return
+        if (expectedStatus.scopeId !== cloudStatusRef.current?.scopeId) return
         await updateOnboardingPreferences({ providerSetupStatus: 'skipped' })
       } catch {
-        if (expectedStatus === cloudStatusRef.current) {
+        if (expectedStatus.scopeId === cloudStatusRef.current?.scopeId) {
           toast.error(t('onboarding.toast.complete_failed'))
         }
       } finally {
@@ -290,7 +291,7 @@ export default function OnboardingPage({
     void ipcApi
       .request('cherry_cloud.models.sync')
       .then(({ availableModelIds, quotaExhaustedModelIds }) => {
-        if (expectedStatus !== cloudStatusRef.current) return
+        if (expectedStatus.scopeId !== cloudStatusRef.current?.scopeId) return
 
         const exhaustedModelIds = new Set(quotaExhaustedModelIds)
         const agentModelId = availableModelIds.agent.find((modelId) => !exhaustedModelIds.has(modelId))
@@ -301,7 +302,7 @@ export default function OnboardingPage({
         }
       })
       .catch(() => {
-        if (expectedStatus === cloudStatusRef.current) {
+        if (expectedStatus.scopeId === cloudStatusRef.current?.scopeId) {
           setStep(canContinueProviderSetup ? 'select-model' : 'provider')
         }
       })
@@ -422,15 +423,17 @@ export default function OnboardingPage({
               </SelectContent>
             </Select>
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="nodrag text-muted-foreground hover:text-foreground"
-            onClick={() => void complete('skipped')}
-            disabled={isCompleting || isUpdatingPrivacy}>
-            {t('onboarding.skip')}
-          </Button>
+          {(!isEvoStack || step !== 'welcome') && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="nodrag text-muted-foreground hover:text-foreground"
+              onClick={() => void complete('skipped')}
+              disabled={isCompleting || isUpdatingPrivacy}>
+              {t('onboarding.skip')}
+            </Button>
+          )}
         </div>
         <WindowControls />
       </div>
@@ -441,28 +444,32 @@ export default function OnboardingPage({
             {step === 'welcome' && (
               <div className="flex h-full w-full items-center justify-center px-6 pb-20">
                 <div className="flex w-full max-w-[420px] flex-col items-center">
-                  <img src={AppLogo} alt="Cherry Studio" className="size-16 rounded-xl" />
+                  <img src={AppLogo} alt={APP_NAME} className="size-16 rounded-xl" />
                   <div className="mt-5 flex flex-col gap-2 text-center">
-                    <h1 className="m-0 font-semibold text-2xl text-foreground">{t('onboarding.welcome.title')}</h1>
+                    <h1 className="m-0 font-semibold text-2xl text-foreground">
+                      {t('onboarding.welcome.title', { appName: APP_NAME })}
+                    </h1>
                     <p className="m-0 text-muted-foreground text-sm">{t('onboarding.welcome.subtitle')}</p>
                   </div>
                   <div className="mt-8 flex w-full flex-col gap-3">
-                    <Button
-                      type="button"
-                      size="lg"
-                      className="h-11 w-full rounded-xl"
-                      loading={isPrimaryLoginPending}
-                      disabled={
-                        isUpdatingPrivacy || (shouldUseCherryAccountLogin && cloudStatus?.phase === 'signed-in')
-                      }
-                      onClick={() =>
-                        void runAfterPrivacyChoice(
-                          shouldUseCherryAccountLogin ? handleCherryCloudLogin : handleCherryInLogin
-                        )
-                      }>
-                      {!isPrimaryLoginPending && <LogIn size={16} />}
-                      {primaryLoginLabel}
-                    </Button>
+                    {!isEvoStack && (
+                      <Button
+                        type="button"
+                        size="lg"
+                        className="h-11 w-full rounded-xl"
+                        loading={isPrimaryLoginPending}
+                        disabled={
+                          isUpdatingPrivacy || (shouldUseCherryAccountLogin && cloudStatus?.phase === 'signed-in')
+                        }
+                        onClick={() =>
+                          void runAfterPrivacyChoice(
+                            shouldUseCherryAccountLogin ? handleCherryCloudLogin : handleCherryInLogin
+                          )
+                        }>
+                        {!isPrimaryLoginPending && <LogIn size={16} />}
+                        {primaryLoginLabel}
+                      </Button>
+                    )}
                     {shouldUseCherryAccountLogin && cloudStatus?.phase === 'authorizing' ? (
                       <Button
                         type="button"
@@ -476,14 +483,26 @@ export default function OnboardingPage({
                     ) : null}
                     <Button
                       type="button"
-                      variant="outline"
+                      variant={isEvoStack ? 'default' : 'outline'}
                       size="lg"
                       className="h-11 w-full rounded-xl"
-                      disabled={isUpdatingPrivacy}
+                      disabled={isUpdatingPrivacy || isCompleting}
                       onClick={() => void runAfterPrivacyChoice(() => setStep('provider'))}>
                       <KeyRound size={16} />
-                      {t('onboarding.welcome.other_provider')}
+                      {t(isEvoStack ? 'onboarding.welcome.configure_provider' : 'onboarding.welcome.other_provider')}
                     </Button>
+                    {isEvoStack && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="lg"
+                        className="h-11 w-full rounded-xl"
+                        loading={isCompleting}
+                        disabled={isCompleting}
+                        onClick={() => void complete('skipped')}>
+                        {t('onboarding.skip')}
+                      </Button>
+                    )}
                   </div>
                   <p className="mt-4 mb-0 text-center text-muted-foreground text-xs">
                     {t('onboarding.welcome.setup_hint')}
@@ -532,7 +551,9 @@ export default function OnboardingPage({
                   onBack={() => setStep('provider')}
                   padded
                 />
-                <Scrollbar className="flex min-h-0 flex-1 justify-center border-border border-t px-6 py-8">
+                <ScrollArea
+                  contentProps={{ className: 'flex justify-center px-6 py-8' }}
+                  className="min-h-0 flex-1 border-border border-t">
                   <div className="my-auto w-full max-w-[440px]">
                     <div className="w-full">
                       <ModelSettings
@@ -563,12 +584,12 @@ export default function OnboardingPage({
                       </div>
                     </div>
                   </div>
-                </Scrollbar>
+                </ScrollArea>
               </div>
             )}
           </div>
 
-          {step === 'welcome' && (
+          {!isEvoStack && step === 'welcome' && (
             <div className="nodrag flex shrink-0 justify-center px-6 py-3">
               <div className="flex max-w-full items-center gap-2 text-center text-muted-foreground text-xs leading-relaxed">
                 <Checkbox
@@ -595,13 +616,15 @@ export default function OnboardingPage({
         </section>
       </div>
 
-      <PrivacyPolicyDialog
-        open={showPrivacyPolicy}
-        onAccept={() => handlePrivacyPolicyChoice(true)}
-        onDecline={() => handlePrivacyPolicyChoice(false)}
-        acceptButtonText={t('onboarding.privacy.accept_and_continue')}
-        isPending={isUpdatingPrivacy}
-      />
+      {!isEvoStack && (
+        <PrivacyPolicyDialog
+          open={showPrivacyPolicy}
+          onAccept={() => handlePrivacyPolicyChoice(true)}
+          onDecline={() => handlePrivacyPolicyChoice(false)}
+          acceptButtonText={t('onboarding.privacy.accept_and_continue')}
+          isPending={isUpdatingPrivacy}
+        />
+      )}
       <Dialog
         open={showNoCloudModelsDialog}
         onOpenChange={(open) => !open && openProviderSetupAfterCloudModelUnavailable()}>

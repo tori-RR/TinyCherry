@@ -26,7 +26,6 @@ import { knowledgeRoutes } from './routes/knowledge'
 import { createMcpRoutes } from './routes/mcp'
 import { messagesRoutes } from './routes/messages'
 import { modelsRoutes } from './routes/models'
-import { remoteRoutes } from './routes/remote'
 import { responsesRoutes } from './routes/responses'
 
 const logger = loggerService.withContext('ApiGateway')
@@ -198,9 +197,6 @@ export function buildApp({
     // reads only `x-api-key`/Bearer, so it would 401 the Gemini `x-goog-api-key` /
     // `?key=` credentials). Registering `/v1beta` first keeps it out of that guard's
     // reach; the `local` gemini guard does not leak back onto `/v1`.
-    // Paired devices upgrade to the encrypted remote channel here; it must stay out of the
-    // `/v1` bearer guard because a device authenticates inside the channel, not with a key.
-    .use(remoteRoutes)
     .use(createGeminiRoutes(surface))
     .use(buildV1Routes(mcpSessions, surface))
 

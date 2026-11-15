@@ -7,12 +7,13 @@ import { ipcApi } from '@renderer/ipc'
 import { toast } from '@renderer/services/toast'
 import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
 import { normalizeFilePreviewPath } from '@renderer/utils/filePreview'
-import { getKnowledgeItemDisplayTitle, type KnowledgeItem } from '@shared/data/types/knowledge'
+import type { KnowledgeItem } from '@shared/data/types/knowledge'
 import { IpcError } from '@shared/ipc/errors/IpcError'
 import { knowledgeErrorCodes } from '@shared/ipc/errors/knowledge'
 
 import type { KnowledgeFilePreviewTarget } from '../types'
 import { normalizeKnowledgeError } from '../utils/error'
+import { getKnowledgeDisplayTitle } from '../utils/itemTitle'
 
 const logger = loggerService.withContext('usePreviewKnowledgeSource')
 
@@ -57,7 +58,7 @@ export const usePreviewKnowledgeSource = (
           const physicalPath = await ipcApi.request('knowledge.get_file_path', { itemId: item.id })
           if (!isCurrentRequest()) return
           onPreviewFile({
-            fileName: getKnowledgeItemDisplayTitle(item),
+            fileName: getKnowledgeDisplayTitle(item),
             filePath: normalizeFilePreviewPath(physicalPath)
           })
           return

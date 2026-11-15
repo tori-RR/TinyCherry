@@ -1,14 +1,13 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { PropsWithChildren } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type * as CherryStudioUi from '@cherrystudio/ui'
-import type { ReadTextAloudInput } from '@renderer/services/voice/manualPlayback'
 import type { SelectionActionSession } from '@shared/types/selection'
 
 import ActionWindow from '../ActionWindow'
 
-const { actionState, ipcRequest, opacityPreference, platform, readAloud, dismissalListeners } = vi.hoisted(() => ({
+const { actionState, ipcRequest, opacityPreference, platform, dismissalListeners } = vi.hoisted(() => ({
   actionState: {
     value: {
       id: 'test-action',
@@ -21,12 +20,7 @@ const { actionState, ipcRequest, opacityPreference, platform, readAloud, dismiss
   ipcRequest: vi.fn(),
   opacityPreference: { value: 100 },
   platform: { isMac: false },
-  readAloud: vi.fn<(input: ReadTextAloudInput) => Promise<void>>(async () => undefined),
   dismissalListeners: new Set<(payload: { sessionId: string }) => void>()
-}))
-
-vi.mock('@renderer/services/voice', () => ({
-  readTextAloud: readAloud
 }))
 
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
@@ -81,14 +75,7 @@ vi.mock('@renderer/utils/platform', () => ({
   }
 }))
 
-vi.mock('../components/ActionGeneral', async () => {
-  const { ResultReadAloudButton } = await import('../components/ResultReadAloudButton')
-  return {
-    default: ({ sourceEntityId }: { sourceEntityId: string }) => (
-      <ResultReadAloudButton text="generated result" sourceEntityId={sourceEntityId} />
-    )
-  }
-})
+vi.mock('../components/ActionGeneral', () => ({ default: () => null }))
 vi.mock('../components/ActionTranslate', () => ({ default: () => null }))
 
 describe('ActionWindow surface', () => {
@@ -102,29 +89,7 @@ describe('ActionWindow surface', () => {
     } as SelectionActionSession
     opacityPreference.value = 100
     platform.isMac = false
-    readAloud.mockClear()
     HTMLElement.prototype.scrollTo = vi.fn()
-  })
-
-  it('cancels the hidden or replaced session without cancelling a later pooled session', async () => {
-    actionState.value = { ...actionState.value, selectedText: 'PRIVATE_SELECTION_1' }
-    const view = render(<ActionWindow />)
-    fireEvent.click(screen.getByRole('button', { name: 'selection.action.voice.read_result' }))
-    const first = readAloud.mock.calls.at(-1)![0].signal!
-    expect(first.aborted).toBe(false)
-    act(() => dismissalListeners.forEach((listener) => listener({ sessionId: 'session-1' })))
-    expect(first.aborted).toBe(true)
-
-    actionState.value = { ...actionState.value, selectedText: 'PRIVATE_SELECTION_2', sessionId: 'session-2' }
-    view.rerender(<ActionWindow />)
-    fireEvent.click(screen.getByRole('button', { name: 'selection.action.voice.read_result' }))
-    const second = readAloud.mock.calls.at(-1)![0].signal!
-    act(() => dismissalListeners.forEach((listener) => listener({ sessionId: 'session-1' })))
-    expect(second.aborted).toBe(false)
-
-    actionState.value = { ...actionState.value, sessionId: 'session-3' }
-    view.rerender(<ActionWindow />)
-    expect(second.aborted).toBe(true)
   })
 
   it('uses an opaque popover surface at 100% window opacity', () => {
@@ -157,15 +122,6 @@ describe('ActionWindow surface', () => {
     expect(container.firstElementChild).toHaveStyle({ opacity: '0.6' })
   })
 
-  it('leaves additional title spacing after the macOS traffic lights', () => {
-    platform.isMac = true
-
-    const { container } = render(<ActionWindow />)
-    const titleBar = container.firstElementChild?.firstElementChild
-
-    expect(titleBar).toHaveStyle({ paddingLeft: '78px' })
-  })
-
   it('names the pin action and updates its name after toggling the native window state', () => {
     render(<ActionWindow />)
     fireEvent.click(screen.getByRole('button', { name: 'selection.action.window.pin' }))
@@ -183,7 +139,7 @@ describe('ActionWindow surface', () => {
 
     fireEvent.click(pinButton!)
     fireEvent.click(opacityButton!)
-    expect(pinButton).toHaveClass('bg-accent')
+
     expect(container.querySelector('[data-slot="slider"]')).toBeInTheDocument()
 
     vi.mocked(HTMLElement.prototype.scrollTo).mockClear()
@@ -194,7 +150,6 @@ describe('ActionWindow surface', () => {
 
     await waitFor(() => {
       expect(container.querySelector('[data-slot="slider"]')).not.toBeInTheDocument()
-      expect(pinButton).not.toHaveClass('bg-accent')
     })
     expect(container.firstElementChild).toHaveStyle({ opacity: '0.6' })
     expect(HTMLElement.prototype.scrollTo).toHaveBeenCalledWith({ top: 0 })

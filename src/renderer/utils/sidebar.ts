@@ -1,3 +1,5 @@
+import { parseAppRouteUrl } from '@renderer/utils/appRouteUrl'
+import { isEvoStack } from '@renderer/utils/platform'
 import {
   createSidebarShortcutId,
   type SidebarFavorite,
@@ -39,11 +41,7 @@ interface SidebarAppDefinition<Id extends SidebarFavorite = SidebarFavorite> {
 }
 
 function getConversationSearchParamFromUrl(url: string, name: string): string | undefined {
-  try {
-    return new URL(url, 'app://x').searchParams.get(name) ?? undefined
-  } catch {
-    return undefined
-  }
+  return parseAppRouteUrl(url)?.searchParams.get(name) ?? undefined
 }
 
 /**
@@ -69,23 +67,24 @@ const SIDEBAR_APP_DEFINITIONS = [
       urlForKey: (key) => conversationRouteUrl({ conversationType: 'assistant', conversationId: key })
     }
   },
+  { id: 'knowledge', routePrefix: '/app/knowledge' },
+  {
+    id: 'scheduled_tasks',
+    routePrefix: '/app/scheduled-tasks'
+  },
   {
     id: 'paintings',
     routePrefix: '/app/paintings',
     resolveUrl: ({ defaultPaintingProvider }) => `/app/paintings/${defaultPaintingProvider}`
   },
   {
-    id: 'translate',
-    routePrefix: '/app/translate'
+    id: 'marketplace',
+    routePrefix: '/app/marketplace'
   },
   {
     id: 'mini_app',
     routePrefix: '/app/mini-app',
     exactRouteFocus: true
-  },
-  {
-    id: 'knowledge',
-    routePrefix: '/app/knowledge'
   },
   {
     id: 'files',
@@ -150,6 +149,10 @@ export function isSidebarAppId(value: string): value is SidebarAppId {
   return sidebarFavoriteSet.has(value as SidebarAppId)
 }
 
+function isSidebarAppAvailable(id: string): boolean {
+  return !isEvoStack || id !== 'marketplace'
+}
+
 export const SIDEBAR_SHORTCUT_PROVIDER_IDS = {
   APP: 'core.app',
   MINI_APP: 'core.mini-app',
@@ -209,6 +212,11 @@ function normalizeKnownSidebarShortcut(value: StoredSidebarItem): SidebarShortcu
   if (value.type === 'shortcut') {
     if (!isSidebarShortcutTarget(value.target)) return undefined
     if (RETIRED_SIDEBAR_SHORTCUT_PROVIDER_IDS.has(value.target.locator.providerId)) return undefined
+    if (
+      value.target.locator.providerId === SIDEBAR_SHORTCUT_PROVIDER_IDS.APP &&
+      value.target.locator.resourceId === 'translate'
+    )
+      return undefined
     return {
       type: 'shortcut',
       id: createSidebarShortcutId(value.target),
@@ -271,7 +279,13 @@ export function normalizeSidebarShortcutItems(values: readonly unknown[] | undef
 }
 
 export function getVisibleSidebarShortcutItems(values: readonly unknown[] | undefined): SidebarShortcutItem[] {
-  return normalizeSidebarShortcutItems(values).filter(isSidebarShortcutItem)
+  return normalizeSidebarShortcutItems(values)
+    .filter(isSidebarShortcutItem)
+    .filter(
+      (item) =>
+        item.target.locator.providerId !== SIDEBAR_SHORTCUT_PROVIDER_IDS.APP ||
+        isSidebarAppAvailable(item.target.locator.resourceId)
+    )
 }
 
 function isBuiltInAppShortcutTarget(target: SidebarShortcutTarget): target is SidebarShortcutTarget & {
@@ -307,14 +321,25 @@ export function addSidebarShortcut(
   const items = normalizeSidebarShortcutItems(values)
   const id = createSidebarShortcutId(target)
   if (items.some((item) => isSidebarShortcutItem(item) && item.id === id)) return items
+  const chatIndex =
+    isBuiltInAppShortcutTarget(target) && target.locator.resourceId === 'scheduled_tasks'
+      ? items.findIndex(
+          (item) =>
+            isSidebarShortcutItem(item) &&
+            isBuiltInAppShortcutTarget(item.target) &&
+            item.target.locator.resourceId === 'assistants'
+        )
+      : -1
+  const insertIndex = chatIndex === -1 ? items.length : chatIndex + 1
   return [
-    ...items,
+    ...items.slice(0, insertIndex),
     {
       type: 'shortcut',
       id,
       target,
       ...(fallbackLabel ? { fallbackLabel } : {})
-    }
+    },
+    ...items.slice(insertIndex)
   ]
 }
 
@@ -382,7 +407,7 @@ export function isSidebarShortcutPinned(
  * The ordered launchpad app ids. Stored order is filtered to valid app ids and
  * deduped; any app missing from storage (e.g. an empty default or a newly added
  * app) is appended in canonical order, so a partial or empty store still yields
- * every app exactly once.
+ * every available app exactly once.
  */
 export function getOrderedLaunchpadApps(stored: readonly string[] | undefined): SidebarAppId[] {
   const seen = new Set<SidebarAppId>()
@@ -397,11 +422,15 @@ export function getOrderedLaunchpadApps(stored: readonly string[] | undefined): 
   for (const id of SIDEBAR_FAVORITE_ORDER) {
     if (!seen.has(id)) {
       seen.add(id)
-      ordered.push(id)
+      if (id === 'marketplace' && ordered.includes('paintings')) {
+        ordered.splice(ordered.indexOf('paintings') + 1, 0, id)
+      } else {
+        ordered.push(id)
+      }
     }
   }
 
-  return ordered
+  return ordered.filter(isSidebarAppAvailable)
 }
 
 /**

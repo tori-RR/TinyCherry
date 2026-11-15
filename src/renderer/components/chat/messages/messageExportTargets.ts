@@ -35,43 +35,11 @@ export const messageExportTargets: {
     action: 'exportToWord'
   },
   {
-    target: 'notion',
-    option: 'notion',
-    labelKey: 'chat.topics.export.notion',
-    group: 'external',
-    commandId: 'message.exportNotion',
-    action: 'exportToNotion'
-  },
-  {
-    target: 'yuque',
-    option: 'yuque',
-    labelKey: 'chat.topics.export.yuque',
-    group: 'external',
-    commandId: 'message.exportYuque',
-    action: 'exportToYuque'
-  },
-  {
     target: 'obsidian',
     option: 'obsidian',
     labelKey: 'chat.topics.export.obsidian',
     group: 'external',
     commandId: 'message.exportObsidian',
     action: 'exportToObsidian'
-  },
-  {
-    target: 'joplin',
-    option: 'joplin',
-    labelKey: 'chat.topics.export.joplin',
-    group: 'external',
-    commandId: 'message.exportJoplin',
-    action: 'exportToJoplin'
-  },
-  {
-    target: 'siyuan',
-    option: 'siyuan',
-    labelKey: 'chat.topics.export.siyuan',
-    group: 'external',
-    commandId: 'message.exportSiyuan',
-    action: 'exportToSiyuan'
   }
 ]

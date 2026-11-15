@@ -41,6 +41,14 @@ const itemIdsInputSchema = z.strictObject({
 
 // ── Request: renderer→main calls (zod values, always parsed) ──
 export const knowledgeRequestSchemas = {
+  'knowledge.import_text': defineRoute({
+    input: z.strictObject({
+      baseId: baseIdSchema,
+      name: z.string().trim().min(1).max(255),
+      content: z.string().min(1).max(1_000_000)
+    }),
+    output: z.void()
+  }),
   'knowledge.create_base': defineRoute({
     input: z.strictObject({ base: CreateKnowledgeBaseSchema }),
     output: KnowledgeBaseSchema

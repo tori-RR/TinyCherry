@@ -1,7 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router'
-
-import TranslatePage from '@renderer/pages/translate/TranslatePage'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/app/translate')({
-  component: TranslatePage
+  beforeLoad: () => {
+    throw redirect({ to: '/app/launchpad', replace: true })
+  }
 })

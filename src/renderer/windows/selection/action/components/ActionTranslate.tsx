@@ -1,6 +1,6 @@
 import { ArrowRight, ChevronDown, CircleHelp, Globe2, Loader2, Settings2 } from 'lucide-react'
 import type { FC } from 'react'
-import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { Suspense, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button, Popover, PopoverContent, PopoverTrigger, Tooltip } from '@cherrystudio/ui'
@@ -12,6 +12,7 @@ import { CodeBlockWrapLinesContext } from '@renderer/components/CodeBlockView/wr
 import CopyButton from '@renderer/components/CopyButton'
 import LanguageSelect from '@renderer/components/LanguageSelect'
 import { detectLanguageOrUnknown, useDetectLang, useLanguages, useTranslate } from '@renderer/hooks/translate'
+import { useDefaultModel } from '@renderer/hooks/useModel'
 import { cn } from '@renderer/utils/style'
 import { pickBidirectionalTarget, UNKNOWN_LANG_CODE } from '@renderer/utils/translate'
 import type { SelectionActionItem, TranslateLangCode } from '@shared/data/preference/preferenceTypes'
@@ -20,7 +21,6 @@ import type { CherryMessagePart } from '@shared/data/types/message'
 import type { TranslateLanguage } from '@shared/data/types/translate'
 
 import { getSelectionActionErrorMessage } from '../errorMessage'
-import { ResultReadAloudButton } from './ResultReadAloudButton'
 import WindowFooter from './WindowFooter'
 
 // Lazy boundary (S6b): keeps the heavy message-content chain out of the action
@@ -32,21 +32,23 @@ const ActionResultContent = React.lazy(importActionResultContent)
 
 interface Props {
   action: SelectionActionItem
-  sourceEntityId: string
   scrollToBottom: () => void
 }
 
 const logger = loggerService.withContext('ActionTranslate')
 const TRANSLATION_MESSAGE_ID = 'selection-translation-result'
 const TRANSLATION_TOPIC_ID = 'selection-translation'
-const ActionTranslate: FC<Props> = ({ action, sourceEntityId, scrollToBottom }) => {
+const ActionTranslate: FC<Props> = ({ action, scrollToBottom }) => {
   const { t } = useTranslation()
   const selectedText = action.selectedText
 
   const [language] = usePreference('app.language')
+  const [autoDetectionMethod] = usePreference('feature.translate.auto_detection_method')
   const { languages, getLanguage } = useLanguages()
   const isLanguagesLoaded = languages !== undefined
   const detectLanguage = useDetectLang()
+  const { quickModel } = useDefaultModel()
+  const detectionModelId = autoDetectionMethod === 'franc' ? undefined : quickModel?.id
   // Read once, not subscribed: the pair is session-local, so saves from other windows must not retarget it.
   const [savedLangCodes, setSavedLangCodes] = useState<{
     preferred: TranslateLangCode
@@ -241,9 +243,12 @@ const ActionTranslate: FC<Props> = ({ action, sourceEntityId, scrollToBottom }) 
     })
   }, [])
 
-  useEffect(() => {
+  const translateSelection = useEffectEvent(() => {
     void fetchResult()
-  }, [fetchResult])
+  })
+  useEffect(() => {
+    translateSelection()
+  }, [selectedText, initialized, targetLanguage.langCode, alterLanguage.langCode, detectionModelId])
 
   const handleChangeLanguage = useCallback(
     (newTargetLanguage: TranslateLanguage, newAlterLanguage: TranslateLanguage) => {
@@ -440,11 +445,7 @@ const ActionTranslate: FC<Props> = ({ action, sourceEntityId, scrollToBottom }) 
         )}
       </div>
       <div className="min-h-3" />
-      <WindowFooter loading={isStreaming} onPause={handlePause} onRegenerate={handleRegenerate} content={content}>
-        {!isStreaming && !error && content.trim() && (
-          <ResultReadAloudButton text={content} sourceEntityId={sourceEntityId} />
-        )}
-      </WindowFooter>
+      <WindowFooter loading={isStreaming} onPause={handlePause} onRegenerate={handleRegenerate} content={content} />
     </>
   )
 }

@@ -13,7 +13,6 @@ import { type Activatable, BaseService, DependsOn, Injectable, Phase, ServicePha
 import type { OutputFor } from '@shared/ipc/types'
 import type { ApiGatewayConfig, ApiGatewayStopOutcome } from '@shared/types/apiGateway'
 import { gatewayClientOrigin } from '@shared/utils/apiGateway'
-import { REDACTED } from '@shared/utils/redaction'
 
 import { isGatewayBindPermissionError, mapGatewayBindError } from './bindError'
 import { isValidToken } from './middleware/auth'
@@ -22,6 +21,7 @@ import type { ApiGateway } from './server'
 
 const logger = loggerService.withContext('ApiGatewayService')
 const AGENT_SESSION_ID_HEADER = 'x-cherry-agent-session-id'
+const AGENT_USAGE_CAPTURE_HEADER = 'x-cherry-agent-usage-capture'
 const INTERNAL_GATEWAY_HOST = '127.0.0.1'
 
 /** What a scoped internal credential may call: one generation path, one model address. */
@@ -48,6 +48,7 @@ export class ApiGatewayService extends BaseService implements Activatable {
   private readonly internalApiKey = `cs-internal-${uuidv4()}`
   /** Live scoped credentials; each authorizes only its own scope until disposed. */
   private readonly scopedCredentials = new Map<string, InternalCredentialScope>()
+  private readonly usageCaptures = new Map<string, InProcessUsageContext>()
   /** Loopback listener for internal consumers, started on first use and independent of `enabled`. */
   private internalGateway: Promise<ApiGateway> | null = null
   private internalOrigin: string | undefined
@@ -88,28 +89,6 @@ export class ApiGatewayService extends BaseService implements Activatable {
       }
     }
   })
-
-  protected async onInit(): Promise<void> {
-    // The reconciler holds no OS resources (only closures + flags), so it is not disposed on stop:
-    // it is a construct-once field that is NOT recreated on restart (`start()` re-runs `onInit`), and
-    // disposing it would permanently no-op `request()` after a stop→restart. After stop, the pref
-    // subscription and IPC handlers below are cleaned up, so nothing calls `request()` anyway.
-    this.registerDisposable(
-      application.get('PreferenceService').subscribeChange('feature.api_gateway.enabled', (enabled) => {
-        this.desiredEnabled = enabled
-        this.reconciler.request()
-      })
-    )
-  }
-
-  protected async onReady(): Promise<void> {
-    const config = this.getCurrentConfig()
-    // Never log the raw API key — redact before emitting.
-    logger.info('API gateway config:', { ...config, apiKey: config.apiKey ? REDACTED : null })
-    this.desiredEnabled = config.enabled
-    this.reconciler.request()
-    await this.reconciler.flush()
-  }
 
   async onActivate(): Promise<void> {
     try {
@@ -153,6 +132,7 @@ export class ApiGatewayService extends BaseService implements Activatable {
     this.internalGateway = null
     this.internalOrigin = undefined
     await internalGateway?.then((gateway) => gateway.stop()).catch(() => undefined)
+    this.usageCaptures.clear()
   }
 
   /**
@@ -445,6 +425,29 @@ export class ApiGatewayService extends BaseService implements Activatable {
     return { [AGENT_SESSION_ID_HEADER]: sessionId }
   }
 
+  captureAgentSessionUsage(
+    sessionId: string,
+    ownerSessionId = sessionId,
+    traceContext?: InProcessUsageContext['traceContext']
+  ): { headers: Record<string, string>; release(): void } {
+    const current = application.get('AgentSessionRuntimeService').getActiveUsageContext(sessionId)
+    const usage =
+      current && ownerSessionId === sessionId
+        ? current
+        : { agentSessionId: ownerSessionId, source: current?.source ?? null }
+    const key = uuidv4()
+    this.usageCaptures.set(key, traceContext ? { ...usage, traceContext } : usage)
+    return {
+      headers: {
+        ...this.getAgentSessionUsageHeaders(ownerSessionId),
+        [AGENT_USAGE_CAPTURE_HEADER]: key
+      },
+      release: () => {
+        this.usageCaptures.delete(key)
+      }
+    }
+  }
+
   /** Agent session id of an unrestricted internal request; undefined for every other caller. */
   getAgentSessionId(headers: Headers): string | undefined {
     const token = presentedToken(headers)
@@ -453,9 +456,14 @@ export class ApiGatewayService extends BaseService implements Activatable {
   }
 
   /** Capture the reserved continuation or active turn of the requesting Agent session. */
-  resolveAgentSessionUsage(headers: Headers): InProcessUsageContext | undefined {
+  resolveAgentSessionUsage(headers: Headers, responseId?: string): InProcessUsageContext | undefined {
     const sessionId = this.getAgentSessionId(headers)
     if (!sessionId) return undefined
-    return application.get('AgentSessionRuntimeService').getActiveUsageContext(sessionId)
+    const capture = headers.get(AGENT_USAGE_CAPTURE_HEADER)
+    if (capture) {
+      const usage = this.usageCaptures.get(capture)
+      return usage?.agentSessionId === sessionId ? usage : undefined
+    }
+    return application.get('AgentSessionRuntimeService').getActiveUsageContext(sessionId, responseId)
   }
 }

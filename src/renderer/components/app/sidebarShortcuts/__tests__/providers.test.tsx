@@ -40,7 +40,7 @@ describe('core sidebar shortcut providers', () => {
     ['core.mini-app', 'mini app/one', 'workspace', '/app/mini-app/mini%20app%2Fone'],
     ['core.agent', 'agent/one', 'workspace', '/app/agents?agentId=agent%2Fone'],
     ['core.assistant', 'assistant/one', 'workspace', '/app/chat?assistantId=assistant%2Fone'],
-    ['core.knowledge-base', 'base/one', 'workspace', '/app/knowledge?baseId=base%2Fone'],
+
     ['core.topic', 'topic/one', 'workspace', '/app/chat?topicId=topic%2Fone'],
     ['core.agent-session', 'session/one', 'workspace', '/app/agents?sessionId=session%2Fone'],
     ['core.code-cli', CodeCli.OPENAI_CODEX, 'workspace', '/app/code?tool=openai-codex'],
@@ -171,16 +171,6 @@ describe('core sidebar shortcut providers', () => {
 
   it.each([
     {
-      providerId: 'core.knowledge-base',
-      endpoint: '/knowledge-bases',
-      resourceIds: ['base-1', 'base-2'],
-      items: [
-        { id: 'base-2', name: 'Second base' },
-        { id: 'base-1', name: 'First base' }
-      ],
-      labels: ['Second base', 'First base']
-    },
-    {
       providerId: 'core.agent-session',
       endpoint: '/agent-sessions',
       resourceIds: ['session-1', 'session-2'],
@@ -219,7 +209,6 @@ describe('core sidebar shortcut providers', () => {
   })
 
   it.each([
-    ['core.knowledge-base', 'base-1', '/app/knowledge?baseId=base-1'],
     ['core.topic', 'topic-1', '/app/chat?topicId=topic-1'],
     ['core.agent-session', 'session-1', '/app/agents?sessionId=session-1'],
     ['core.code-cli', CodeCli.CLAUDE_CODE, '/app/code?tool=claude-code'],

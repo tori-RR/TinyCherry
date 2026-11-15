@@ -1,7 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router'
-
-import { DeviceConnectionsSettings } from '@renderer/pages/settings/DeviceConnectionsSettings'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/settings/device-connections')({
-  component: DeviceConnectionsSettings
+  beforeLoad: () => {
+    throw redirect({ to: '/settings/provider', replace: true })
+  }
 })

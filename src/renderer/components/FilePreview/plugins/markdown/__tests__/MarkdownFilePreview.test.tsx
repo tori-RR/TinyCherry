@@ -1,7 +1,7 @@
+import { MockCherrystudioUI } from '@test-mocks/renderer/CherrystudioUI'
 import { mockRendererLoggerService } from '@test-mocks/RendererLoggerService'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ComponentPropsWithoutRef } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type * as CherryStudioUi from '@cherrystudio/ui'
@@ -26,7 +26,7 @@ vi.mock('@cherrystudio/ui', async (importOriginal) => ({
       <span>{description}</span>
     </div>
   ),
-  Scrollbar: ({ children, ...props }: ComponentPropsWithoutRef<'div'>) => <div {...props}>{children}</div>,
+  ScrollArea: MockCherrystudioUI.ScrollArea,
   SegmentedControl: ({
     disabled,
     onValueChange,
@@ -80,6 +80,38 @@ function renderPreview(
 }
 
 describe('MarkdownFilePreview', () => {
+  it('renders native skill Markdown through the original fs facade and controlled binary transport', async () => {
+    const content = '# Native skill preview\n\n保留原始 Markdown 界面。'
+    const bytes = Array.from(new TextEncoder().encode(content))
+    const invoke = vi.fn(async (_command: string, request: { channel: string; args: unknown[] }) => {
+      if (request.channel !== 'ipc-api:request' || request.args[0] !== 'file.read') {
+        throw new Error('EVOSTACK_NOT_MIGRATED: fs:readText')
+      }
+      return { ok: true, data: { content: bytes, mime: 'text/markdown', version: { size: bytes.length, mtime: 1 } } }
+    })
+    vi.stubGlobal('__TAURI__', { core: { invoke, Channel: vi.fn() } })
+    try {
+      const { ipcRenderer } = await import('@renderer/windows/evostack/transport')
+      mocks.readText.mockImplementation((path: string) => ipcRenderer.invoke('fs:readText', path))
+      renderPreview({ filePath: 'C:\\fixture\\SKILL.md' as AbsoluteFilePath, size: bytes.length })
+
+      expect(await screen.findByRole('heading', { name: 'Native skill preview' })).toBeInTheDocument()
+      expect(screen.getByText('保留原始 Markdown 界面。')).toBeInTheDocument()
+      expect(invoke).toHaveBeenCalledExactlyOnceWith('ipc_request', {
+        channel: 'ipc-api:request',
+        args: [
+          'file.read',
+          {
+            handle: { kind: 'path', path: 'C:\\fixture\\SKILL.md' },
+            options: { mode: 'full', encoding: 'binary' }
+          }
+        ]
+      })
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('ignores an obsolete read failure while replacement metadata is pending', async () => {
     const obsoleteRead = Promise.withResolvers<string>()
     const metadata = {
@@ -316,8 +348,6 @@ describe('MarkdownFilePreview', () => {
     expect(await screen.findByRole('heading')).toHaveTextContent('File preview')
     expect(screen.getByRole('heading')).not.toHaveTextContent('name: Writer')
     expect(screen.getByRole('heading')).not.toHaveTextContent('description: Draft clear prose')
-    expect(screen.queryByRole('button', { name: 'file_preview.markdown.mode.preview' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'file_preview.markdown.mode.source' })).not.toBeInTheDocument()
   })
 
   it('reloads content when the path or refresh key changes', async () => {

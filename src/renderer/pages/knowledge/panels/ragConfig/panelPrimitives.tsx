@@ -79,6 +79,7 @@ export const RagInlineField = ({
     <RagFieldRow label={label} hint={hint}>
       <div className={cn('relative', controlClassName ?? 'w-44')}>
         <Input
+          aria-label={label}
           value={value}
           placeholder={placeholder}
           inputMode={inputMode}

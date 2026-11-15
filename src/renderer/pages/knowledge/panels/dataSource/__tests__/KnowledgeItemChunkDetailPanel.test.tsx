@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { CSSProperties, ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type * as RendererPlatform from '@renderer/utils/platform'
 import type { KnowledgeItemChunk } from '@shared/data/types/knowledge'
 
 import KnowledgeItemChunkDetailPanel from '../KnowledgeItemChunkDetailPanel'
@@ -9,6 +10,13 @@ import { createFileItem } from './testUtils'
 
 const mockIpcRequest = vi.fn()
 const mockUseQuery = vi.fn()
+const platform = vi.hoisted(() => ({ native: false }))
+vi.mock('@renderer/utils/platform', async (original) => ({
+  ...(await original<typeof RendererPlatform>()),
+  get isEvoStack() {
+    return platform.native
+  }
+}))
 let capturedVirtualListProps:
   | {
       list: KnowledgeItemChunk[]
@@ -94,7 +102,7 @@ vi.mock('@cherrystudio/ui', () => ({
       {description}
     </div>
   ),
-  Scrollbar: ({ children, ...props }: { children: ReactNode; [key: string]: unknown }) => {
+  ScrollArea: ({ children, ...props }: { children: ReactNode; [key: string]: unknown }) => {
     delete props.autoHideScrollbar
     return <div {...props}>{children}</div>
   }
@@ -142,6 +150,7 @@ vi.mock('react-i18next', () => ({
             'knowledge.data_source.empty_description': '暂无数据源',
             'knowledge.data_source.filters.file': '文件',
             'knowledge.rag.tokens_unit': 'tokens',
+            'knowledge.rag.characters_unit': '字符',
             'knowledge.data_source.status.ready': '就绪'
           } as Record<string, string>
         )[key] ?? key
@@ -152,6 +161,7 @@ vi.mock('react-i18next', () => ({
 
 describe('KnowledgeItemChunkDetailPanel', () => {
   beforeEach(() => {
+    platform.native = false
     vi.clearAllMocks()
     capturedVirtualListProps = undefined
     mockIpcRequest.mockResolvedValue(chunks)
@@ -174,6 +184,14 @@ describe('KnowledgeItemChunkDetailPanel', () => {
 
   const renderPanel = () =>
     render(<KnowledgeItemChunkDetailPanel baseId="base-1" itemId="file-1" onBack={() => undefined} />)
+
+  it('labels the native compatibility count as characters rather than model tokens', async () => {
+    platform.native = true
+    renderPanel()
+    expect(await screen.findByText('145 字符')).toBeVisible()
+    expect(screen.getByText('88 字符')).toBeVisible()
+    expect(screen.queryByText('145 tokens')).not.toBeInTheDocument()
+  })
 
   it('renders item metadata and real chunks', async () => {
     mockUseQuery.mockImplementation((path: string) => {

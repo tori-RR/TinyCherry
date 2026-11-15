@@ -25,10 +25,6 @@ export interface ScreenshotInitData {
     height: number
     scaleFactor: number
   }
-  /** Whether the overlay should run OCR once a selection settles. */
-  autoOcr: boolean
-  /** Whether system OCR or an installed local model is available for this session. */
-  ocrAvailable: boolean
 }
 
 /**

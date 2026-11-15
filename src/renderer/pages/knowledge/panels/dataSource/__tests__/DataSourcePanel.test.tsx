@@ -1,5 +1,4 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -152,7 +151,7 @@ vi.mock('@cherrystudio/ui', async (importOriginal) => {
         </span>
       )
     },
-    Scrollbar: ({ children }: { children: ReactNode }) => <div>{children}</div>
+    ScrollArea: ({ children }: { children: ReactNode }) => <div>{children}</div>
   }
 })
 
@@ -382,85 +381,38 @@ describe('DataSourcePanel', () => {
     })
   })
 
-  it('shows local model download progress and hides every add-source entry until ready', () => {
-    mockUseLocalModel.mockReturnValue({ status: 'downloading', percent: 42 })
-    const props = {
-      embeddingModelId: LOCAL_EMBEDDING_UNIQUE_MODEL_ID,
-      updatedAt: '2026-04-15T09:00:00+08:00',
-      items: [],
-      isLoading: false,
-      onAdd: vi.fn(),
-      onDelete: vi.fn(),
-      onReindex: vi.fn()
+  it.each(['downloading', 'not_downloaded', 'error', 'unsupported'])(
+    'keeps sources accessible without the removed local model download gate (%s)',
+    (status) => {
+      mockUseLocalModel.mockReturnValue({ status, percent: 42 })
+      const onAdd = vi.fn()
+      render(
+        <DataSourcePanel
+          embeddingModelId={LOCAL_EMBEDDING_UNIQUE_MODEL_ID}
+          updatedAt="2026-04-15T09:00:00+08:00"
+          items={[]}
+          isLoading={false}
+          onAdd={onAdd}
+          onDelete={vi.fn()}
+          onReindex={vi.fn()}
+        />
+      )
+
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+      expect(screen.queryByText('本地嵌入模型')).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: '前往设置' })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '添加数据源' })).toBeInTheDocument()
+      for (const name of ['文件', '笔记', '目录', '链接']) {
+        expect(screen.getByRole('button', { name })).toBeEnabled()
+      }
+      fireEvent.click(screen.getByRole('button', { name: '文件' }))
+      expect(onAdd).toHaveBeenCalledWith('file')
+      expect(mockUseLocalModel).not.toHaveBeenCalled()
+      expect(mockOpenSettingsTab).not.toHaveBeenCalled()
     }
-    const { rerender } = render(<DataSourcePanel {...props} />)
+  )
 
-    expect(screen.getByRole('status')).toHaveTextContent('42%')
-    expect(screen.getByText('本地嵌入模型')).toBeInTheDocument()
-    expect(screen.getByText('下载中…')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '添加数据源' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '文件' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '笔记' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '目录' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '链接' })).not.toBeInTheDocument()
-
-    mockUseLocalModel.mockReturnValue({ status: 'ready', percent: 100 })
-    rerender(<DataSourcePanel {...props} />)
-
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '添加数据源' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '文件' })).toBeInTheDocument()
-  })
-
-  it.each([
-    { status: 'not_downloaded' as const, label: '下载本地模型' },
-    { status: 'error' as const, label: '本地嵌入模型下载失败' }
-  ])('links the $status state to local model settings', async ({ status, label }) => {
-    const user = userEvent.setup()
-    mockUseLocalModel.mockReturnValue({ status, percent: 0 })
-
-    render(
-      <DataSourcePanel
-        embeddingModelId={LOCAL_EMBEDDING_UNIQUE_MODEL_ID}
-        updatedAt="2026-04-15T09:00:00+08:00"
-        items={[]}
-        isLoading={false}
-        onAdd={vi.fn()}
-        onDelete={vi.fn()}
-        onReindex={vi.fn()}
-      />
-    )
-
-    expect(screen.getByRole('status')).toHaveTextContent(label)
-    expect(screen.queryByText('0%')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '添加数据源' })).not.toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: '前往设置' }))
-    expect(mockOpenSettingsTab).toHaveBeenCalledWith('/settings/local-models')
-  })
-
-  it('shows unsupported local models without an invalid settings action', () => {
-    mockUseLocalModel.mockReturnValue({ status: 'unsupported', percent: 0 })
-
-    render(
-      <DataSourcePanel
-        embeddingModelId={LOCAL_EMBEDDING_UNIQUE_MODEL_ID}
-        updatedAt="2026-04-15T09:00:00+08:00"
-        items={[]}
-        isLoading={false}
-        onAdd={vi.fn()}
-        onDelete={vi.fn()}
-        onReindex={vi.fn()}
-      />
-    )
-
-    expect(screen.getByRole('status')).toHaveTextContent('当前平台不支持本地模型。')
-    expect(screen.queryByRole('button', { name: '前往设置' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '添加数据源' })).not.toBeInTheDocument()
-  })
-
-  it('keeps existing sources visible while the header provides recovery and hides Add', async () => {
-    const user = userEvent.setup()
+  it('keeps existing sources and Add visible without obsolete download recovery controls', () => {
     mockUseLocalModel.mockReturnValue({ status: 'error', percent: 0 })
 
     render(
@@ -476,11 +428,11 @@ describe('DataSourcePanel', () => {
     )
 
     expect(screen.getByText('季度报告.pdf')).toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent('本地嵌入模型下载失败')
-    expect(screen.queryByRole('button', { name: '添加数据源' })).not.toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: '前往设置' }))
-    expect(mockOpenSettingsTab).toHaveBeenCalledWith('/settings/local-models')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '添加数据源' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '前往设置' })).not.toBeInTheDocument()
+    expect(mockUseLocalModel).not.toHaveBeenCalled()
+    expect(mockOpenSettingsTab).not.toHaveBeenCalled()
   })
 
   it('renders loading and empty states through the list composition without changing panel behavior', () => {
@@ -724,27 +676,39 @@ describe('DataSourcePanel', () => {
       }
     )
 
-    it.each(['drilled-in directory', 'local embedding unavailable'])(
-      'existing import gate bypassed: %s disables directory drops',
-      (gate) => {
-        mockUseLocalModel.mockReturnValue({ status: 'downloading', percent: 42 })
-        const directory = new File(['folder'], 'FolderDropFixture')
-        const onAdd = renderDropPanel({
-          items: [createFileItem({ id: 'existing', originName: 'existing.pdf' })],
-          ...(gate === 'drilled-in directory'
-            ? { currentDirectory: createDirectoryItem({ id: 'directory-1' }) }
-            : { embeddingModelId: LOCAL_EMBEDDING_UNIQUE_MODEL_ID })
-        })
+    it('keeps drilled-in directories read-only for drops', () => {
+      const directory = new File(['folder'], 'FolderDropFixture')
+      const onAdd = renderDropPanel({
+        items: [createFileItem({ id: 'existing', originName: 'existing.pdf' })],
+        currentDirectory: createDirectoryItem({ id: 'directory-1' })
+      })
 
-        fireEvent.drop(screen.getByText('existing.pdf'), {
-          dataTransfer: { files: [directory], items: [directoryItem(directory)] }
-        })
+      fireEvent.drop(screen.getByText('existing.pdf'), {
+        dataTransfer: { files: [directory], items: [directoryItem(directory)] }
+      })
 
-        expect(onAdd).not.toHaveBeenCalled()
-        expect(getPathForFile).not.toHaveBeenCalled()
-        expect(toast.error).not.toHaveBeenCalled()
-      }
-    )
+      expect(onAdd).not.toHaveBeenCalled()
+      expect(getPathForFile).not.toHaveBeenCalled()
+      expect(toast.error).not.toHaveBeenCalled()
+    })
+
+    it('does not gate original directory drops on removed local model download state', () => {
+      mockUseLocalModel.mockReturnValue({ status: 'downloading', percent: 42 })
+      const directory = new File(['folder'], 'FolderDropFixture')
+      const onAdd = renderDropPanel({
+        items: [createFileItem({ id: 'existing', originName: 'existing.pdf' })],
+        embeddingModelId: LOCAL_EMBEDDING_UNIQUE_MODEL_ID
+      })
+
+      fireEvent.drop(screen.getByText('existing.pdf'), {
+        dataTransfer: { files: [directory], items: [directoryItem(directory)] }
+      })
+
+      expect(onAdd).toHaveBeenCalledExactlyOnceWith('file', [], ['/host/FolderDropFixture'])
+      expect(getPathForFile).toHaveBeenCalledExactlyOnceWith(directory)
+      expect(toast.error).not.toHaveBeenCalled()
+      expect(mockUseLocalModel).not.toHaveBeenCalled()
+    })
   })
 
   it('uses the first non-empty note line as the title and leaves blank notes without the old fallback label', () => {

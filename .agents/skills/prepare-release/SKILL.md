@@ -172,7 +172,7 @@ Otherwise, ask the user to confirm before proceeding to Step 6.
 
 ### Step 6: Create Release Branch
 
-1. For an interactive local run, repeat Step 1 items 1-3 immediately before creating the branch, reading the original package version from `HEAD:package.json`. Require the published baseline to still match the one used to collect release notes; otherwise regenerate the notes before proceeding. Because Step 4 has intentionally prepared and validated release metadata, replace Step 1's clean-worktree assertion with `git status --short` and stop unless every listed path is one of the four allowed release metadata files. Then create and push a signed, DCO-compliant release commit:
+1. For an interactive local run, repeat Step 1 items 1-3 immediately before creating the branch, reading the original package version from `HEAD:package.json`. Require the published baseline to still match the one used to collect release notes; otherwise regenerate the notes before proceeding. Because Step 4 has intentionally prepared and validated release metadata, replace Step 1's clean-worktree assertion with `git status --short` and stop unless every listed path is one of the four allowed release metadata files. Then create and push the release commit:
    ```bash
    git fetch origin refs/heads/main:refs/remotes/origin/main --tags
    test "$(git branch --show-current)" = main
@@ -191,9 +191,7 @@ Otherwise, ask the user to confirm before proceeding to Step 6.
    test -z "$UNEXPECTED_RELEASE_PATHS"
    git checkout -b release/v{version}
    git add package.json electron-builder.yml resources/cherry-studio/release-history.json resources/builtin-agents/cherry-assistant/product-manifest.json
-   git commit -S --signoff -m "chore(release): prepare v{version}"
-   git cat-file commit HEAD | grep -q '^gpgsig '
-   git log -1 --format=%B | grep -q '^Signed-off-by: '
+   git commit -m "chore(release): prepare v{version}"
    git push -u origin release/v{version}
    ```
 2. In GitHub Actions, stop after updating `package.json` and `electron-builder.yml`. Temporary helper files and local Git operations are allowed; the workflow extracts those two file changes, restores the frozen source SHA, and discards everything else. It then derives the release history, validates, generates the product manifest, creates the branch, and uses GitHub's API to create and verify the signed, DCO-compliant commit. Never push from the Claude step.

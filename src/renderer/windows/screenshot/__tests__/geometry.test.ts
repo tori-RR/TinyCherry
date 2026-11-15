@@ -1,10 +1,9 @@
-import { render, screen } from '@testing-library/react'
+import { render } from '@testing-library/react'
 import { createElement } from 'react'
 import { describe, expect, it } from 'vitest'
 
 import type { DetectedWindow } from '@shared/types/screenshot'
 
-import { OcrTextOverlay } from '../components/OcrTextOverlay'
 import { Toolbar } from '../components/Toolbar'
 import type { SelectionRect } from '../types'
 import { buildAnnotation, isSignificantAnnotation } from '../utils/annotation'
@@ -145,29 +144,5 @@ describe('Toolbar placement', () => {
     expect(top).toBeGreaterThanOrEqual(0)
     // 80 = toolbar + gap + property panel, the stack the toolbar reserves room for.
     expect(top + 80).toBeLessThanOrEqual(900)
-  })
-
-  it('hangs below a selection that has room underneath it', () => {
-    expect(renderToolbar({ x: 0, y: 0, width: 400, height: 300 }, 900).style.top).toBe('308px')
-  })
-})
-
-describe('OCR text layer placement', () => {
-  it('places crop-relative glyph bounds at the selection origin on a HiDPI display', () => {
-    const line = { text: 'sample', box: { x: 120, y: 90, width: 300, height: 30 } }
-    const bounds = { x: 40, y: 30, width: 500, height: 200 }
-
-    render(createElement(OcrTextOverlay, { bounds, lines: [line], scaleFactor: 2 }))
-
-    const span = screen.getByText('sample')
-    const container = span.parentElement as HTMLElement
-    // The container carries the crop origin; the span's offsets are region-relative.
-    expect(container.style.left).toBe('40px')
-    expect(container.style.top).toBe('30px')
-    expect(span.style.left).toBe('60px')
-    expect(span.style.top).toBe('45px')
-    expect(span.style.height).toBe('15px')
-    // Width is deliberately not asserted: jsdom reports `scrollWidth` as 0, so the
-    // `scaleX(targetWidth / actualWidth)` correction never runs here.
   })
 })

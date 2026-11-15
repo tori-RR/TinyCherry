@@ -16,6 +16,15 @@ const mockGetPathForFile = vi.fn()
 const mockReadExternal = vi.fn()
 const mockUseDirectoryTree = vi.fn()
 const mockProjectNotesTree = vi.fn()
+const mockInvalidateCache = vi.fn()
+const runtime = vi.hoisted(() => ({ isEvoStack: false }))
+
+vi.mock(import('@renderer/utils/platform'), async (importOriginal) => ({
+  ...(await importOriginal()),
+  get isEvoStack() {
+    return runtime.isEvoStack
+  }
+}))
 
 const createNoteNode = (name: string, externalPath: string) => ({
   id: externalPath,
@@ -39,6 +48,10 @@ vi.mock('../../KnowledgePageProvider', () => ({
 
 vi.mock('@renderer/hooks/useKnowledgeItems', () => ({
   useAddKnowledgeItems: (...args: unknown[]) => mockUseAddKnowledgeItems(...args)
+}))
+
+vi.mock('@data/hooks/useDataApi', () => ({
+  useInvalidateCache: () => mockInvalidateCache
 }))
 
 vi.mock('@renderer/ipc', () => ({
@@ -292,7 +305,9 @@ vi.mock('react-i18next', () => {
 
 describe('AddKnowledgeItemDialog', () => {
   beforeEach(() => {
+    runtime.isEvoStack = false
     vi.clearAllMocks()
+    mockInvalidateCache.mockResolvedValue(undefined)
     mockUseKnowledgePage.mockReturnValue({ selectedBaseId: 'base-1', pendingAddSource: 'file' })
     mockUseAddKnowledgeItems.mockReturnValue({
       submit: mockSubmitKnowledgeItems,
@@ -314,6 +329,66 @@ describe('AddKnowledgeItemDialog', () => {
         readExternal: mockReadExternal
       }
     }
+  })
+
+  it('imports an EvoStack text file without Electron path APIs', async () => {
+    runtime.isEvoStack = true
+    const file = new File(['knowledge content'], 'notes.md', { type: 'text/markdown' })
+    Object.defineProperty(file, 'text', { value: async () => 'knowledge content' })
+    mockUseKnowledgePage.mockReturnValue({
+      selectedBaseId: 'base-1',
+      pendingAddSource: 'file',
+      pendingAddFiles: [file]
+    })
+    const onOpenChange = vi.fn()
+    render(<AddKnowledgeItemDialog open onOpenChange={onOpenChange} />)
+
+    await waitFor(() =>
+      expect(ipcApi.request).toHaveBeenCalledWith('knowledge.import_text', {
+        baseId: 'base-1',
+        name: 'notes.md',
+        content: 'knowledge content'
+      })
+    )
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    expect(mockFileSelect).not.toHaveBeenCalled()
+    expect(mockGetPathForFile).not.toHaveBeenCalled()
+    expect(mockSubmitKnowledgeItems).not.toHaveBeenCalled()
+    expect(mockInvalidateCache).toHaveBeenCalledExactlyOnceWith(['/knowledge-bases/base-1/items', '/knowledge-bases'])
+  })
+
+  it('refreshes native imported files even when a later file fails', async () => {
+    runtime.isEvoStack = true
+    const files = ['first.md', 'second.md'].map((name) => {
+      const file = new File(['knowledge content'], name, { type: 'text/markdown' })
+      Object.defineProperty(file, 'text', { value: async () => 'knowledge content' })
+      return file
+    })
+    mockUseKnowledgePage.mockReturnValue({ selectedBaseId: 'base-1', pendingAddSource: 'file', pendingAddFiles: files })
+    vi.mocked(ipcApi.request).mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('second import failed'))
+    const onOpenChange = vi.fn()
+    render(<AddKnowledgeItemDialog open onOpenChange={onOpenChange} />)
+
+    await waitFor(() =>
+      expect(mockInvalidateCache).toHaveBeenCalledExactlyOnceWith(['/knowledge-bases/base-1/items', '/knowledge-bases'])
+    )
+    expect(ipcApi.request).toHaveBeenCalledTimes(2)
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('second import failed'))
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('rejects unsupported EvoStack files before importing any of a selection', async () => {
+    runtime.isEvoStack = true
+    const files = [new File(['text'], 'notes.md'), new File(['pdf'], 'document.pdf')]
+    mockUseKnowledgePage.mockReturnValue({ selectedBaseId: 'base-1', pendingAddSource: 'file', pendingAddFiles: files })
+    render(<AddKnowledgeItemDialog open onOpenChange={vi.fn()} />)
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('knowledge.evostack.text_sources_only'))
+    )
+    expect(ipcApi.request).not.toHaveBeenCalled()
+    expect(mockGetPathForFile).not.toHaveBeenCalled()
+    expect(mockInvalidateCache).not.toHaveBeenCalled()
   })
 
   const setPendingAddSource = (pendingAddSource: 'file' | 'note' | 'directory' | 'url') => {

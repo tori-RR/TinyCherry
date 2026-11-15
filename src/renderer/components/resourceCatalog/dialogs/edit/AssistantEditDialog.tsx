@@ -37,6 +37,7 @@ import { useGroupMutations, useGroups } from '@renderer/hooks/useGroups'
 import { usePromptProcessor } from '@renderer/hooks/usePromptProcessor'
 import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
 import { toast } from '@renderer/services/toast'
+import { isEvoStack } from '@renderer/utils/platform'
 import { MCP_MODE_OPTIONS, RESOURCE_PROMPT_POLISH_SYSTEM_PROMPT } from '@renderer/utils/resourceCatalog'
 import {
   type AssistantFormState,
@@ -54,8 +55,8 @@ import type { Model, UniqueModelId } from '@shared/data/types/model'
 import { clampThresholdPercent } from '@shared/utils/contextSettings'
 import { isNonChatModel } from '@shared/utils/model'
 
+import { AssistantAvatarPicker } from '../components/AssistantAvatarPicker'
 import {
-  AvatarField,
   CompactModelField,
   EDIT_DIALOG_PROMPT_MAX_HEIGHT,
   EDIT_DIALOG_PROMPT_MIN_HEIGHT,
@@ -84,7 +85,6 @@ export type AssistantEditDialogProps = EditDialogBaseProps & {
 }
 
 type AssistantEditFormValues = {
-  avatar: string
   name: string
   description: string
   modelId: UniqueModelId | null
@@ -126,7 +126,6 @@ function isAssistantToolTab(value: string): value is AssistantToolTab {
 function defaultValuesForAssistant(resource: AssistantEditDialogResource): AssistantEditFormValues {
   const form = initialAssistantFormState(resource)
   return {
-    avatar: form.emoji,
     name: form.name,
     description: form.description,
     modelId: form.modelId ?? null,
@@ -167,7 +166,6 @@ function modelLabelsForAssistant(resource: AssistantEditDialogResource): ModelLa
 function buildAssistantFormState(baseline: AssistantFormState, values: AssistantEditFormValues): AssistantFormState {
   return {
     ...baseline,
-    emoji: values.avatar,
     name: values.name,
     description: values.description,
     modelId: values.modelId,
@@ -228,7 +226,6 @@ function AssistantEditDialogContent({
 }: EditDialogBaseProps & { resource: AssistantEditDialogResource }) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState(initialTab ?? 'basic')
-  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
   const [createGroupDialogOpen, setCreateGroupDialogOpen] = useState(false)
   const [dialogContentElement, setDialogContentElement] = useState<HTMLDivElement | null>(null)
   const [modelLabels, setModelLabels] = useState<ModelLabels>(() => modelLabelsForAssistant(resource))
@@ -281,7 +278,6 @@ function AssistantEditDialogContent({
     setFormBaseline(formBaselineRef.current)
     form.clearErrors()
     setActiveTab(initialTab ?? 'basic')
-    setEmojiPickerOpen(false)
     setCreateGroupDialogOpen(false)
     setModelLabels(modelLabelsForAssistant(resource))
     // A fresh open is a fresh editing session — a stale failure from a prior
@@ -406,6 +402,8 @@ function AssistantEditDialogContent({
       <>
         <TabsContent value="basic" forceMount hidden={activeTab !== 'basic'} className="m-0">
           <AssistantBasicFields
+            resource={resource}
+            open={open}
             form={form}
             modelFilter={modelFilter}
             isModelDisabled={isModelDisabled}
@@ -415,8 +413,6 @@ function AssistantEditDialogContent({
             groups={groups}
             groupsLoading={isGroupsLoading}
             groupsError={groupsError}
-            emojiPickerOpen={emojiPickerOpen}
-            setEmojiPickerOpen={setEmojiPickerOpen}
             onCreateGroup={() => setCreateGroupDialogOpen(true)}
             onSettingsNavigate={closeBeforeAction}
           />
@@ -490,6 +486,8 @@ function AssistantEditDialogContent({
 }
 
 function AssistantBasicFields({
+  resource,
+  open,
   form,
   modelFilter,
   isModelDisabled,
@@ -499,11 +497,11 @@ function AssistantBasicFields({
   groups,
   groupsLoading,
   groupsError,
-  emojiPickerOpen,
-  setEmojiPickerOpen,
   onCreateGroup,
   onSettingsNavigate
 }: {
+  resource: AssistantEditDialogResource
+  open: boolean
   form: UseFormReturn<AssistantEditFormValues>
   modelFilter: EditDialogBaseProps['modelFilter']
   isModelDisabled: EditDialogBaseProps['isModelDisabled']
@@ -513,8 +511,6 @@ function AssistantBasicFields({
   groups: ReturnType<typeof useGroups>['groups']
   groupsLoading: ReturnType<typeof useGroups>['isLoading']
   groupsError: ReturnType<typeof useGroups>['error']
-  emojiPickerOpen: boolean
-  setEmojiPickerOpen: (open: boolean) => void
   onCreateGroup: () => void
   onSettingsNavigate?: (navigate: () => void) => void
 }) {
@@ -532,15 +528,18 @@ function AssistantBasicFields({
 
   return (
     <div className="divide-y divide-border-subtle border-border-subtle border-b [&>*:first-child]:pt-0">
-      <AvatarField
-        form={form}
-        emojiPickerOpen={emojiPickerOpen}
-        setEmojiPickerOpen={setEmojiPickerOpen}
-        fallback="💬"
-        portalContainer={portalContainer}
-        size="sm"
-        layout="row"
-      />
+      <div className={editDialogFormRowClassName}>
+        <span className={editDialogFormRowLabelClassName}>{t('common.avatar')}</span>
+        <AssistantAvatarPicker
+          key={`${resource.id}:${open}`}
+          assistantId={resource.id}
+          emoji={resource.emoji}
+          avatarSrc={resource.avatarSrc}
+          ariaLabel={t('library.config.dialogs.create.avatar_aria')}
+          portalContainer={portalContainer}
+          size="sm"
+        />
+      </div>
       <TextInputField
         form={form}
         name="name"
@@ -1016,145 +1015,152 @@ function ContextManagementFields({
         )}
       />
 
-      <ToggleFieldGroup
-        label={t('library.config.basic.context_management')}
-        description={t('library.config.basic.field.context_management.hint')}
-        enabled={values.contextOverrideEnabled}
-        onEnabledChange={onOverrideToggle}
-      />
-      {!globalDefaults.enabled ? (
-        // Stored but inert while the global master switch is off — say so
-        // rather than showing live-looking controls.
-        <div className="-mt-2 text-muted-foreground text-xs leading-5">
-          {t('library.config.basic.context_globally_disabled')}
-        </div>
-      ) : null}
-      {!values.contextOverrideEnabled && globalDefaults.enabled ? (
-        // Name what is being inherited: the values only become visible once the
-        // override is on, so without this the user overrides a blank.
-        <div className="-mt-2 text-muted-foreground text-xs leading-5">
-          {t('library.config.basic.context_inherited', {
-            compress: globalDefaults.compressEnabled
-              ? t('library.config.basic.context_inherited_compress_on')
-              : t('library.config.basic.context_inherited_compress_off'),
-            threshold: globalDefaults.truncateThreshold
-          })}
-        </div>
-      ) : null}
-      {values.contextOverrideEnabled ? (
-        // Indent alone carries the subordination — a rule here spanned the
-        // parent row's padding and read as a stray edge.
-        <div className="-mt-2 grid gap-4 pl-4">
-          <FormField
-            control={form.control}
-            name="contextCompressEnabled"
-            render={({ field }) => (
-              <FormItem>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <FieldLabelWithHelp
-                      label={t('library.config.basic.context_compress_enabled')}
-                      help={t('library.config.basic.field.context_compress_enabled.hint')}
-                    />
-                  </div>
-                  <FormControl>
-                    <Switch
-                      size="sm"
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                      aria-label={t('library.config.basic.context_compress_enabled')}
-                    />
-                  </FormControl>
-                </div>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          {values.contextCompressEnabled ? (
+      {isEvoStack && (
+        <p className="text-muted-foreground text-xs leading-5">
+          {t('settings.models.context_management.native_unavailable')}
+        </p>
+      )}
+      <fieldset className="contents" disabled={isEvoStack} aria-label={t('library.config.basic.context_management')}>
+        <ToggleFieldGroup
+          label={t('library.config.basic.context_management')}
+          description={t('library.config.basic.field.context_management.hint')}
+          enabled={values.contextOverrideEnabled}
+          onEnabledChange={onOverrideToggle}
+        />
+        {!isEvoStack && !globalDefaults.enabled ? (
+          // Stored but inert while the global master switch is off — say so
+          // rather than showing live-looking controls.
+          <div className="-mt-2 text-muted-foreground text-xs leading-5">
+            {t('library.config.basic.context_globally_disabled')}
+          </div>
+        ) : null}
+        {!isEvoStack && !values.contextOverrideEnabled && globalDefaults.enabled ? (
+          // Name what is being inherited: the values only become visible once the
+          // override is on, so without this the user overrides a blank.
+          <div className="-mt-2 text-muted-foreground text-xs leading-5">
+            {t('library.config.basic.context_inherited', {
+              compress: globalDefaults.compressEnabled
+                ? t('library.config.basic.context_inherited_compress_on')
+                : t('library.config.basic.context_inherited_compress_off'),
+              threshold: globalDefaults.truncateThreshold
+            })}
+          </div>
+        ) : null}
+        {values.contextOverrideEnabled ? (
+          // Indent alone carries the subordination — a rule here spanned the
+          // parent row's padding and read as a stray edge.
+          <div className="-mt-2 grid gap-4 pl-4">
             <FormField
               control={form.control}
-              name="contextCompressThresholdPercent"
+              name="contextCompressEnabled"
               render={({ field }) => (
                 <FormItem>
-                  <FieldLabelWithHelp
-                    label={t('library.config.basic.context_compress_threshold')}
-                    help={t('library.config.basic.field.context_compress_threshold.hint')}
-                  />
-                  <InputGroup className="h-8 rounded-lg">
-                    {/* Inside the group, not around it: `FormControl` is a `Slot` and
-                        hands the label's `htmlFor` target to its immediate child. */}
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <FieldLabelWithHelp
+                        label={t('library.config.basic.context_compress_enabled')}
+                        help={t('library.config.basic.field.context_compress_enabled.hint')}
+                      />
+                    </div>
                     <FormControl>
-                      <InputGroupInputNumber
-                        min={MIN_COMPRESS_THRESHOLD_PERCENT}
-                        max={MAX_COMPRESS_THRESHOLD_PERCENT}
-                        step={5}
-                        // Empty = inherit; the placeholder names the global in force.
-                        placeholder={t('library.config.basic.context_compress_threshold_follow_global', {
-                          percent: globalDefaults.compressThreshold
-                        })}
-                        className="px-2.5"
-                        value={field.value}
-                        onBlur={(value) => field.onChange(value === null ? null : clampThresholdPercent(value))}
+                      <Switch
+                        size="sm"
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        aria-label={t('library.config.basic.context_compress_enabled')}
                       />
                     </FormControl>
-                    <InputGroupAddon align="inline-end">
-                      <InputGroupText>%</InputGroupText>
-                    </InputGroupAddon>
-                  </InputGroup>
+                  </div>
                   <FormMessage />
                 </FormItem>
               )}
             />
-          ) : null}
 
-          <FormField
-            control={form.control}
-            name="contextTruncateThreshold"
-            render={({ field }) => (
-              <FormItem>
-                <FieldLabelWithHelp
-                  label={t('library.config.basic.context_truncate_threshold')}
-                  help={t('library.config.basic.field.context_truncate_threshold.hint')}
-                />
-                <FormControl>
-                  <InputNumber
-                    // Same floor and step as the global panel — this doubles as
-                    // fs_read's per-call cap. See MIN_TRUNCATE_THRESHOLD.
-                    min={MIN_TRUNCATE_THRESHOLD}
-                    step={1}
-                    className="h-8 rounded-lg px-2.5"
-                    value={field.value}
-                    onBlur={(value) =>
-                      field.onChange(
-                        typeof value === 'number' && Number.isFinite(value)
-                          ? Math.max(MIN_TRUNCATE_THRESHOLD, Math.floor(value))
-                          : globalDefaults.truncateThreshold
-                      )
-                    }
+            {values.contextCompressEnabled ? (
+              <FormField
+                control={form.control}
+                name="contextCompressThresholdPercent"
+                render={({ field }) => (
+                  <FormItem>
+                    <FieldLabelWithHelp
+                      label={t('library.config.basic.context_compress_threshold')}
+                      help={t('library.config.basic.field.context_compress_threshold.hint')}
+                    />
+                    <InputGroup className="h-8 rounded-lg">
+                      {/* Inside the group, not around it: `FormControl` is a `Slot` and
+                        hands the label's `htmlFor` target to its immediate child. */}
+                      <FormControl>
+                        <InputGroupInputNumber
+                          min={MIN_COMPRESS_THRESHOLD_PERCENT}
+                          max={MAX_COMPRESS_THRESHOLD_PERCENT}
+                          step={5}
+                          // Empty = inherit; the placeholder names the global in force.
+                          placeholder={t('library.config.basic.context_compress_threshold_follow_global', {
+                            percent: globalDefaults.compressThreshold
+                          })}
+                          className="px-2.5"
+                          value={field.value}
+                          onBlur={(value) => field.onChange(value === null ? null : clampThresholdPercent(value))}
+                        />
+                      </FormControl>
+                      <InputGroupAddon align="inline-end">
+                        <InputGroupText>%</InputGroupText>
+                      </InputGroupAddon>
+                    </InputGroup>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : null}
+
+            <FormField
+              control={form.control}
+              name="contextTruncateThreshold"
+              render={({ field }) => (
+                <FormItem>
+                  <FieldLabelWithHelp
+                    label={t('library.config.basic.context_truncate_threshold')}
+                    help={t('library.config.basic.field.context_truncate_threshold.hint')}
                   />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+                  <FormControl>
+                    <InputNumber
+                      // Same floor and step as the global panel — this doubles as
+                      // fs_read's per-call cap. See MIN_TRUNCATE_THRESHOLD.
+                      min={MIN_TRUNCATE_THRESHOLD}
+                      step={1}
+                      className="h-8 rounded-lg px-2.5"
+                      value={field.value}
+                      onBlur={(value) =>
+                        field.onChange(
+                          typeof value === 'number' && Number.isFinite(value)
+                            ? Math.max(MIN_TRUNCATE_THRESHOLD, Math.floor(value))
+                            : globalDefaults.truncateThreshold
+                        )
+                      }
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-          <CompactModelField
-            form={form}
-            name="contextCompressModelId"
-            label={t('library.config.basic.context_compress_model')}
-            allowClear
-            emptyLabel={t('library.config.basic.context_compress_model_follow')}
-            // A compression model summarizes history — only chat-capable models qualify.
-            filter={(model, provider) => !isNonChatModel(model) && (modelFilter?.(model, provider) ?? true)}
-            isModelDisabled={isModelDisabled}
-            portalContainer={portalContainer}
-            modelLabels={modelLabels}
-            setModelLabels={setModelLabels}
-            onModelChange={(modelId) => form.setValue('contextCompressModelId', modelId, { shouldDirty: true })}
-          />
-        </div>
-      ) : null}
+            <CompactModelField
+              form={form}
+              name="contextCompressModelId"
+              label={t('library.config.basic.context_compress_model')}
+              allowClear
+              emptyLabel={t('library.config.basic.context_compress_model_follow')}
+              // A compression model summarizes history — only chat-capable models qualify.
+              filter={(model, provider) => !isNonChatModel(model) && (modelFilter?.(model, provider) ?? true)}
+              isModelDisabled={isModelDisabled}
+              portalContainer={portalContainer}
+              modelLabels={modelLabels}
+              setModelLabels={setModelLabels}
+              onModelChange={(modelId) => form.setValue('contextCompressModelId', modelId, { shouldDirty: true })}
+            />
+          </div>
+        ) : null}
+      </fieldset>
     </>
   )
 }

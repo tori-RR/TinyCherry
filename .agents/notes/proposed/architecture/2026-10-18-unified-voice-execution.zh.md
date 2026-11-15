@@ -8,7 +8,7 @@ Status: proposed
 
 系统语音、MLX 和 Sherpa 的生成与取消行为不同。如果把这些差异放进播放或听写调用方，用户流程就会与引擎耦合。将输出生成、执行清理、模型驻留和播放结束视为同一个事件，会导致资源过早释放或无限保留。流式传输还需要消费者确认路径：无限发送普通进程事件无法提供背压。
 
-本笔记负责记录六阶段语音方案中可能被重新讨论的决策。[接口设计](2026-10-18-unified-voice-execution.md#detailed-interface-design)和[实现方案](2026-10-18-unified-voice-execution.md#capability-implementation-plan)保留协议及文件层面的详细提案。[适配器 README](../../../../src/main/ai/voice/localAdapters/README.md)描述当前私有实现。
+本笔记负责记录六阶段语音方案中可能被重新讨论的决策。[接口设计](2026-10-18-unified-voice-execution.md#detailed-interface-design)和[实现方案](2026-10-18-unified-voice-execution.md#capability-implementation-plan)保留协议及文件层面的详细提案。[适配器 README](https://github.com/CherryHQ/cherry-studio/blob/6790b48c9c433a1c9b6321ed951cf2e71c37600d/src/main/ai/voice/localAdapters/README.md)描述当前私有实现。
 
 ## 提案
 
@@ -101,7 +101,7 @@ MLX ASR 源码支持不代表已有兼容的分发产物。原生 ASR、Windows 
 | `SpeechPlaybackService` | 等待完整媒体 URL，使用 `HTMLAudioElement` 播放 | 在同一协调器下容纳有限媒体与 PCM 两种输出 |
 | `DictationService` | `MediaRecorder` 收集完整录音，识别完成后插入文本 | 增加 PCM 采集和修订预览，最终插入继续使用 `VoiceTargetManager` |
 
-现有 [aiCore 语音接口](../../../../packages/aiCore/src/core/runtime/voice.ts) 是完整结果包装；[模型定义](../../../../src/main/ai/voice/voiceModelTypes.ts) 和 [播放状态](../../../../src/main/ai/voice/playbackState.ts) 是本次演进的直接边界。
+现有 [aiCore 语音接口](../../../../packages/aiCore/src/core/runtime/voice.ts) 是完整结果包装；[模型定义](https://github.com/CherryHQ/cherry-studio/blob/6790b48c9c433a1c9b6321ed951cf2e71c37600d/src/main/ai/voice/voiceModelTypes.ts) 和 [播放状态](https://github.com/CherryHQ/cherry-studio/blob/6790b48c9c433a1c9b6321ed951cf2e71c37600d/src/main/ai/voice/playbackState.ts) 是本次演进的直接边界。
 
 ### 服务依赖与生命周期
 
@@ -791,7 +791,7 @@ Agent 和快捷助手各自由真实提供商驱动的验收仍待完成，因�
 
 此扩展将 Apple 系统语音接入共享流式播放生命周期。它增加完整文本到 PCM 输出，不包含增量文本输入或系统 ASR。现有 proposed 记录继续作为决策归属；这不代表已获 GitHub Spec 正式批准或完成其他 AC。
 
-`packages/system-speech` 拥有请求级 helper 和按需读取的有界 NDJSON 输出协议：一个格式帧、有序 Float32 小端 PCM 帧，以及精确总帧数的结束标记。每个 PCM 帧最多包含 1,024 帧、一个或两个声道；每行协议不超过 16 KiB。原生同步管道写入与 Node 按需读取传递背压，不增加应用音频队列或临时 WAV。平台回调仅存在于 helper。原生引擎内部内存不属于这些传输预算。
+`native/system-speech` 拥有请求级 helper 和按需读取的有界 NDJSON 输出协议：一个格式帧、有序 Float32 小端 PCM 帧，以及精确总帧数的结束标记。每个 PCM 帧最多包含 1,024 帧、一个或两个声道；每行协议不超过 16 KiB。原生同步管道写入与 Node 按需读取传递背压，不增加应用音频队列或临时 WAV。平台回调仅存在于 helper。原生引擎内部内存不属于这些传输预算。
 
 Apple adapter 在完整音频之外声明 `Text → PcmStream` 并映射错误。现有 VoiceSessionService、VoiceStream、播放额度、波形和播放器归属不变；不增加生命周期服务或依赖。包的流句柄拥有进程、超时、监听器和迭代器；`completed` 要求有效 EOF 和进程成功退出，`closed` 表示子进程及标准流已关闭。提前结束迭代或取消会终止 helper 并等待退出。生产者读取超时只在等待读取时生效；下游暂停不算生产者停滞。现有会话保留期限仍然适用。
 

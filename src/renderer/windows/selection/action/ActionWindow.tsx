@@ -57,7 +57,6 @@ const SelectionActionContent: FC<{ action: SelectionActionSession }> = ({ action
   // (not in an effect) so the remount lands before ActionGeneral sends.
   const [prevAction, setPrevAction] = useState(action)
   const [sessionId, setSessionId] = useState(0)
-  const sourceEntityId = action.sessionId
   const isTranslate = action.isBuiltIn && action.id === SELECTION_BUILTIN_ACTION_ID.TRANSLATE
   if (action !== prevAction) {
     setPrevAction(action)
@@ -282,22 +281,8 @@ const SelectionActionContent: FC<{ action: SelectionActionSession }> = ({ action
         <div
           ref={contentElementRef}
           className="flex min-w-0 max-w-[1280px] flex-1 flex-col overflow-auto p-4 text-sm select-text">
-          {isTranslate && (
-            <ActionTranslate
-              key={sessionId}
-              action={action}
-              sourceEntityId={sourceEntityId}
-              scrollToBottom={handleScrollToBottom}
-            />
-          )}
-          {!isTranslate && (
-            <ActionGeneral
-              key={sessionId}
-              action={action}
-              sourceEntityId={sourceEntityId}
-              scrollToBottom={handleScrollToBottom}
-            />
-          )}
+          {isTranslate && <ActionTranslate key={sessionId} action={action} scrollToBottom={handleScrollToBottom} />}
+          {!isTranslate && <ActionGeneral key={sessionId} action={action} scrollToBottom={handleScrollToBottom} />}
         </div>
       </div>
     </div>

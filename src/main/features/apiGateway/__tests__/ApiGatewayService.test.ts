@@ -292,449 +292,87 @@ describe('ApiGatewayService internal gateway', () => {
     expect(service.isInternalRequest(headers(second.apiKey))).toBe(true)
   })
 
+  // A delayed summary request must retain its initiator when the active turn changes.
+  it('freezes auxiliary ownership and rejects released or cross-session captures', async () => {
+    const service = new ApiGatewayService()
+    const internal = await startInternalGateway(service)
+    const original = {
+      agentSessionId: 'session-1',
+      assistantMessageId: 'original-message',
+      source: { type: 'agent', id: 'agent-1', name: 'Original', icon: null }
+    }
+    mockGetActiveUsageContext.mockReturnValue(original)
+    const root = service.captureAgentSessionUsage('session-1')
+    const child = service.captureAgentSessionUsage('session-1', 'child-session')
+    mockGetActiveUsageContext.mockReturnValue({ ...original, assistantMessageId: 'next-message' })
+    const headers = (capture: typeof root, apiKey = internal.apiKey) =>
+      new Headers({ ...capture.headers, 'x-api-key': apiKey })
+    expect(service.resolveAgentSessionUsage(headers(root), 'late-response')).toEqual(original)
+    expect(service.resolveAgentSessionUsage(headers(child), 'child-summary')).toEqual({
+      agentSessionId: 'child-session',
+      source: original.source
+    })
+    const crossed = headers(root)
+    crossed.set('x-cherry-agent-session-id', 'another-session')
+    expect(service.resolveAgentSessionUsage(crossed)).toBeUndefined()
+    expect(service.resolveAgentSessionUsage(headers(root, 'existing-key'))).toBeUndefined()
+    root.release()
+    child.release()
+    expect(service.resolveAgentSessionUsage(headers(root))).toBeUndefined()
+    expect(service.resolveAgentSessionUsage(headers(child))).toBeUndefined()
+  })
+
+  it('freezes the native phase parent without changing billing ownership', async () => {
+    const service = new ApiGatewayService()
+    const internal = await startInternalGateway(service)
+    const current = { agentSessionId: 'session-1', assistantMessageId: 'answer', source: null }
+    mockGetActiveUsageContext.mockReturnValue(current)
+    const parent = {
+      sessionId: 'session-1',
+      turnId: 'turn',
+      topicId: 'agent-session:session-1',
+      traceId: '11111111111111111111111111111111',
+      rootSpanId: '2222222222222222'
+    }
+    const captured = service.captureAgentSessionUsage('session-1', undefined, parent)
+    mockGetActiveUsageContext.mockReturnValue({ ...current, assistantMessageId: 'later' })
+    const headers = new Headers({ ...captured.headers, 'x-api-key': internal.apiKey })
+    expect(service.resolveAgentSessionUsage(headers)).toEqual({ ...current, traceContext: parent })
+    expect(Object.keys(captured.headers)).not.toContain('traceparent')
+    captured.release()
+    expect(service.resolveAgentSessionUsage(headers)).toBeUndefined()
+  })
+
   it('attributes usage to an Agent session only for the unrestricted internal key', async () => {
     const service = new ApiGatewayService()
     const internal = await startInternalGateway(service)
     const scoped = await service.createScopedCredential(CHAT_SCOPE)
     const sessionHeaders = service.getAgentSessionUsageHeaders('session-1')
 
-    expect(service.resolveAgentSessionUsage(new Headers({ ...sessionHeaders, 'x-api-key': internal.apiKey }))).toEqual({
+    expect(
+      service.resolveAgentSessionUsage(
+        new Headers({ ...sessionHeaders, 'x-api-key': internal.apiKey }),
+        'native-response'
+      )
+    ).toEqual({
       agentSessionId: 'session-1',
       source: { type: 'agent', id: 'agent-1', name: 'Original Agent', icon: '🧠' }
     })
-    expect(mockGetActiveUsageContext).toHaveBeenCalledWith('session-1')
+    expect(mockGetActiveUsageContext).toHaveBeenCalledWith('session-1', 'native-response')
     expect(service.getAgentSessionId(new Headers({ ...sessionHeaders, 'x-api-key': scoped.apiKey }))).toBeUndefined()
     expect(service.getAgentSessionId(new Headers({ ...sessionHeaders, 'x-api-key': 'existing-key' }))).toBeUndefined()
   })
 })
 
-describe('ApiGatewayService reconcile', () => {
-  it('keeps a denied public start stopped without spinning and uses the edited port on explicit retry', async () => {
-    const service = new ApiGatewayService()
-    await service._doInit()
-    const original = Object.assign(new Error('denied'), { code: 'EACCES', syscall: 'listen' })
-    mockStart.mockRejectedValueOnce(original)
-    await expect(service.start()).rejects.toMatchObject({
-      message: expect.stringContaining('different Port'),
-      cause: original
-    })
-    expect(service.isActivated).toBe(false)
-    expect(service.isRunning()).toBe(false)
-    expect(captured.enabledPreference).toBe(true)
-    expect(mockSetShared).toHaveBeenCalledWith('feature.api_gateway.running', false)
-    await new Promise((resolve) => setTimeout(resolve, 20))
-    expect(mockStart).toHaveBeenCalledTimes(1)
-    captured.portPreference = 24444
-    mockStart.mockResolvedValueOnce(undefined)
-    await service.start()
-    expect(ApiGateway).toHaveBeenLastCalledWith({ host: '127.0.0.1', port: 24444 })
-    expect(service.isActivated).toBe(true)
-    expect(service.isRunning()).toBe(true)
-  })
-
-  // Regression for #18521: boot used to start the gateway whenever any agent existed, overriding a
-  // user who had turned it off — and nothing else may override it either.
-  it('stays stopped at boot when the preference is disabled', async () => {
-    const service = new ApiGatewayService()
-
-    await service._doInit()
-
-    expect(mockStart).not.toHaveBeenCalled()
-    expect(service.isActivated).toBe(false)
-  })
-
-  it('starts at boot when the preference is enabled', async () => {
-    captured.enabledPreference = true
-    const service = new ApiGatewayService()
-
-    const ready = service._doInit()
-    await vi.waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1))
-    startResolvers[0]()
-    await ready
-
-    expect(service.isActivated).toBe(true)
-  })
-
-  it('builds remote invitations from the endpoint snapshot that actually started', async () => {
-    captured.enabledPreference = true
-    captured.hostPreference = '0.0.0.0'
-    captured.portPreference = 24444
-    const service = new ApiGatewayService()
-
-    const ready = service._doInit()
-    await vi.waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1))
-    startResolvers[0]()
-    await ready
-
-    captured.portPreference = 25555
-    await expect(service.createRemoteInvitation()).resolves.toMatchObject({
-      hostname: 'desktop',
-      port: 24444,
-      addresses: ['192.168.1.8']
-    })
-  })
-
-  // The command and the persisted intent must land together: a stop whose preference write never
-  // happened comes back on the next launch, which is the whole of #18521.
-  it('persists the intent before converging, and reports a failed persist instead of stopping', async () => {
-    captured.enabledPreference = true
-    const service = new ApiGatewayService()
-    const ready = service._doInit()
-    await vi.waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1))
-    startResolvers[0]()
-    await ready
-
-    mockPreferenceSet.mockRejectedValueOnce(new Error('disk full'))
-    await expect(service.stop()).rejects.toThrow('disk full')
-    expect(service.isActivated).toBe(true)
-  })
-
-  it('persists the intent when a start succeeds', async () => {
-    const service = new ApiGatewayService()
-    await service._doInit()
-
-    const started = service.start()
-    await vi.waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1))
-    startResolvers[0]()
-    await started
-
-    expect(service.getCurrentConfig().enabled).toBe(true)
-    expect(service.isActivated).toBe(true)
-  })
-
-  // A re-bind must not resurrect a gateway another window disabled while the restart was queued:
-  // that would leave runtime=running with the preference persisted as disabled.
-  it('aborts a restart when the gateway was disabled meanwhile', async () => {
-    captured.enabledPreference = true
-    const service = new ApiGatewayService()
-    const ready = service._doInit()
-    await vi.waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1))
-    startResolvers[0]()
-    await ready
-
-    // Another window's stop lands: the preference is already persisted when the restart re-reads it.
-    captured.enabledPreference = false
-    await expect(service.restart()).rejects.toThrow('disabled while restarting')
-    expect(service.isActivated).toBe(false)
-    expect(mockStart).toHaveBeenCalledTimes(1)
-  })
-
-  it('honors an opposing toggle that lands during an in-flight activation (no dropped toggle)', async () => {
-    const service = new ApiGatewayService()
-    await service._doInit() // Ready; desiredEnabled=false; reconcile is a no-op.
-    expect(service.isActivated).toBe(false)
-    expect(captured.prefHandler).toBeDefined()
-
-    // Enable → reconcile starts activating; the inner start() stays pending.
-    captured.prefHandler!(true)
-    await vi.waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1))
-    expect(service.isActivated).toBe(false) // still mid-activation
-
-    // Opposing disable lands mid-activation. A queue/short-circuit would drop it;
-    // reconcile re-reads the desired state after the activation settles.
-    captured.prefHandler!(false)
-
-    // Complete the activation — the loop must now deactivate to converge to `false`.
-    startResolvers[0]()
-    await vi.waitFor(() => expect(mockStop).toHaveBeenCalledTimes(1))
-    expect(service.isActivated).toBe(false)
-  })
-
-  it('converges to running when the final desired state is enabled', async () => {
-    const service = new ApiGatewayService()
-    await service._doInit()
-
-    captured.prefHandler!(true)
-    await vi.waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1))
-    startResolvers[0]()
-    await vi.waitFor(() => expect(service.isActivated).toBe(true))
-    expect(mockStop).not.toHaveBeenCalled()
-  })
-
-  it('does not retry a failed activation for a stable desired state (no spin loop)', async () => {
-    rejectStart = true
-    const service = new ApiGatewayService()
-    await service._doInit()
-
-    captured.prefHandler!(true)
-    await vi.waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1))
-    // Give the loop a chance to (wrongly) retry the same failing target.
-    await new Promise((resolve) => setTimeout(resolve, 20))
-    expect(mockStart).toHaveBeenCalledTimes(1)
-    expect(service.isActivated).toBe(false)
-  })
-
-  it('converges when a pref change opposes an in-flight direct IPC start (single owner)', async () => {
-    // The residual race: a direct IPC start() in flight + an opposing pref change.
-    // With start() routed through the same queue, the pref change can't be dropped.
-    const service = new ApiGatewayService()
-    await service._doInit()
-
-    // Attach the settle handler synchronously so the in-flight rejection (start() ends
-    // up !isActivated because desired flipped) is never an unhandled rejection.
-    const startSettled = service.start().then(
-      () => 'resolved',
-      () => 'rejected'
-    )
-    await vi.waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1))
-
-    // Opposing disable lands while the IPC activation is still in flight.
-    captured.prefHandler!(false)
-
-    // Complete the activation; the running reconcile must then deactivate to converge.
-    startResolvers[0]()
-    await vi.waitFor(() => expect(mockStop).toHaveBeenCalledTimes(1))
-    await startSettled
-
-    expect(service.isActivated).toBe(false) // converged to desiredEnabled === false
-  })
-})
-
-describe('ApiGatewayService LAN shutdown', () => {
-  beforeEach(() => {
-    captured.enabledPreference = true
-    captured.hostPreference = '0.0.0.0'
-    mockStart.mockResolvedValue(undefined)
-  })
-
-  it('keeps an ordinary gateway start on loopback after stopping a LAN-enabled gateway', async () => {
-    const service = new ApiGatewayService()
-    await service._doInit()
-
-    await expect(service.stop()).resolves.toBe('stopped')
-    expect(service.getCurrentConfig()).toMatchObject({ enabled: false, host: '127.0.0.1' })
-
-    await service.start()
-
-    expect(service.isActivated).toBe(true)
-    expect(mockSetShared).toHaveBeenLastCalledWith('feature.api_gateway.lan_running', false)
-    await expect(service.createRemoteInvitation()).rejects.toThrow('Device connections are disabled')
-  })
-
-  it('limits invitations to 32 sorted addresses while retaining every selectable interface address', async () => {
-    captured.ipv6Addresses = Array.from({ length: 40 }, (_, i) => `2001:db8::${(i + 1).toString(16)}`)
-    const service = new ApiGatewayService()
-    await service._doInit()
-    const invitation = await service.createRemoteInvitation()
-    expect(invitation.addresses).toHaveLength(32)
-    expect(invitation.addresses[0]).toBe('192.168.1.8')
-    expect(invitation.addressOptions).toHaveLength(41)
-    expect(invitation.addressOptions[0]).toEqual({ address: '192.168.1.8', interfaceName: 'en0' })
-  })
-
-  it('advertises an external endpoint and restores the actual bound port without rebinding', async () => {
-    const service = new ApiGatewayService()
-    await service._doInit()
-    captured.advertisedEndpoint = { host: 'Desktop.example.com', port: 443, security: 'wss' }
-    captured.portPreference = 24444
-    expect(await service.createRemoteInvitation()).toMatchObject({
-      port: 23333,
-      endpoints: [{ host: 'desktop.example.com', port: 443, security: 'wss' }],
-      desktopIdentity: '12D3KooWDesktop',
-      invitationId: 'invitation'
-    })
-    captured.advertisedEndpoint = null
-    expect(await service.getRemoteEndpoint()).toMatchObject({
-      advertisedEndpoint: null,
-      endpoints: [{ host: '192.168.1.8', port: 23333, security: 'ws' }]
-    })
-  })
-
-  it('keeps the saved input URL out of invitation transport endpoints', async () => {
-    const service = new ApiGatewayService()
-    await service._doInit()
-    captured.advertisedEndpoint = {
-      host: 'desktop.example.com',
-      port: 443,
-      security: 'wss',
-      inputUrl: 'https://Desktop.example.com'
-    }
-    const invitation = await service.createRemoteInvitation()
-    const endpoint = { host: 'desktop.example.com', port: 443, security: 'wss' }
-    expect(invitation.advertisedEndpoint).toEqual(endpoint)
-    expect(invitation.endpoints).toEqual([endpoint])
-  })
-
-  it('rejects invalid persisted destinations instead of issuing an unusable invitation', async () => {
-    const service = new ApiGatewayService()
-    await service._doInit()
-    captured.advertisedEndpoint = { host: '127.0.0.1', port: 443, security: 'wss' }
-    await expect(service.createRemoteInvitation()).rejects.toThrow('Invalid remote destination')
-  })
-
-  it('offers routable IPv6 candidates only while IPv6 is actually listening', async () => {
-    captured.ipv6Addresses = ['fd7a::2', '2001:db8::2', 'fe80::2', 'fe80::2%en0']
-    const service = new ApiGatewayService()
-    await service._doInit()
-    expect((await service.getRemoteEndpoint()).addresses).toEqual(['192.168.1.8', '2001:db8::2', 'fd7a::2'])
-    captured.ipv6Listening = false
-    expect((await service.getRemoteEndpoint()).addresses).toEqual(['192.168.1.8'])
-  })
-
-  it('preserves the running LAN service when its stop preferences cannot be saved', async () => {
-    const service = new ApiGatewayService()
-    await service._doInit()
-    mockPreferenceSetMultiple.mockRejectedValueOnce(new Error('disk full'))
-
-    await expect(service.stop()).rejects.toThrow('disk full')
-
-    expect(service.isActivated).toBe(true)
-    expect(service.getCurrentConfig()).toMatchObject({ enabled: true, host: '0.0.0.0' })
-    expect((await service.createRemoteInvitation()).addresses).toEqual(['192.168.1.8'])
-  })
-
-  it('retains LAN configuration for an explicit restart', async () => {
-    const service = new ApiGatewayService()
-    await service._doInit()
-
-    await service.restart()
-
-    expect(service.isActivated).toBe(true)
-    expect(service.getCurrentConfig()).toMatchObject({ enabled: true, host: '0.0.0.0' })
-    expect(ApiGateway).toHaveBeenLastCalledWith({ host: '0.0.0.0', port: 23333 })
-    expect((await service.createRemoteInvitation()).addresses).toEqual(['192.168.1.8'])
-  })
-})
-
-describe('ApiGatewayService independent LAN access', () => {
-  beforeEach(() => {
-    captured.enabledPreference = true
-    mockStart.mockResolvedValue(undefined)
-  })
-
-  it('enables and disables LAN without changing the local gateway or its enabled intent', async () => {
-    const service = new ApiGatewayService()
-    await service._doInit()
-
-    await service.setLanEnabled(true)
-    expect((await service.createRemoteInvitation()).port).toBe(23333)
-    expect(service.getCurrentConfig()).toMatchObject({ enabled: true, host: '0.0.0.0', port: 23333 })
-
-    expect(mockSetShared).toHaveBeenLastCalledWith('feature.api_gateway.lan_running', true)
-    await service.setLanEnabled(false)
-    expect(mockSetShared).toHaveBeenLastCalledWith('feature.api_gateway.lan_running', false)
-
-    expect(service.isActivated).toBe(true)
-    expect(service.getCurrentConfig()).toMatchObject({ enabled: true, host: '127.0.0.1' })
-    await expect(service.createRemoteInvitation()).rejects.toThrow('Device connections are disabled')
-    expect(mockStop).not.toHaveBeenCalled()
-  })
-
-  it('restores loopback and reports failure when opening network access fails', async () => {
-    const service = new ApiGatewayService()
-    await service._doInit()
-    mockRebind.mockRejectedValueOnce(new Error('address in use'))
-
-    await expect(service.setLanEnabled(true)).rejects.toThrow('address in use')
-
-    expect(service.isRunning()).toBe(true)
-    expect(service.getCurrentConfig().host).toBe('127.0.0.1')
-    expect(mockSetShared).toHaveBeenLastCalledWith('feature.api_gateway.lan_running', false)
-    await expect(service.createRemoteInvitation()).rejects.toThrow('Device connections are disabled')
-  })
-
-  it('leaves no network listener when closing access cannot bind loopback, and permits recovery', async () => {
-    const service = new ApiGatewayService()
-    await service._doInit()
-    await service.setLanEnabled(true)
-    mockRebind.mockRejectedValueOnce(new Error('address in use'))
-
-    await expect(service.setLanEnabled(false)).rejects.toThrow('address in use')
-
-    expect(service.isRunning()).toBe(false)
-    expect(service.getCurrentConfig().host).toBe('127.0.0.1')
-    expect(mockSetShared).toHaveBeenLastCalledWith('feature.api_gateway.lan_running', false)
-    await service.start()
-    expect(service.isRunning()).toBe(true)
-    expect(mockSetShared).toHaveBeenLastCalledWith('feature.api_gateway.lan_running', false)
-  })
-
-  it('keeps LAN disabled when its preference cannot be saved', async () => {
-    const service = new ApiGatewayService()
-    await service._doInit()
-    mockPreferenceSet.mockRejectedValueOnce(new Error('disk full'))
-
-    await expect(service.setLanEnabled(true)).rejects.toThrow()
-
-    expect(service.getCurrentConfig()).toMatchObject({ enabled: true, host: '127.0.0.1' })
-    expect(service.isActivated).toBe(true)
-    await expect(service.createRemoteInvitation()).rejects.toThrow('Device connections are disabled')
-    expect(mockStop).not.toHaveBeenCalled()
-  })
-
-  it('requires the user to enable the gateway instead of starting it from LAN settings', async () => {
-    captured.enabledPreference = false
-    const service = new ApiGatewayService()
-    await service._doInit()
-
-    await expect(service.setLanEnabled(true)).rejects.toThrow('Start the API Gateway')
-
-    expect(service.getCurrentConfig()).toMatchObject({ enabled: false, host: '127.0.0.1' })
-    expect(service.isActivated).toBe(false)
-  })
-
-  it('reports a superseded enable when the gateway stops during rebinding', async () => {
-    const service = new ApiGatewayService()
-    await service._doInit()
-    let finishRebinding!: () => void
-    mockRebind.mockImplementationOnce(
-      () =>
-        new Promise<void>((resolve) => {
-          finishRebinding = resolve
-        })
-    )
-
-    const enabling = service.setLanEnabled(true).catch((error) => error)
-    await vi.waitFor(() => expect(finishRebinding).toBeDefined())
-    const stopping = service.stop()
-    await vi.waitFor(() => expect(service.getCurrentConfig().enabled).toBe(false))
-    finishRebinding()
-
-    expect(await enabling).toBeInstanceOf(Error)
-    await expect(stopping).resolves.toBe('stopped')
-    expect(service.isRunning()).toBe(false)
-    expect(service.getCurrentConfig()).toMatchObject({ enabled: false, host: '127.0.0.1' })
-    expect(mockSetShared).toHaveBeenLastCalledWith('feature.api_gateway.lan_running', false)
-  })
-
-  it('does not restore LAN intent if the user stops the gateway while enabling LAN', async () => {
-    const service = new ApiGatewayService()
-    await service._doInit()
-    let finishSaving!: () => void
-    mockPreferenceSet.mockImplementationOnce(
-      () =>
-        new Promise<void>((resolve) => {
-          finishSaving = () => {
-            captured.hostPreference = '0.0.0.0'
-            resolve()
-          }
-        })
-    )
-    const enabling = service.setLanEnabled(true).catch((error) => error)
-    await vi.waitFor(() => expect(finishSaving).toBeDefined())
-    const stopping = service.stop()
-    await vi.waitFor(() => expect(service.getCurrentConfig().enabled).toBe(false))
-    finishSaving()
-
-    expect(await enabling).toBeInstanceOf(Error)
-    await stopping
-    expect(service.getCurrentConfig()).toMatchObject({ enabled: false, host: '127.0.0.1' })
-    expect(service.isActivated).toBe(false)
-  })
-})
-
-describe('ApiGatewayService running-state publication', () => {
-  it('returns stopped when stop() deactivates the server immediately', async () => {
-    const service = new ApiGatewayService()
-    await service._doInit()
-
-    const started = service.start()
-    await vi.waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1))
-    startResolvers[0]()
-    await started
-
-    await expect(service.stop()).resolves.toBe('stopped')
-    expect(service.isActivated).toBe(false)
-    expect(mockStop).toHaveBeenCalledTimes(1)
-  })
+it('keeps the saved public Gateway disabled at boot and serves internal callers on demand', async () => {
+  captured.enabledPreference = true
+  captured.hostPreference = '0.0.0.0'
+  const service = new ApiGatewayService()
+  await service._doInit()
+  expect(mockStart).not.toHaveBeenCalled()
+  expect(captured.prefHandler).toBeUndefined()
+  expect(service.isRunning()).toBe(false)
+  await startInternalGateway(service)
+  expect(mockStart).toHaveBeenCalledOnce()
+  expect(service.isRunning()).toBe(false)
 })

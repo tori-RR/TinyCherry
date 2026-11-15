@@ -9,7 +9,10 @@ const { netFetchMock, getCatalogVersionMock, notifyDataChangeMock, readActiveMan
     writeSnapshotMock: vi.fn()
   }))
 
-vi.mock('@main/services/AppUpdaterService', () => ({ RELEASE_HISTORY_URL: 'https://updates.example' }))
+vi.mock('@main/services/AppUpdaterService', () => ({
+  canCheckForAppUpdates: () => false,
+  RELEASE_HISTORY_URL: 'https://updates.example'
+}))
 vi.mock('@main/services/cherryCloud/CherryCloudService', () => ({
   resolveCherryCloudApiOrigin: () => 'https://cloud.example'
 }))
@@ -296,18 +299,11 @@ describe('ProviderRegistryUpdaterService.check', () => {
   it.each(['US', 'CN', null])('diagnoses the updater mirror with a cold country cache (%s)', async (country) => {
     mockRemote({ country })
     const endpoints = await builtinEndpoints()
+    expect(endpoints.map((endpoint) => endpoint.id)).not.toContain('update')
     const url = endpoints.find((endpoint) => endpoint.id === 'registry')!.url
     await service.check()
     expect(netFetchMock).toHaveBeenCalledWith(url, expect.anything())
     expect(url).toContain(country === 'US' ? 'raw.githubusercontent.com' : 'raw.gitcode.com')
-  })
-
-  it('uses the GitCode mirror inside China', async () => {
-    mockRemote({ dataVersion: 'v2', country: 'CN' })
-
-    await service.check()
-
-    expect(netFetchMock).toHaveBeenCalledWith(expect.stringContaining('raw.gitcode.com'), expect.anything())
   })
 
   it('uses the GitCode fallback when country detection fails without caching a guessed country', async () => {
