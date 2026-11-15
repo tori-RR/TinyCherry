@@ -237,15 +237,15 @@ export function checkPush(root, input, checker = verifyReceipt, ciChecker = veri
   }
 }
 
-export function mergeUpstream(root, ref) {
+export function mergeUpstream(root, ref, ciChecker = verifyFullCi) {
   if (!ref) throw new Error('Supply --ref <validated candidate>')
   const before = captureSnapshot(root)
   const candidate = commit(root, ref)
   verifyReceipt(root, candidate)
-  verifyFullCi(root, candidate)
+  ciChecker(root, candidate)
   assertSnapshot(root, before)
   // Fast-forward preserves the tested commit and the native executables' embedded revision.
-  execute('git', ['merge', '--ff-only', '--no-edit', candidate], root, process.env)
+  execute('git', ['merge', '--ff-only', '--no-edit', candidate], root, validationEnvironment(root))
   verifyReceipt(root, 'HEAD')
 }
 

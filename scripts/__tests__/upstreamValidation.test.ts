@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, relative } from 'node:path'
 
@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   assertFullCiRun,
   checkPush,
+  mergeUpstream,
   validationEnvironment,
   validationSteps,
   verifyUpstream
@@ -26,6 +27,7 @@ const previous = 'b'.repeat(40)
 const missing = '0'.repeat(40)
 
 afterEach(() => {
+  vi.unstubAllEnvs()
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true })
 })
 
@@ -272,5 +274,66 @@ describe('exact-commit full CI promotion gate', () => {
     ].map((runs) => ({ runs }))
   )('rejects missing, mismatched, affected-only or superseded evidence %#', ({ runs }) => {
     expect(() => assertFullCiRun(runs, revision)).toThrow('latest full CI dispatch for this exact commit')
+  })
+})
+
+describe('validated fast-forward promotion', () => {
+  it('passes project-local dependency and temporary paths into the real post-merge hook', () => {
+    const f = fixture()
+    f.seedReceipt()
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: f.root, encoding: 'utf8' }).trim()
+    git('checkout', '--detach', f.base)
+    const keys = [
+      'CI',
+      'TRANSLATION_BASE_LOCALE',
+      'VALIDATION_PLAN',
+      'VALIDATION_WORKSPACE_PREPARED',
+      'npm_config_store_dir',
+      'npm_config_cache',
+      'npm_config_devdir',
+      'TEMP',
+      'TMP',
+      'PREK_HOME',
+      'XDG_CACHE_HOME',
+      'XDG_STATE_HOME',
+      'XDG_DATA_HOME'
+    ]
+    f.write(
+      '.cache/post-merge-environment.cjs',
+      `const fs = require('node:fs'); fs.writeFileSync('.cache/post-merge-environment.json', JSON.stringify(Object.fromEntries(${JSON.stringify(keys)}.map(key => [key, process.env[key]]))))\n`
+    )
+    const hook = join(f.root, '.git', 'hooks', 'post-merge')
+    const node = process.execPath.replaceAll('\\', '/').replaceAll("'", "'\\''")
+    writeFileSync(hook, `#!/bin/sh\nexec '${node}' '.cache/post-merge-environment.cjs'\n`)
+    chmodSync(hook, 0o755)
+    vi.stubEnv('TEMP', 'external-temp')
+    vi.stubEnv('npm_config_store_dir', 'external-store')
+    vi.stubEnv('VALIDATION_PLAN', '{"projects":[]}')
+    vi.stubEnv('VALIDATION_WORKSPACE_PREPARED', 'true')
+    const ci = vi.fn()
+    mergeUpstream(f.root, f.head, ci)
+    expect(ci).toHaveBeenCalledExactlyOnceWith(f.root, f.head)
+    expect(git('rev-parse', 'HEAD')).toBe(f.head)
+    expect(verifyReceipt(f.root).head).toBe(f.head)
+    const env = JSON.parse(readFileSync(join(f.root, '.cache/post-merge-environment.json'), 'utf8'))
+    expect(env).toMatchObject({ CI: 'true', TRANSLATION_BASE_LOCALE: 'en-us' })
+    expect(env).not.toHaveProperty('VALIDATION_PLAN')
+    expect(env).not.toHaveProperty('VALIDATION_WORKSPACE_PREPARED')
+    expect(relative(f.root, env.npm_config_store_dir)).toBe('.pnpm-store')
+    for (const key of keys.filter(
+      (key) =>
+        ![
+          'CI',
+          'TRANSLATION_BASE_LOCALE',
+          'VALIDATION_PLAN',
+          'VALIDATION_WORKSPACE_PREPARED',
+          'npm_config_store_dir'
+        ].includes(key)
+    )) {
+      const location = relative(f.root, env[key])
+      expect(isAbsolute(location)).toBe(false)
+      expect(location.startsWith('..')).toBe(false)
+      expect(location.startsWith(join('.cache', 'upstream-validation'))).toBe(true)
+    }
   })
 })
