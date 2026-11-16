@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event'
 import { type MouseEvent as ReactMouseEvent, type ReactNode, useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type * as CherryUI from '@cherrystudio/ui'
 import type * as KnowledgeBaseHooks from '@renderer/hooks/useKnowledgeBase'
 import type * as KnowledgeItemHooks from '@renderer/hooks/useKnowledgeItems'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
@@ -19,9 +18,7 @@ import type {
 } from '@shared/data/types/knowledge'
 import type { PosixRelativeFilePath } from '@shared/utils/file'
 
-import type * as AddDialogModule from '../components/AddKnowledgeItemDialog'
 import KnowledgePage from '../KnowledgePage'
-import type * as DataSourcePanelModule from '../panels/dataSource/DataSourcePanel'
 import type { KnowledgeFilePreviewTarget } from '../types'
 
 function RoutedKnowledgePage() {
@@ -2095,104 +2092,4 @@ describe('KnowledgePage', () => {
       expect(toast.error).toHaveBeenCalledWith('知识库移动失败: move failed')
     })
   })
-
-  it.each(['success', 'conflict cancel'])(
-    'provider drops the new argument or replays stale input after %s: Folder imports only the new selection',
-    async (outcome) => {
-      const user = userEvent.setup()
-      const ui = await import('@cherrystudio/ui')
-      const realUi = await vi.importActual<typeof CherryUI>('@cherrystudio/ui')
-      vi.spyOn(ui, 'Dialog').mockImplementation((props) => <realUi.Dialog {...props} />)
-      vi.spyOn(ui, 'DialogContent').mockImplementation((props) => <realUi.DialogContent {...props} />)
-      vi.spyOn(ui, 'DialogTitle').mockImplementation((props) => <realUi.DialogTitle {...props} />)
-      const realPanel = await vi.importActual<typeof DataSourcePanelModule>('../panels/dataSource/DataSourcePanel')
-      const realDialog = await vi.importActual<typeof AddDialogModule>('../components/AddKnowledgeItemDialog')
-      const panelModule = await import('../panels/dataSource/DataSourcePanel')
-      const dialogModule = await import('../components/AddKnowledgeItemDialog')
-      vi.spyOn(panelModule, 'default').mockImplementation(realPanel.default)
-      vi.spyOn(dialogModule, 'default').mockImplementation(realDialog.default)
-      mockUseKnowledgeBases.mockReturnValue({
-        bases: [createKnowledgeBase({ id: 'base-1', name: 'Base 1' })],
-        isLoading: false,
-        error: undefined,
-        refetch: vi.fn()
-      })
-      const directory = new File(['folder'], 'FolderDropFixture')
-      const plain = new File(['text'], 'plain.md')
-      const select = vi.fn()
-      const selectFolder = vi.fn().mockResolvedValue('/picked/NewFolder')
-      Object.assign(window.api.file, {
-        select,
-        selectFolder,
-        getPathForFile: (file: File) => `/host/${file.name}`
-      })
-      let firstAdd = true
-      const request = vi.mocked(window.api.ipcApi.request)
-      request.mockImplementation(async (route) => {
-        if (route === 'file.get_metadata') {
-          return {
-            ok: true,
-            data: { kind: 'file', type: 'text', mime: 'text/markdown', size: 4, createdAt: 0, modifiedAt: 0 }
-          }
-        }
-        if (route === 'knowledge.add_items') {
-          const conflicts = firstAdd && outcome === 'conflict cancel'
-          firstAdd = false
-          return {
-            ok: true,
-            data: conflicts
-              ? { status: 'conflicts', conflicts: [{ type: 'directory', title: 'FolderDropFixture' }] }
-              : { status: 'added' }
-          }
-        }
-        return { ok: true, data: undefined }
-      })
-      render(<RoutedKnowledgePage />)
-
-      fireEvent.drop(await screen.findByText('上传第一个数据源'), {
-        dataTransfer: {
-          files: [directory, plain],
-          items: [
-            { kind: 'file', getAsFile: () => directory, webkitGetAsEntry: () => ({ isDirectory: true }) },
-            { kind: 'file', getAsFile: () => plain, webkitGetAsEntry: () => ({ isDirectory: false }) }
-          ]
-        }
-      })
-
-      const droppedItems = [
-        { type: 'file', data: { source: '/host/plain.md', path: '/host/plain.md' } },
-        { type: 'directory', data: { source: '/host/FolderDropFixture' } }
-      ]
-      await waitFor(() =>
-        expect(request).toHaveBeenCalledWith('knowledge.add_items', {
-          baseId: 'base-1',
-          items: droppedItems,
-          conflictStrategy: 'detect'
-        })
-      )
-      expect(select).not.toHaveBeenCalled()
-      expect(selectFolder).not.toHaveBeenCalled()
-      if (outcome === 'conflict cancel') {
-        await user.click(await screen.findByRole('button', { name: '取消' }))
-      }
-
-      await user.click(screen.getByRole('button', { name: '目录' }))
-
-      await waitFor(() =>
-        expect(request.mock.calls.filter(([route]) => route === 'knowledge.add_items')).toEqual([
-          ['knowledge.add_items', { baseId: 'base-1', items: droppedItems, conflictStrategy: 'detect' }],
-          [
-            'knowledge.add_items',
-            {
-              baseId: 'base-1',
-              items: [{ type: 'directory', data: { source: '/picked/NewFolder' } }],
-              conflictStrategy: 'detect'
-            }
-          ]
-        ])
-      )
-      expect(select).not.toHaveBeenCalled()
-      expect(toast.error).not.toHaveBeenCalled()
-    }
-  )
 })

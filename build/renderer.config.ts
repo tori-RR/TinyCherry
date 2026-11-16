@@ -1,8 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { parse } from 'yaml'
-
 import { APP_EDITIONS, type AppEdition } from '../src/shared/types/appEdition'
 import { parseReleaseHistory, validateCurrentReleaseHistory } from '../src/shared/utils/releaseNotes'
 
@@ -13,11 +11,9 @@ export const rendererAliases = {
   '@shared': resolve('src/shared'),
   '@logger': resolve('src/renderer/services/LoggerService'),
   '@data': resolve('src/renderer/data'),
-  '@cherrystudio/ai-core/provider': resolve('packages/aiCore/src/core/providers'),
-  '@cherrystudio/ai-core/built-in/plugins': resolve('packages/aiCore/src/core/plugins/built-in'),
-  '@cherrystudio/ai-core': resolve('packages/aiCore/src'),
+  '@platform': resolve('src/platform'),
+  '@cherrystudio/remote-protocol': resolve('packages/remote-protocol/src'),
   '@cherrystudio/extension-table-plus': resolve('packages/extension-table-plus/src'),
-  '@cherrystudio/ai-sdk-provider': resolve('packages/ai-sdk-provider/src'),
   '@cherrystudio/provider-registry/node': resolve('packages/provider-registry/src/registry-loader'),
   '@cherrystudio/provider-registry': resolve('packages/provider-registry/src'),
   '@cherrystudio/web-search/catalog': resolve('packages/web-search/src/catalog.ts'),
@@ -57,14 +53,14 @@ export function resolveRendererEdition(value: string | undefined): AppEdition {
 }
 
 export function loadRendererReleaseMetadata(version: string) {
-  const config = parse(readFileSync(resolve('electron-builder.yml'), 'utf8')) as {
-    releaseInfo?: { releaseNotes?: unknown }
+  const config = JSON.parse(readFileSync(resolve('resources/tinycherry/release.json'), 'utf8')) as {
+    version?: string; releaseNotes?: unknown
   }
-  const releaseNotes = config.releaseInfo?.releaseNotes
-  if (typeof releaseNotes !== 'string' || !releaseNotes.trim()) {
-    throw new Error('electron-builder.yml must define non-empty releaseInfo.releaseNotes')
+  const releaseNotes = config.releaseNotes
+  if (config.version !== version || typeof releaseNotes !== 'string' || !releaseNotes.trim()) {
+    throw new Error('Product release metadata must match package.json and include releaseNotes')
   }
-  const history = parseReleaseHistory(readFileSync(resolve('resources/cherry-studio/release-history.json'), 'utf8'))
+  const history = parseReleaseHistory(readFileSync(resolve('resources/tinycherry/release-history.json'), 'utf8'))
   validateCurrentReleaseHistory({ releaseNotes, version }, history)
   return { releaseNotes, history }
 }

@@ -1,262 +1,112 @@
 import { execFileSync } from 'node:child_process'
 
-import { TAURI_PROJECTS, TAURI_TASKS, VALIDATION_TARGETS } from './targets.mjs'
-
 export const testProjects = [
-  'main',
-  'preload',
   'renderer',
-  'aiCore',
+  'shared',
   'ui',
   'file-preview',
-  'shared',
   'provider-registry',
   'web-search',
-  'scripts',
-  'agent-behavior',
-  'agent-runtime',
-  'agent-runtime-pi',
-  'agent-runtime-pi-durable',
-  'agent-runtime-acp',
-  'agent-runtime-claude-code',
-  'ai-sdk-provider',
   'remote-protocol',
-  'remote-transport'
+  'desktop',
+  'tooling'
+]
+const allTasks = [
+  'format',
+  'docs',
+  'exit',
+  'workflow',
+  'lint',
+  'types',
+  'ts',
+  'go',
+  'vet',
+  'race',
+  'rust',
+  'build',
+  'contracts',
+  'smoke'
 ]
 
-export const checkTasks = {
-  format: { group: 'repository', args: ['format:check'] },
-  docs: { group: 'repository', args: ['docs:check'] },
-  skills: { group: 'repository', args: ['skills:check'] },
-  knowledge: { group: 'repository', args: ['build:builtin-knowledge:check'] },
-  migrations: { group: 'repository', args: ['db:migrations:check'] },
-  theme: { group: 'repository', args: ['--filter', '@cherrystudio/ui', 'theme:check'] },
-  lint: { group: 'lint', args: ['lint'] },
-  'types-node': { group: 'types', args: ['typecheck:node'] },
-  'types-web': { group: 'types', args: ['typecheck:web'] },
-  'types-tauri': { group: 'types', args: ['typecheck:tauri'] },
-  'types-aicore': { group: 'types', args: ['--filter', '@cherrystudio/ai-core', 'typecheck'] },
-  'types-e2e': { group: 'types', args: ['typecheck:e2e'] },
-  'types-agent-runtime-pi': { group: 'types', args: ['--filter', '@cherrystudio/agent-runtime-pi', 'typecheck'] },
-  'types-agent-runtime-pi-durable': {
-    group: 'types',
-    args: ['--filter', '@cherrystudio/agent-runtime-pi-durable', 'typecheck']
-  },
-  'types-agent-runtime-acp': { group: 'types', args: ['--filter', '@cherrystudio/agent-runtime-acp', 'typecheck'] },
-  'types-agent-runtime': { group: 'types', args: ['--filter', '@cherrystudio/agent-runtime', 'typecheck'] },
-  'types-agent-runtime-claude-code': {
-    group: 'types',
-    args: ['--filter', '@cherrystudio/agent-runtime-claude-code', 'typecheck']
-  },
-  'types-agent-behavior': { group: 'types', args: ['--filter', '@cherrystudio/agent-behavior', 'typecheck'] },
-  'types-remote-protocol': { group: 'types', args: ['--filter', '@cherrystudio/remote-protocol', 'typecheck'] },
-  'types-remote-transport': { group: 'types', args: ['--filter', '@cherrystudio/remote-transport', 'typecheck'] },
-  'types-web-search': { group: 'types', args: ['--filter', '@cherrystudio/web-search', 'typecheck'] },
-  'types-file-preview': { group: 'types', args: ['--filter', '@cherrystudio/file-preview', 'typecheck'] },
-  'i18n-catalog': { group: 'i18n', args: ['i18n:check'] },
-  'i18n-unused': { group: 'i18n', args: ['i18n:unused:check'] },
-  'i18n-hardcoded': { group: 'i18n', args: ['i18n:hardcoded:strict'] }
-}
-
-const consumers = {
-  main: ['main', 'preload'],
-  renderer: ['renderer'],
-  shared: testProjects,
-  aiCore: ['aiCore', 'main', 'preload', 'renderer'],
-  'agent-behavior': ['agent-behavior', 'agent-runtime-pi', 'main'],
-  'agent-runtime': [
-    'agent-runtime',
-    'agent-behavior',
-    'agent-runtime-pi',
-    'agent-runtime-pi-durable',
-    'agent-runtime-acp',
-    'agent-runtime-claude-code',
-    'main'
-  ],
-  'agent-runtime-pi': ['agent-runtime-pi', 'main'],
-  'agent-runtime-pi-durable': ['agent-runtime-pi-durable'],
-  'agent-runtime-acp': ['agent-runtime-acp'],
-  'agent-runtime-claude-code': ['agent-runtime-claude-code'],
-  'ai-sdk-provider': ['ai-sdk-provider', 'aiCore', 'main', 'preload', 'renderer'],
-  ui: ['ui', 'file-preview', 'renderer'],
-  'file-preview': ['file-preview', 'renderer'],
-  'provider-registry': ['provider-registry', 'shared', 'scripts', 'main', 'preload', 'renderer'],
-  'web-search': ['web-search', 'shared', 'main', 'preload', 'renderer'],
-  'extension-table-plus': ['renderer'],
-  'remote-protocol': ['remote-protocol', 'remote-transport', 'shared', 'scripts', 'main', 'preload', 'renderer'],
-  'remote-transport': ['remote-transport', 'main', 'preload', 'renderer'],
-  scripts: ['scripts']
-}
-
-function scopeFor(file) {
-  if (file.startsWith('resources/')) return 'all'
-  if (file.startsWith('docs/website/')) return 'docs'
-  if (file === 'docs/dev/sources-index.json' || file === '.github/website-docs-sync-plan.json') return 'docs'
-  if (
-    file === 'CONTRIBUTING.i18n.yaml' ||
-    ((file.startsWith('docs/') || file.startsWith('.agents/notes/')) && file.endsWith('.i18n.yaml'))
-  )
-    return 'docs'
-  if (
-    (file.startsWith('docs/') || file.startsWith('.agents/notes/') || file.startsWith('.changeset/')) &&
-    file.endsWith('.md')
-  )
-    return 'docs'
-  if (/^(?:[^/]+\.md|(?:src|packages|scripts)\/.*\/README(?:\.[\w-]+)?\.md)$/.test(file)) return 'docs'
-  if (file.startsWith('.agents/skills/') || file.startsWith('.claude/skills/')) return 'skills'
-  if (file.startsWith('src/preload/')) return 'preload'
-  if (file.startsWith('migrations/')) return 'main'
-  if (file.startsWith('tests/e2e/') || /^playwright.*\.config\.ts$/.test(file)) return 'e2e'
-  if (file === 'tests/file-preview.setup.ts') return 'file-preview'
-  if (
-    file.startsWith('tests/helpers/') ||
-    file.startsWith('tests/__mocks__/main/') ||
-    file === 'tests/main.setup.ts' ||
-    file === 'tests/__mocks__/MainLoggerService.ts'
-  )
-    return 'main'
-  if (
-    file.startsWith('tests/__mocks__/renderer/') ||
-    [
-      'tests/renderer.setup.ts',
-      'tests/__mocks__/RendererLoggerService.ts',
-      'tests/__mocks__/requestAnimationFrame.ts'
-    ].includes(file)
-  )
-    return 'renderer'
-  if (file.startsWith('scripts/validation/') || file.startsWith('.github/')) return 'all'
-  if (file.startsWith('scripts/')) return 'scripts'
-  const process = /^src\/(main|renderer|shared)\//.exec(file)?.[1]
-  if (process) return process
-  const pkg = /^packages\/([^/]+)\//.exec(file)?.[1]
-  return pkg && consumers[pkg] ? pkg : 'all'
-}
-
-export function createPlan(files, fullReason, target = 'tauri') {
-  if (!VALIDATION_TARGETS.includes(target)) throw new Error(`Unknown validation target: ${target}`)
+/** Selection is by current product boundary, never by a retired desktop target. */
+export function createPlan(files, fullReason) {
   const reasons = {}
   const projects = new Set()
-  let platform = false
-  const add = (task, reason) => {
-    const entries = (reasons[task] ??= [])
-    if (entries.length < 3 && !entries.includes(reason)) entries.push(reason)
+  const add = (tasks, reason, tests = []) => {
+    for (const task of tasks) (reasons[task] ??= []).push(reason)
+    for (const project of tests) projects.add(project)
   }
-  const full = (reason) => {
-    platform = true
-    for (const task of Object.keys(checkTasks)) add(task, reason)
-    for (const project of testProjects) projects.add(project)
-  }
+  const full = (reason) => add(allTasks, reason, testProjects)
   if (fullReason) full(fullReason)
   for (const file of [...new Set(files)].sort()) {
-    const scope = scopeFor(file)
-    add('format', file)
-    add('docs', file)
-    if (scope === 'docs') continue
-    if (scope === 'skills') {
-      add('skills', file)
-      continue
-    }
-    if (scope === 'all') {
+    add(['format'], file)
+    if (/\.(?:md|txt)$/.test(file) || file.startsWith('docs/')) {
+      add(['docs'], file)
+    } else if (/^native\/evostack\/backend\/.*\.go$/.test(file)) {
+      add(['go', 'vet', 'race', 'build', 'contracts', 'smoke'], file, ['desktop'])
+    } else if (/^native\/evostack\/src-tauri\/src\/.*\.rs$/.test(file)) {
+      add(['rust', 'build', 'contracts', 'smoke'], file, ['desktop'])
+    } else if (file.startsWith('src/platform/') || file.startsWith('src/shared/')) {
+      full(`Cross-process contract: ${file}`)
+    } else if (/^src\/renderer\/(?:ipc|data|windows\/evostack)\//.test(file)) {
+      add(['exit', 'lint', 'types', 'ts', 'build', 'contracts', 'smoke'], file, ['renderer', 'desktop'])
+    } else if (file.startsWith('src/renderer/')) {
+      add(['exit', 'lint', 'types', 'ts'], file, ['renderer'])
+    } else if (file.startsWith('.github/workflows/') || file.startsWith('scripts/validation/')) {
+      add(['exit', 'workflow', 'ts'], file, ['tooling'])
+    } else if (file.startsWith('scripts/desktop/')) {
+      full(`Build and lifecycle tooling: ${file}`)
+    } else if (/^packages\//.test(file)) {
+      add(
+        ['exit', 'lint', 'types', 'ts'],
+        file,
+        testProjects.filter((p) => !['desktop', 'tooling'].includes(p))
+      )
+    } else {
       full(`Conservative fallback: ${file}`)
-      continue
     }
-    add('lint', file)
-    if (scope === 'e2e') {
-      add('types-e2e', file)
-      continue
-    }
-    add('knowledge', file)
-    if (file.startsWith('src/renderer/') && /\.(?:tsx?|css)$/.test(file)) add('theme', file)
-    const affected = scope === 'preload' ? ['main', 'preload', 'renderer'] : consumers[scope]
-    if (affected.includes('main') && !/^packages\/(?:aiCore|ai-sdk-provider|web-search)\/src\/.*\.tsx?$/.test(file))
-      platform = true
-    for (const project of affected) projects.add(project)
-    if (affected.some((project) => TAURI_PROJECTS.includes(project))) add('types-tauri', file)
-    if (affected.some((project) => ['main', 'shared', 'scripts', 'provider-registry'].includes(project)))
-      add('types-node', file)
-    if (affected.includes('renderer')) add('types-web', file)
-    if (affected.includes('aiCore')) add('types-aicore', file)
-    if (affected.includes('agent-behavior')) add('types-agent-behavior', file)
-    if (affected.includes('agent-runtime-pi')) add('types-agent-runtime-pi', file)
-    if (affected.includes('agent-runtime-pi-durable')) add('types-agent-runtime-pi-durable', file)
-    if (affected.includes('agent-runtime-claude-code')) add('types-agent-runtime-claude-code', file)
-    if (affected.includes('agent-runtime-acp')) add('types-agent-runtime-acp', file)
-    if (affected.includes('agent-runtime')) add('types-agent-runtime', file)
-    if (affected.includes('remote-protocol')) add('types-remote-protocol', file)
-    if (affected.includes('remote-transport')) add('types-remote-transport', file)
-    if (affected.includes('web-search')) add('types-web-search', file)
-    if (affected.includes('file-preview')) add('types-file-preview', file)
-    if (scope === 'main' || scope === 'shared') add('migrations', file)
-    const inTestDirectory = file.split('/').includes('__tests__')
-    const testFile = inTestDirectory || /\.(?:test|spec)\.tsx?$/.test(file)
-    if (!testFile || (file.startsWith('src/main/') && !inTestDirectory)) add('i18n-catalog', file)
-    // Renderer unused-key analysis still reads tests, including those under src/main.
-    add('i18n-unused', file)
-    if (!inTestDirectory && !/\.test\.tsx?$/.test(file)) add('i18n-hardcoded', file)
   }
-  const tasks = Object.keys(checkTasks).filter((task) => reasons[task] && taskAllowed(task, target))
+  const tasks = allTasks.filter((task) => reasons[task])
   return {
-    target,
+    target: 'tauri',
+    files: [...new Set(files)].sort(),
     tasks,
-    projects: testProjects.filter((project) => projects.has(project) && projectAllowed(project, target)),
-    platform: target === 'electron' && platform,
-    reasons: Object.fromEntries(tasks.map((task) => [task, reasons[task]]))
+    projects: testProjects.filter((project) => projects.has(project)),
+    desktop: tasks.some((task) => !['format', 'docs'].includes(task)),
+    go: tasks.some((task) => ['go', 'vet', 'race', 'build', 'contracts'].includes(task)),
+    rust: tasks.some((task) => ['rust', 'build', 'smoke'].includes(task)),
+    reasons: Object.fromEntries(tasks.map((task) => [task, [...new Set(reasons[task])]]))
   }
 }
 
-const taskAllowed = (task, target) => (target === 'tauri' ? TAURI_TASKS.includes(task) : task !== 'types-tauri')
-const projectAllowed = (project, target) => target === 'electron' || TAURI_PROJECTS.includes(project)
-
-export function validatePlan(plan, target = 'tauri') {
-  if (!VALIDATION_TARGETS.includes(target)) throw new Error(`Unknown validation target: ${target}`)
-  if (plan?.target !== target) throw new Error(`Validation target mismatch: expected ${target}`)
+export function validatePlan(plan) {
   if (
+    plan?.target !== 'tauri' ||
     !Array.isArray(plan.tasks) ||
     !Array.isArray(plan.projects) ||
-    typeof plan.platform !== 'boolean' ||
-    plan.tasks.some((task) => !Object.hasOwn(checkTasks, task) || !taskAllowed(task, target)) ||
-    plan.projects.some((project) => !testProjects.includes(project) || !projectAllowed(project, target)) ||
-    (target === 'tauri' && plan.platform)
+    plan.tasks.some((task) => !allTasks.includes(task)) ||
+    plan.projects.some((project) => !testProjects.includes(project))
   )
-    throw new Error('Invalid validation plan')
+    throw new Error('Invalid Tauri validation plan')
   return plan
 }
 
-export function changedFiles(cwd, base = 'origin/main', head = 'HEAD', local = true) {
-  const git = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8' })
-  const baseCommit = git('rev-parse', '--verify', '--end-of-options', `${base}^{commit}`).trim()
-  const headCommit = git('rev-parse', '--verify', '--end-of-options', `${head}^{commit}`).trim()
-  const comparison = local ? git('merge-base', baseCommit, headCommit).trim() : baseCommit
-  const files = git('diff', '--name-only', '--no-renames', '-z', comparison, headCommit).split('\0')
+export function changedFiles(root, base = 'origin/main', head = 'HEAD', local = true) {
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' })
+  const fixedBase = git('rev-parse', '--verify', '--end-of-options', `${base}^{commit}`).trim()
+  const fixedHead = git('rev-parse', '--verify', '--end-of-options', `${head}^{commit}`).trim()
+  const comparison = git('merge-base', fixedBase, fixedHead).trim()
+  const files = git('diff', '--name-only', '--no-renames', '-z', comparison, fixedHead).split('\0')
   if (local) {
-    files.push(...git('diff', '--cached', '--name-only', '--no-renames', '-z', 'HEAD').split('\0'))
-    files.push(...git('diff', '--name-only', '--no-renames', '-z').split('\0'))
+    files.push(...git('diff', '--name-only', '--no-renames', '-z', 'HEAD').split('\0'))
     files.push(...git('ls-files', '--others', '--exclude-standard', '-z').split('\0'))
   }
   return [...new Set(files.filter(Boolean))]
 }
 
-export function selectedGroups(plan) {
-  return {
-    repository: plan.tasks.some((task) => checkTasks[task].group === 'repository'),
-    lint: plan.tasks.includes('lint'),
-    types: plan.tasks.some((task) => checkTasks[task].group === 'types'),
-    i18n: plan.tasks.some((task) => checkTasks[task].group === 'i18n'),
-    main: plan.projects.some((project) => ['main', 'preload'].includes(project)),
-    platform: plan.platform,
-    renderer: plan.projects.includes('renderer'),
-    packages: plan.projects.some((project) => !['main', 'preload', 'renderer'].includes(project))
-  }
-}
-
-export function verifyResults(plan, results, groups = Object.keys(selectedGroups(plan))) {
-  const selected = selectedGroups(plan)
-  for (const group of groups) {
-    if (!Object.hasOwn(selected, group)) throw new Error(`Unknown validation group: ${group}`)
-    const required = selected[group]
-    if (required && results[group] !== 'success')
-      throw new Error(`${group}: expected success, received ${results[group] ?? 'missing'}`)
-    if (!required && results[group] !== 'skipped' && results[group] !== 'success')
-      throw new Error(`${group}: unexpected result ${results[group] ?? 'missing'}`)
-  }
+export function verifyResults(plan, results) {
+  validatePlan(plan)
+  if (results.plan !== 'success') throw new Error('Validation planning failed')
+  const expected = plan.desktop ? 'success' : 'skipped'
+  if (results.desktop !== expected) throw new Error(`Desktop checks expected ${expected}, received ${results.desktop}`)
 }

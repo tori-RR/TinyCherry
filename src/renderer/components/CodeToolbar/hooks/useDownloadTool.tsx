@@ -8,17 +8,28 @@ import { FilePngIcon, FileSvgIcon } from '@renderer/components/icons/FileIcons'
 import type { BasicPreviewHandles } from '@renderer/components/Preview/types'
 
 interface UseDownloadToolProps {
+  enabled?: boolean
   showPreviewTools?: boolean
   previewRef: React.RefObject<BasicPreviewHandles | null>
   onDownloadSource: () => void
   setTools: React.Dispatch<React.SetStateAction<ActionTool[]>>
 }
 
-export const useDownloadTool = ({ showPreviewTools, previewRef, onDownloadSource, setTools }: UseDownloadToolProps) => {
+export const useDownloadTool = ({
+  enabled = true,
+  showPreviewTools,
+  previewRef,
+  onDownloadSource,
+  setTools
+}: UseDownloadToolProps) => {
   const { t } = useTranslation()
   const { registerTool, removeTool } = useToolManager(setTools)
 
   useEffect(() => {
+    if (!enabled) {
+      removeTool(TOOL_SPECS.download.id)
+      return
+    }
     const includePreviewTools = showPreviewTools === true
 
     const baseTool = {
@@ -59,5 +70,5 @@ export const useDownloadTool = ({ showPreviewTools, previewRef, onDownloadSource
     }
 
     return () => removeTool(TOOL_SPECS.download.id)
-  }, [onDownloadSource, registerTool, removeTool, t, showPreviewTools, previewRef])
+  }, [enabled, onDownloadSource, registerTool, removeTool, t, showPreviewTools, previewRef])
 }

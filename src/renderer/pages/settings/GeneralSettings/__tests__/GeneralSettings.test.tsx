@@ -857,23 +857,6 @@ describe('GeneralSettings', () => {
     }
   )
 
-  it('preserves Electron SOCKS4 proxy support', async () => {
-    const user = userEvent.setup()
-    MockUsePreferenceUtils.setMultiplePreferenceValues({
-      'app.proxy.mode': 'custom',
-      'app.proxy.url': 'http://old.example:8080'
-    })
-    render(<GeneralSettings />)
-    const input = screen.getByDisplayValue('http://old.example:8080')
-    await user.clear(input)
-    await user.type(input, 'socks4://legacy.example:1080')
-    await user.tab()
-    await waitFor(() =>
-      expect(MockUsePreferenceUtils.getPreferenceValue('app.proxy.url')).toBe('socks4://legacy.example:1080')
-    )
-    expect(screen.queryByText('settings.proxy.native_protocols')).not.toBeInTheDocument()
-  })
-
   it('disables native model replay settings while retaining the saved retry values', async () => {
     platform.native = true
     const user = userEvent.setup()

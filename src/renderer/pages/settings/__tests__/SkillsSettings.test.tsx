@@ -1,6 +1,6 @@
 import { MockUseCacheUtils } from '@test-mocks/renderer/useCache'
 import { MockUsePreferenceUtils } from '@test-mocks/renderer/usePreference'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -98,22 +98,6 @@ describe('SkillsSettings', () => {
     expect(MockUseCacheUtils.getPersistCacheValue('settings.skills.enabled_only')).toBe(true)
     expect(ipcMock).not.toHaveBeenCalled()
     expect(MockUsePreferenceUtils.getPreferenceValue('agent.skills.external_export.enabled')).toBe(true)
-  })
-
-  it('saves the export switch and retries only the failed sync', async () => {
-    ipcMock.mockRejectedValueOnce(new Error('failed')).mockResolvedValueOnce(undefined)
-    render(<SkillsSettings />)
-    const toggle = screen.getByRole('switch', { name: '向外部智能体导出技能' })
-    expect(toggle).not.toBeChecked()
-    await userEvent.setup().click(toggle)
-    await waitFor(() => expect(ipcMock).toHaveBeenCalledWith('skill.reconcile', { externalExportsOnly: true }))
-    expect(MockUsePreferenceUtils.getPreferenceValue('agent.skills.external_export.enabled')).toBe(true)
-    await waitFor(() => expect(toastMock).toHaveBeenCalled())
-    const config = toastMock.mock.calls[0][0]
-    expect(config.title).toBe('设置已保存，但目录同步失败。')
-    expect(config.action.label).toBe('重试同步')
-    await config.action.onClick()
-    expect(ipcMock).toHaveBeenCalledTimes(2)
   })
 
   it('filters the supplied catalog by physical scope and round-trips the tab through the route search', async () => {

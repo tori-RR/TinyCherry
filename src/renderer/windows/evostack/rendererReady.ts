@@ -1,4 +1,4 @@
-import { ipcRenderer } from './transport'
+import { nativeTransport } from '@platform/tauri/transport'
 
 // Report the retained React surface, rather than just a WebView/window handle.
 export function reportRendererReady(): Promise<void> {
@@ -22,7 +22,7 @@ export function reportRendererReady(): Promise<void> {
           : undefined
       if (!phase) return
       stop()
-      void ipcRenderer.invoke('evostack:renderer-ready', phase).then(() => resolve(), reject)
+      void nativeTransport.request('evostack:renderer-ready', phase).then(() => resolve(), reject)
     }
     const observer = new MutationObserver(check)
     const timer = setTimeout(() => {

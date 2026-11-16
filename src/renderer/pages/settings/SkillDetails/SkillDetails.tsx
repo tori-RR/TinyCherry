@@ -29,40 +29,41 @@ import { useSkillMutationsById } from '@renderer/hooks/resourceCatalog'
 import { useSkillLauncher } from '@renderer/hooks/useSkillLauncher'
 import { ipcApi } from '@renderer/ipc'
 import { toast } from '@renderer/services/toast'
-import { isEvoStack } from '@renderer/utils/platform'
 import { IpcError } from '@shared/ipc/errors/IpcError'
 import { skillErrorCodes } from '@shared/ipc/errors/skill'
 import type { SkillRemoteUpdateCheck } from '@shared/types/skill'
 
 import { SkillFileBrowser, type SkillFileBrowserHandles } from './SkillFileBrowser'
-
 const logger = loggerService.withContext('SkillDetails')
-
 export function SkillDetails({ skillId }: { skillId: string }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const launchSkill = useSkillLauncher()
   // Received from the list route; handed back on return so the list restores the active tab.
-  const { scope } = useSearch({ strict: false }) as { scope?: 'all' | 'system' | 'builtin' }
+  const { scope } = useSearch({ strict: false }) as {
+    scope?: 'all' | 'system' | 'builtin'
+  }
   const { data: skill, isLoading, error, refetch } = useQuery('/skills/:skillId', { params: { skillId } })
   const { updateGlobalEnabled, setMirrorEnabled, uninstallSkill, isUpdating } = useSkillMutationsById(skillId)
   const [appExternalExportEnabled] = usePreference('agent.skills.external_export.enabled')
   const mirrorToggleId = useId()
   const globalToggleId = useId()
-  const [isUpdatingMirror, setIsUpdatingMirror] = useState(false)
+  const [, setIsUpdatingMirror] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [remoteCheck, setRemoteCheck] = useState<Extract<SkillRemoteUpdateCheck, { state: 'available' }> | null>(null)
+  const [remoteCheck, setRemoteCheck] = useState<Extract<
+    SkillRemoteUpdateCheck,
+    {
+      state: 'available'
+    }
+  > | null>(null)
   const [checkingRemote, setCheckingRemote] = useState(false)
   const [applyingRemote, setApplyingRemote] = useState(false)
   const [browserRevision, setBrowserRevision] = useState(0)
   const fileBrowserRef = useRef<SkillFileBrowserHandles>(null)
   const folder = useSWR(['skill.folder.resolve', skillId], () => ipcApi.request('skill.folder.resolve', { skillId }))
-
   useDataChange('/skills/:skillId', () => void refetch())
-
   const goBack = () => void navigate({ to: '/settings/skills', search: { scope } })
-
   const handleOpenFolder = async () => {
     try {
       await ipcApi.request('skill.folder.open', { skillId })
@@ -71,7 +72,6 @@ export function SkillDetails({ skillId }: { skillId: string }) {
       toast.error(t('library.skill_detail.open_folder_failed'))
     }
   }
-
   const handleToggle = async (checked: boolean) => {
     if (!skill) return
     try {
@@ -81,7 +81,6 @@ export function SkillDetails({ skillId }: { skillId: string }) {
       toast.error(t('settings.skills.toggleFailed', { name: skill.name }))
     }
   }
-
   const handleMirrorToggle = async (checked: boolean) => {
     if (!skill || !appExternalExportEnabled) return
     setIsUpdatingMirror(true)
@@ -95,7 +94,6 @@ export function SkillDetails({ skillId }: { skillId: string }) {
       setIsUpdatingMirror(false)
     }
   }
-
   const handleDelete = async () => {
     setDeleting(true)
     try {
@@ -108,7 +106,6 @@ export function SkillDetails({ skillId }: { skillId: string }) {
       setDeleting(false)
     }
   }
-
   const checkRemoteUpdate = async () => {
     setCheckingRemote(true)
     try {
@@ -140,7 +137,6 @@ export function SkillDetails({ skillId }: { skillId: string }) {
       setCheckingRemote(false)
     }
   }
-
   const applyRemoteUpdate = async () => {
     if (!remoteCheck) return
     setApplyingRemote(true)
@@ -171,7 +167,6 @@ export function SkillDetails({ skillId }: { skillId: string }) {
       setApplyingRemote(false)
     }
   }
-
   if (isLoading) {
     return (
       <SettingsContentBody
@@ -182,7 +177,6 @@ export function SkillDetails({ skillId }: { skillId: string }) {
       </SettingsContentBody>
     )
   }
-
   if (!skill || error) {
     return (
       <SettingsContentBody className="min-h-0 flex-1">
@@ -197,7 +191,6 @@ export function SkillDetails({ skillId }: { skillId: string }) {
       </SettingsContentBody>
     )
   }
-
   return (
     <SettingsContentBody
       className="min-h-0 flex-1 overflow-hidden pt-4"
@@ -243,8 +236,8 @@ export function SkillDetails({ skillId }: { skillId: string }) {
             size="sm"
             onClick={() => void launchSkill(skill)}
             className="gap-1.5"
-            disabled={isEvoStack}
-            title={isEvoStack ? t('settings.skills.evostack.execution_unavailable') : undefined}>
+            disabled={true}
+            title={t('settings.skills.evostack.execution_unavailable')}>
             <Play size={13} />
             {t('settings.skills.tryNow')}
           </Button>
@@ -271,8 +264,8 @@ export function SkillDetails({ skillId }: { skillId: string }) {
                 placement="right"
                 asChild>
                 <DropdownMenuCheckboxItem
-                  checked={!isEvoStack && appExternalExportEnabled && skill.mirrorEnabled}
-                  disabled={isEvoStack || !appExternalExportEnabled || isUpdating || isUpdatingMirror}
+                  checked={false}
+                  disabled={true}
                   aria-label={t('settings.skills.externalAgents')}
                   aria-describedby={`${mirrorToggleId}-description`}
                   onSelect={(event) => event.preventDefault()}
@@ -290,7 +283,7 @@ export function SkillDetails({ skillId }: { skillId: string }) {
               <DropdownMenuItem
                 variant="destructive"
                 onSelect={() => setDeleteOpen(true)}
-                disabled={isEvoStack && skill.source === 'builtin'}>
+                disabled={skill.source === 'builtin'}>
                 <Trash2 size={14} />
                 {t('library.action.uninstall')}
               </DropdownMenuItem>

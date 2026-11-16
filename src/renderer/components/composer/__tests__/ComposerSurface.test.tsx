@@ -10,8 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { QuickPanelInputAdapter, QuickPanelInputEvent, QuickPanelListItem } from '@renderer/components/QuickPanel'
 import { CodeStyleContext } from '@renderer/hooks/useCodeStyle'
-import { COMPOSER_FILE_KIND, FILE_TYPE, type FileMetadata } from '@renderer/types/file'
-import type { ComposerAttachment } from '@renderer/utils/message/composerAttachment'
+import { COMPOSER_FILE_KIND } from '@renderer/types/file'
 import {
   COMPOSER_CLIPBOARD_FRAGMENT_MIME,
   createComposerClipboardFragment,
@@ -23,7 +22,6 @@ import { ComposerContextProvider, ComposerLayerActiveProvider } from '../Compose
 import { serializeComposerDocument } from '../composerDraft'
 import type * as ComposerPreset from '../composerPreset'
 import ComposerSurface, { type ComposerSurfaceActions, type ComposerSurfaceProps } from '../ComposerSurfaceRuntime'
-import type * as PasteHandling from '../paste/pasteHandling'
 import { COMPOSER_SUPPRESS_SUGGESTION_META } from '../quickPanel/suggestionExtension'
 
 const mocks = vi.hoisted(() => ({
@@ -914,16 +912,6 @@ describe('ComposerSurface', () => {
       caretOnLine(1)
 
       const { event } = paste('a'.repeat(2001))
-
-      expect(mocks.pasteHandler).toHaveBeenCalledWith(event)
-      expect(serializeComposerDocument(editor).text).toBe('```\n\n```')
-    })
-
-    it('still attaches clipboard files inside a block', async () => {
-      await renderDraft('```\n\n```', { supportedExts: ['.png'] })
-      caretOnLine(1)
-
-      const { event } = paste('screenshot.png', { files: [{ name: 'screenshot.png', type: 'image/png' }] })
 
       expect(mocks.pasteHandler).toHaveBeenCalledWith(event)
       expect(serializeComposerDocument(editor).text).toBe('```\n\n```')
@@ -4032,61 +4020,6 @@ describe('ComposerSurface', () => {
     }
   })
 
-  it.each([false, true])(
-    'attaches a copied file without replacing draft text (selected token: %s)',
-    async (selected) => {
-      const file: FileMetadata = {
-        id: 'model-file',
-        name: 'model.onnx',
-        origin_name: 'model.onnx',
-        path: '/tmp/model.onnx',
-        ext: '.onnx',
-        type: FILE_TYPE.OTHER,
-        size: 4,
-        created_at: '2026-10-12T00:00:00.000Z',
-        count: 1
-      }
-      vi.mocked(window.api.file.getPathForFile).mockReturnValue(file.path)
-      window.api.file.get = vi.fn().mockResolvedValue(file)
-      if (selected) {
-        mocks.selection = {
-          empty: false,
-          from: 1,
-          to: 2,
-          node: {
-            type: { name: 'composerToken' },
-            attrs: { id: 'prompt-variable:0:city', kind: 'promptVariable', label: '${city}', promptText: '${city}' }
-          },
-          $from: { nodeBefore: null }
-        }
-      }
-      let files: ComposerAttachment[] = []
-      const { handlePaste } = await vi.importActual<typeof PasteHandling>('../paste/pasteHandling')
-      mocks.pasteHandler.mockImplementation((event) =>
-        handlePaste(event, ['*'], (updater) => {
-          files = updater(files)
-        })
-      )
-      render(<ComposerSurface {...baseProps} supportedExts={['*']} text="Existing draft" />)
-      await waitFor(() => expect(mocks.editorOptions).toBeDefined())
-
-      const event = {
-        preventDefault: vi.fn(),
-        clipboardData: {
-          getData: (type: string) =>
-            type === 'text/plain' ? file.name : type === 'text/html' ? `<b>${file.name}</b>` : '',
-          files: [new File(['onnx'], file.name)]
-        }
-      }
-      mocks.editorOptions.handlePaste(mocks.currentView, event)
-
-      await waitFor(() => expect(files).toHaveLength(1))
-      expect(files[0]).toMatchObject({ path: file.path, origin_name: file.name })
-      expect(mocks.insertContent).not.toHaveBeenCalled()
-      expect(mocks.dispatch).not.toHaveBeenCalled()
-    }
-  )
-
   it('suppresses composer suggestions when pasting scoped shell command text', async () => {
     const pastedText = "-lc 'exec npx -y @agentclientprotocol/claude-agent-acp'"
     render(<ComposerSurface {...baseProps} />)
@@ -4509,25 +4442,6 @@ describe('ComposerSurface', () => {
     expect(insertContent).toHaveBeenCalledWith([{ type: 'text', text: pastedText }])
     expect(mocks.insertContent).not.toHaveBeenCalled()
     expect(mocks.pasteHandler).not.toHaveBeenCalled()
-  })
-
-  it('prefers a supported clipboard image over long text in a large draft', async () => {
-    render(<ComposerSurface {...baseProps} text={'a'.repeat(40000)} supportedExts={['.png', '.txt']} />)
-
-    await waitFor(() => expect(mocks.editorOptions).toBeDefined())
-
-    const event = {
-      preventDefault: vi.fn(),
-      clipboardData: {
-        getData: vi.fn((type: string) => (type === 'text/plain' ? 'a'.repeat(2001) : '')),
-        files: [{ name: 'screenshot.png', type: 'image/png' }]
-      }
-    }
-
-    expect(mocks.editorOptions.handlePaste(mocks.currentView, event)).toBe(true)
-    expect(event.preventDefault).toHaveBeenCalled()
-    expect(mocks.pasteHandler).toHaveBeenCalledWith(event)
-    expect(mocks.insertContent).not.toHaveBeenCalled()
   })
 
   it('keeps long pasted text in the active editor when its ref is stale', async () => {

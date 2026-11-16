@@ -1,10 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { toast } from '@renderer/services/toast'
-import { LOCAL_EMBEDDING_UNIQUE_MODEL_ID } from '@shared/data/presets/localEmbedding'
 import type { KnowledgeBase } from '@shared/data/types/knowledge'
 
 import RagConfigPanel from '../RagConfigPanel'
@@ -417,67 +415,6 @@ describe('RagConfigPanel', () => {
     expect(toast.success).toHaveBeenCalledWith('已保存')
   })
 
-  it('shows and saves the threshold slider only after a rerank model is selected', async () => {
-    renderRagConfigPanel()
-
-    expect(screen.queryByRole('slider', { name: '相似度阈值' })).not.toBeInTheDocument()
-
-    fireEvent.change(screen.getByLabelText('重排模型'), {
-      target: { value: 'jina::jina-reranker-v2-base-multilingual' }
-    })
-
-    const thresholdSlider = screen.getByRole('slider', { name: '相似度阈值' })
-    expect(thresholdSlider).toHaveValue('0')
-    // The threshold is a 0.01-granularity knob, so 0.65 must stay reachable and
-    // be shown as typed instead of being rounded to a tenth.
-    expect(thresholdSlider).toHaveAttribute('step', '0.01')
-
-    fireEvent.change(thresholdSlider, { target: { value: '0.65' } })
-    expect(screen.getByText('0.65')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: '保存' }))
-
-    await waitFor(() => {
-      expect(mockSave).toHaveBeenCalledWith(
-        expect.objectContaining({
-          rerankModelId: 'jina::jina-reranker-v2-base-multilingual',
-          threshold: 0.65
-        })
-      )
-    })
-  })
-
-  it('disables a configured rerank model and saves null', async () => {
-    const user = userEvent.setup()
-    mockUseKnowledgeRagConfig.mockReturnValue({
-      initialValues: {
-        fileProcessorId: null,
-        chunkSize: '512',
-        chunkOverlap: '64',
-        chunkStrategy: 'structured',
-        chunkSeparator: '\\n\\n',
-        embeddingModelId: 'openai::text-embedding-3-small',
-        rerankModelId: 'jina::jina-reranker-v2-base-multilingual',
-        documentCount: 6,
-        threshold: 0.5
-      },
-      fileProcessorOptions: [{ value: 'doc2x', label: 'Doc2X' }],
-      save: mockSave,
-      isLoading: false,
-      error: undefined
-    })
-
-    renderRagConfigPanel()
-    const rerankSelect = screen.getByLabelText('重排模型').parentElement
-    expect(rerankSelect).not.toBeNull()
-    await user.click(within(rerankSelect!).getByRole('button', { name: '不使用' }))
-    await user.click(screen.getByRole('button', { name: '保存' }))
-
-    await waitFor(() => {
-      expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({ rerankModelId: null }))
-    })
-  })
-
   it('shows save failure toast with the original error', async () => {
     mockSave.mockRejectedValueOnce(new Error('save failed'))
 
@@ -524,21 +461,6 @@ describe('RagConfigPanel', () => {
     expect(mockSave).not.toHaveBeenCalled()
   })
 
-  it('opens the rebuild flow when the embedding model changes (itemCount omitted defaults to "not empty")', () => {
-    const onRestoreBase = vi.fn()
-
-    renderRagConfigPanel(onRestoreBase)
-
-    fireEvent.change(screen.getByLabelText('嵌入模型'), { target: { value: 'voyage::voyage-3-large' } })
-    expect(screen.getByRole('button', { name: '重建' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '重建' }))
-
-    expect(mockSave).not.toHaveBeenCalled()
-    expect(onRestoreBase).toHaveBeenCalledWith(expect.objectContaining({ id: 'base-1' }), {
-      embeddingModelId: 'voyage::voyage-3-large'
-    })
-  })
-
   it('keeps the rebuild flow submittable despite invalid chunk fields, since restore ignores the dirty draft', () => {
     const onRestoreBase = vi.fn()
 
@@ -561,61 +483,6 @@ describe('RagConfigPanel', () => {
     })
   })
 
-  it('opens the rebuild flow when a BM25-only base gains an embedding model', () => {
-    const onRestoreBase = vi.fn()
-
-    mockUseKnowledgeRagConfig.mockReturnValue({
-      initialValues: {
-        fileProcessorId: null,
-        chunkSize: '512',
-        chunkOverlap: '64',
-        chunkStrategy: 'structured',
-        chunkSeparator: '\\n\\n',
-        embeddingModelId: null,
-        rerankModelId: null,
-        documentCount: 6,
-        threshold: 0
-      },
-      fileProcessorOptions: [{ value: 'doc2x', label: 'Doc2X' }],
-      save: mockSave,
-      isLoading: false,
-      error: undefined
-    })
-
-    renderRagConfigPanel(onRestoreBase, { embeddingModelId: null, dimensions: null })
-
-    fireEvent.change(screen.getByLabelText('嵌入模型'), { target: { value: 'openai::text-embedding-3-small' } })
-
-    expect(screen.getByRole('button', { name: '重建' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '重建' }))
-
-    expect(mockSave).not.toHaveBeenCalled()
-    expect(onRestoreBase).toHaveBeenCalledWith(expect.objectContaining({ id: 'base-1' }), {
-      embeddingModelId: 'openai::text-embedding-3-small'
-    })
-  })
-
-  it('saves the embedding model directly instead of rebuilding when the base has no items', async () => {
-    const onRestoreBase = vi.fn()
-
-    renderRagConfigPanel(onRestoreBase, {}, 0)
-
-    fireEvent.change(screen.getByLabelText('嵌入模型'), { target: { value: 'voyage::voyage-3-large' } })
-    expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '重建' })).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: '保存' }))
-
-    await waitFor(() => {
-      expect(mockSave).toHaveBeenCalledWith(expect.objectContaining({ embeddingModelId: 'voyage::voyage-3-large' }), {
-        embeddingModelId: 'voyage::voyage-3-large',
-        dimensions: 2048
-      })
-    })
-    expect(onRestoreBase).not.toHaveBeenCalled()
-    expect(toast.success).toHaveBeenCalledWith('已保存')
-  })
-
   it('saves disabled embedding directly when the base has no items', async () => {
     const onRestoreBase = vi.fn()
 
@@ -636,161 +503,12 @@ describe('RagConfigPanel', () => {
     expect(onRestoreBase).not.toHaveBeenCalled()
   })
 
-  it('shows a dimension-fetch failure toast and does not save when saving the embedding model directly fails', async () => {
-    mockEmbedMany.mockRejectedValueOnce(new Error('probe failed'))
-    const onRestoreBase = vi.fn()
-
-    renderRagConfigPanel(onRestoreBase, {}, 0)
-
-    fireEvent.change(screen.getByLabelText('嵌入模型'), { target: { value: 'voyage::voyage-3-large' } })
-    fireEvent.click(screen.getByRole('button', { name: '保存' }))
-
-    await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('获取嵌入维度失败: probe failed')
-    })
-    expect(mockSave).not.toHaveBeenCalled()
-    expect(onRestoreBase).not.toHaveBeenCalled()
-  })
-
-  it('keeps the direct-save button disabled when chunk fields are invalid, even after changing the embedding model', () => {
-    const onRestoreBase = vi.fn()
-
-    renderRagConfigPanel(onRestoreBase, {}, 0)
-
-    // Invalidate chunk config first (overlap === size), then change the embedding
-    // model on the same empty base. Direct save re-submits the whole dirty form
-    // (unlike the restore flow, which only ever reads embeddingModelId), so it
-    // must stay gated by the same chunk validation as a plain save.
-    fireEvent.change(screen.getByDisplayValue('64'), { target: { value: '512' } })
-    fireEvent.change(screen.getByLabelText('嵌入模型'), { target: { value: 'voyage::voyage-3-large' } })
-
-    const saveButton = screen.getByRole('button', { name: '保存' })
-    expect(saveButton).toBeDisabled()
-
-    fireEvent.click(saveButton)
-    expect(mockSave).not.toHaveBeenCalled()
-    expect(onRestoreBase).not.toHaveBeenCalled()
-  })
-
   it('renders hover hint tooltip content for RAG field labels', () => {
     renderRagConfigPanel()
 
     expect(screen.getByRole('tooltip', { name: '用于将知识库内容转换为向量。' })).toBeInTheDocument()
     expect(screen.getByRole('tooltip', { name: '每次召回返回的最大文档片段数。' })).toBeInTheDocument()
     expect(screen.getByRole('tooltip', { name: '对初步召回结果重新排序的模型。' })).toBeInTheDocument()
-  })
-
-  it('saves the local embedding model on an empty base only after confirmation', async () => {
-    const onRestoreBase = vi.fn()
-    mockUseKnowledgeRagConfig.mockReturnValue({
-      initialValues: {
-        fileProcessorId: null,
-        chunkSize: '512',
-        chunkOverlap: '64',
-        chunkStrategy: 'structured',
-        chunkSeparator: '\\n\\n',
-        embeddingModelId: null,
-        rerankModelId: null,
-        documentCount: 6,
-        threshold: 0.1
-      },
-      fileProcessorOptions: [{ value: 'doc2x', label: 'Doc2X' }],
-      save: mockSave,
-      isLoading: false,
-      error: undefined
-    })
-
-    renderRagConfigPanel(onRestoreBase, { embeddingModelId: null, dimensions: null }, 0)
-
-    fireEvent.click(screen.getByRole('button', { name: 'select-local-embedding' }))
-    expect(mockSave).not.toHaveBeenCalled()
-
-    fireEvent.click(screen.getByRole('button', { name: '保存' }))
-
-    await waitFor(() => {
-      expect(mockSave).toHaveBeenCalledWith(
-        expect.objectContaining({ embeddingModelId: LOCAL_EMBEDDING_UNIQUE_MODEL_ID }),
-        { embeddingModelId: LOCAL_EMBEDDING_UNIQUE_MODEL_ID, dimensions: 2048 }
-      )
-    })
-    expect(onRestoreBase).not.toHaveBeenCalled()
-    expect(toast.success).toHaveBeenCalledWith('已保存')
-  })
-
-  it('enables the local embedding model only after confirmation on a BM25-only base', async () => {
-    const onRestoreBase = vi.fn()
-    mockUseKnowledgeRagConfig.mockReturnValue({
-      initialValues: {
-        fileProcessorId: null,
-        chunkSize: '512',
-        chunkOverlap: '64',
-        chunkStrategy: 'structured',
-        chunkSeparator: '\\n\\n',
-        embeddingModelId: null,
-        rerankModelId: null,
-        documentCount: 6,
-        threshold: 0.1
-      },
-      fileProcessorOptions: [{ value: 'doc2x', label: 'Doc2X' }],
-      save: mockSave,
-      isLoading: false,
-      error: undefined
-    })
-
-    renderRagConfigPanel(onRestoreBase, { embeddingModelId: null, dimensions: null }, 5)
-
-    fireEvent.click(screen.getByRole('button', { name: 'select-local-embedding' }))
-    expect(mockEnableEmbedding).not.toHaveBeenCalled()
-
-    fireEvent.click(screen.getByRole('button', { name: '保存' }))
-
-    await waitFor(() => {
-      expect(mockEnableEmbedding).toHaveBeenCalledWith(
-        'base-1',
-        expect.objectContaining({ embeddingModelId: LOCAL_EMBEDDING_UNIQUE_MODEL_ID, dimensions: 2048 })
-      )
-    })
-    expect(mockSave).not.toHaveBeenCalled()
-    expect(onRestoreBase).not.toHaveBeenCalled()
-    expect(toast.success).toHaveBeenCalledWith('已保存')
-  })
-
-  it('enables the embedding model in place instead of rebuilding when a BM25-only base already has items', async () => {
-    const onRestoreBase = vi.fn()
-    mockUseKnowledgeRagConfig.mockReturnValue({
-      initialValues: {
-        fileProcessorId: null,
-        chunkSize: '512',
-        chunkOverlap: '64',
-        chunkStrategy: 'structured',
-        chunkSeparator: '\\n\\n',
-        embeddingModelId: null,
-        rerankModelId: null,
-        documentCount: 6,
-        threshold: 0
-      },
-      fileProcessorOptions: [{ value: 'doc2x', label: 'Doc2X' }],
-      save: mockSave,
-      isLoading: false,
-      error: undefined
-    })
-
-    renderRagConfigPanel(onRestoreBase, { embeddingModelId: null, dimensions: null }, 5)
-
-    fireEvent.change(screen.getByLabelText('嵌入模型'), { target: { value: 'openai::text-embedding-3-small' } })
-
-    expect(screen.queryByRole('button', { name: '重建' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '保存' }))
-
-    await waitFor(() => {
-      expect(mockEnableEmbedding).toHaveBeenCalledWith(
-        'base-1',
-        expect.objectContaining({ embeddingModelId: 'openai::text-embedding-3-small', dimensions: 2048 })
-      )
-    })
-    expect(mockSave).not.toHaveBeenCalled()
-    expect(onRestoreBase).not.toHaveBeenCalled()
-    expect(toast.success).toHaveBeenCalledWith('已保存')
   })
 
   it('still routes to the rebuild flow when switching an already-configured model on a non-empty base', () => {
@@ -806,23 +524,6 @@ describe('RagConfigPanel', () => {
     expect(mockEnableEmbedding).not.toHaveBeenCalled()
     expect(onRestoreBase).toHaveBeenCalledWith(expect.objectContaining({ id: 'base-1' }), {
       embeddingModelId: 'voyage::voyage-3-large'
-    })
-  })
-
-  it('routes disabled embedding through rebuild when an already-configured base has items', () => {
-    const onRestoreBase = vi.fn()
-
-    renderRagConfigPanel(onRestoreBase, {}, 5)
-
-    const embeddingSelect = screen.getByLabelText('嵌入模型').parentElement
-    expect(embeddingSelect).not.toBeNull()
-    fireEvent.click(within(embeddingSelect!).getByRole('button', { name: '不使用' }))
-    fireEvent.click(screen.getByRole('button', { name: '重建' }))
-
-    expect(mockSave).not.toHaveBeenCalled()
-    expect(mockEnableEmbedding).not.toHaveBeenCalled()
-    expect(onRestoreBase).toHaveBeenCalledWith(expect.objectContaining({ id: 'base-1' }), {
-      embeddingModelId: null
     })
   })
 })

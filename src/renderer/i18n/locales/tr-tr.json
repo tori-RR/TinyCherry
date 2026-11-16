@@ -1403,6 +1403,7 @@
   "conversation_owner.delete_permanently.sessions_kept": "Konuşmaları korunur ve \"Bağlantısız Ajan\" altına taşınır.",
   "conversation_owner.delete_permanently.topics_deleted": "Bu konular ve mesajları da silinecek.",
   "conversation_owner.delete_permanently.topics_kept": "Konuları korunur ve \"Bağlantısız Asistan\" altına taşınır.",
+  "desktop.feature_unavailable": "This feature is not available in this desktop version yet.",
   "deviceConnections.capabilities.agent": "Ajan oturumlarını kontrol et",
   "deviceConnections.capabilities.configuration": "Sağlayıcıları ve modelleri içe aktar",
   "deviceConnections.claims.approve": "İzin ver",

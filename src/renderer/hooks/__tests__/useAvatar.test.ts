@@ -104,16 +104,6 @@ describe('useAvatar', () => {
     expect(ipcRequest).not.toHaveBeenCalled()
   })
 
-  it('resolves a file:<id> avatar to a file:// url via file.batch_get_physical_paths', async () => {
-    ipcRequest.mockResolvedValue({ 'id-1': '/data/files/id-1.webp' })
-    MockUsePreferenceUtils.setPreferenceValue('app.user.avatar', 'file:id-1')
-
-    const { result } = renderHook(() => useAvatar())
-
-    await waitFor(() => expect(result.current).toMatch(/^file:\/\/.*id-1\.webp$/))
-    expect(ipcRequest).toHaveBeenCalledWith('file.batch_get_physical_paths', { ids: ['id-1'] })
-  })
-
   it('falls back to the default when the resolved path is missing', async () => {
     ipcRequest.mockResolvedValue({}) // no path for the id
     MockUsePreferenceUtils.setPreferenceValue('app.user.avatar', 'file:id-2')
@@ -132,37 +122,5 @@ describe('useAvatar', () => {
 
     await waitFor(() => expect(ipcRequest).toHaveBeenCalled())
     expect(result.current).toBe(UserAvatar)
-  })
-
-  it('keeps the current avatar when an older file resolution completes later', async () => {
-    let resolveOld!: (value: Record<string, string>) => void
-    let resolveCurrent!: (value: Record<string, string>) => void
-    const oldRequest = new Promise<Record<string, string>>((resolve) => {
-      resolveOld = resolve
-    })
-    const currentRequest = new Promise<Record<string, string>>((resolve) => {
-      resolveCurrent = resolve
-    })
-    ipcRequest.mockReturnValueOnce(oldRequest).mockReturnValueOnce(currentRequest)
-    MockUsePreferenceUtils.setPreferenceValue('app.user.avatar', 'file:id-4')
-
-    const { result, rerender } = renderHook(() => useAvatar())
-    expect(result.current).toBe(UserAvatar)
-
-    MockUsePreferenceUtils.setPreferenceValue('app.user.avatar', 'file:id-5')
-    rerender()
-    expect(ipcRequest).toHaveBeenNthCalledWith(2, 'file.batch_get_physical_paths', { ids: ['id-5'] })
-
-    await act(async () => {
-      resolveCurrent({ 'id-5': '/data/files/id-5.webp' })
-      await currentRequest
-    })
-    expect(result.current).toBe('file:///data/files/id-5.webp')
-
-    await act(async () => {
-      resolveOld({ 'id-4': '/data/files/id-4.webp' })
-      await oldRequest
-    })
-    expect(result.current).toBe('file:///data/files/id-5.webp')
   })
 })

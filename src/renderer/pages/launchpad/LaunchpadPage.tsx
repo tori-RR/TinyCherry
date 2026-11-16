@@ -1,6 +1,7 @@
 import { arrayMove } from '@dnd-kit/sortable'
+import { isDesktopRouteAvailable } from '@platform/desktop-api/capabilities'
 import { useNavigate } from '@tanstack/react-router'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ScrollArea } from '@cherrystudio/ui'
@@ -19,17 +20,12 @@ import scheduledTasksIcon from '@renderer/assets/images/apps/launchpad-scheduled
 import { SidebarIcon } from '@renderer/components/app/sidebarIcons'
 import { CommandContextMenu, type CommandContextMenuExtraItem } from '@renderer/components/command'
 import SidebarShortcutIcon from '@renderer/components/icons/SidebarShortcutIcon'
-import App from '@renderer/components/MiniApp/MiniApp'
 import { useLaunchpadAppOrder } from '@renderer/hooks/useLaunchpadAppOrder'
-import { useMiniApps } from '@renderer/hooks/useMiniApps'
 import { useSidebarShortcuts } from '@renderer/hooks/useSidebarShortcuts'
 import { getSidebarIconLabelKey } from '@renderer/i18n/label'
-import { toast } from '@renderer/services/toast'
 import { parseAppRouteUrl } from '@renderer/utils/appRouteUrl'
 import type { SidebarAppId } from '@renderer/utils/sidebar'
 import { createSidebarShortcutTarget, getSidebarMenuPath, SIDEBAR_SHORTCUT_PROVIDER_IDS } from '@renderer/utils/sidebar'
-import type { MiniApp as MiniAppType } from '@shared/data/types/miniApp'
-
 const LAUNCHPAD_GRID_CLASS = 'grid grid-cols-6 justify-items-center gap-2 px-2'
 const LAUNCHPAD_ITEM_CLASS = 'mx-auto w-[92px]'
 const APP_ICON_SURFACE_CLASS =
@@ -38,7 +34,6 @@ const APP_ICON_FRAME_CLASS =
   'relative flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-xl select-none'
 const APP_ICON_CLASS = 'size-11 object-contain'
 const SORTABLE_CONTENTS_STYLE = { display: 'contents' } as const
-
 const APP_ICON_SOURCES: Record<SidebarAppId, string | undefined> = {
   assistants: assistantsIcon,
   agents: agentsIcon,
@@ -51,70 +46,28 @@ const APP_ICON_SOURCES: Record<SidebarAppId, string | undefined> = {
   code_tools: codeToolsIcon,
   notes: notesIcon
 }
-
 export default function LaunchpadPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [defaultPaintingProvider] = usePreference('feature.paintings.default_provider')
-  const {
-    pinned,
-    openedKeepAliveMiniApps,
-    currentMiniAppId,
-    miniAppShow,
-    updateAppStatus,
-    hideMiniApp,
-    removeCustomMiniApp,
-    reorderMiniAppsByStatus
-  } = useMiniApps()
-  const { shortcuts, isPinned, setPinned } = useSidebarShortcuts()
+  const { isPinned, setPinned } = useSidebarShortcuts()
   const { orderedAppIds, reorderApps } = useLaunchpadAppOrder()
   const suppressClickUntilRef = useRef(0)
   const draggedItemIdRef = useRef<string | null>(null)
-
-  const miniAppFavoriteIdSet = useMemo(
-    () =>
-      new Set(
-        shortcuts.flatMap((shortcut) =>
-          shortcut.target.locator.providerId === SIDEBAR_SHORTCUT_PROVIDER_IDS.MINI_APP
-            ? [shortcut.target.locator.resourceId]
-            : []
-        )
-      ),
-    [shortcuts]
-  )
-  const openedMiniAppIdSet = useMemo(
-    () => new Set(openedKeepAliveMiniApps.map((app) => app.appId)),
-    [openedKeepAliveMiniApps]
-  )
-  const toggleMiniApp = useCallback(
-    (appId: string) => {
-      const app = pinned.find((item) => item.appId === appId)
-      const fallbackLabel = app ? (app.nameKey ? t(app.nameKey) : app.name) : undefined
-      setPinned(
-        createSidebarShortcutTarget(SIDEBAR_SHORTCUT_PROVIDER_IDS.MINI_APP, appId),
-        !miniAppFavoriteIdSet.has(appId),
-        fallbackLabel
-      )
-    },
-    [pinned, t, setPinned, miniAppFavoriteIdSet]
-  )
   const handleSortableDragStart = useCallback((event: { activeId: string | number }) => {
     draggedItemIdRef.current = String(event.activeId)
     suppressClickUntilRef.current = Date.now() + 500
   }, [])
-
   // The pointer sensor fires a synthetic click on the dragged element after drop;
   // refresh the window on settle so the click is still suppressed after long drags.
   const handleSortableDragSettled = useCallback(() => {
     suppressClickUntilRef.current = Date.now() + 500
   }, [])
-
   // Only swallow the post-drag click on the item that was actually dragged.
   const shouldSuppressLaunchClick = useCallback(
     (id: string) => id === draggedItemIdRef.current && Date.now() < suppressClickUntilRef.current,
     []
   )
-
   const navigateToUrl = useCallback(
     (url: string) => {
       const parsedUrl = parseAppRouteUrl(url)
@@ -125,15 +78,12 @@ export default function LaunchpadPage() {
           search: Object.fromEntries(parsedUrl.searchParams.entries())
         })
       }
-
       return navigate({ to: parsedUrl.pathname })
     },
     [navigate]
   )
-
   const openLaunchpadItem = (favorite: SidebarAppId) => {
     if (shouldSuppressLaunchClick(favorite)) return
-
     // Launchpad opens each app at its base entry (chat -> new conversation,
     // agents -> new session). Resuming the last-used instance is the sidebar's
     // job, not the launcher's.
@@ -141,16 +91,6 @@ export default function LaunchpadPage() {
     if (!path) return
     void navigateToUrl(path)
   }
-
-  const openMiniApp = useCallback(
-    (appId: string) => {
-      if (shouldSuppressLaunchClick(appId)) return
-
-      void navigateToUrl(`/app/mini-app/${appId}`)
-    },
-    [navigateToUrl, shouldSuppressLaunchClick]
-  )
-
   const pinToSidebar = useCallback(
     (favorite: SidebarAppId) => {
       const target = createSidebarShortcutTarget(SIDEBAR_SHORTCUT_PROVIDER_IDS.APP, favorite)
@@ -158,7 +98,6 @@ export default function LaunchpadPage() {
     },
     [setPinned, t]
   )
-
   const unpinFromSidebar = useCallback(
     (favorite: SidebarAppId) => {
       const target = createSidebarShortcutTarget(SIDEBAR_SHORTCUT_PROVIDER_IDS.APP, favorite)
@@ -166,12 +105,10 @@ export default function LaunchpadPage() {
     },
     [setPinned]
   )
-
   const getAppContextMenuItems = useCallback(
     (favorite: SidebarAppId): CommandContextMenuExtraItem[] => {
       const target = createSidebarShortcutTarget(SIDEBAR_SHORTCUT_PROVIDER_IDS.APP, favorite)
       const pinned = isPinned(target)
-
       return [
         {
           type: 'item',
@@ -184,12 +121,10 @@ export default function LaunchpadPage() {
     },
     [isPinned, pinToSidebar, t, unpinFromSidebar]
   )
-
   const appMenuItems = useMemo(
     () =>
       orderedAppIds.flatMap((favorite) => {
-        if (!getSidebarMenuPath(favorite, defaultPaintingProvider)) return []
-
+        if (!isDesktopRouteAvailable(getSidebarMenuPath(favorite, defaultPaintingProvider))) return []
         return [
           {
             id: favorite,
@@ -201,29 +136,6 @@ export default function LaunchpadPage() {
       }),
     [defaultPaintingProvider, getAppContextMenuItems, orderedAppIds, t]
   )
-
-  // Mini app tiles are ordered by their global `orderKey` (shared with the mini
-  // app settings page), independent of the sidebar favorites. Every pinned mini
-  // app is drag-sortable in one grid; reordering persists purely to `orderKey`.
-  const sortedMiniApps = useMemo(
-    () => [...pinned].sort((a, b) => (a.orderKey < b.orderKey ? -1 : a.orderKey > b.orderKey ? 1 : 0)),
-    [pinned]
-  )
-
-  // Hold the drop result in local optimistic state so the Sortable keeps the tile
-  // at its dropped slot while the async order-key write settles. Without this the
-  // tile snaps back to its old position for one render — before the reordered
-  // `/mini-apps` cache lands — and then jumps forward, a visible flashback. The
-  // resync preserves the reference only when the refreshed list contains the same
-  // objects in the same order; a rename/logo refresh with the same ids still adopts
-  // the fresh objects.
-  const [orderedMiniApps, setOrderedMiniApps] = useState(sortedMiniApps)
-  useEffect(() => {
-    setOrderedMiniApps((prev) => (sameMiniAppItems(prev, sortedMiniApps) ? prev : sortedMiniApps))
-  }, [sortedMiniApps])
-
-  const launchpadMiniAppsVisible = orderedMiniApps.length > 0
-
   const handleAppsSortEnd = useCallback(
     ({ oldIndex, newIndex }: { oldIndex: number; newIndex: number }) => {
       const nextItems = arrayMove(appMenuItems, oldIndex, newIndex)
@@ -231,18 +143,6 @@ export default function LaunchpadPage() {
     },
     [appMenuItems, reorderApps]
   )
-
-  const handleMiniAppsSortEnd = useCallback(
-    ({ oldIndex, newIndex }: { oldIndex: number; newIndex: number }) => {
-      const nextItems = arrayMove(orderedMiniApps, oldIndex, newIndex)
-      setOrderedMiniApps(nextItems)
-      reorderMiniAppsByStatus('pinned', nextItems).catch(() => {
-        toast.error(t('miniApp.reorder_failed'))
-      })
-    },
-    [orderedMiniApps, reorderMiniAppsByStatus, t]
-  )
-
   const renderAppMenuItem = (item: (typeof appMenuItems)[number]) => (
     <CommandContextMenu key={item.id} location="webcontents.context" extraItems={item.menuItems}>
       <button
@@ -267,28 +167,6 @@ export default function LaunchpadPage() {
       </button>
     </CommandContextMenu>
   )
-
-  const renderMiniAppItem = (app: MiniAppType) => (
-    <div
-      key={app.appId}
-      className={`${LAUNCHPAD_ITEM_CLASS} flex justify-center rounded-[8px] px-0 py-2 transition-transform duration-200 hover:scale-105 active:scale-95`}>
-      <App
-        app={app}
-        size={56}
-        variant="launchpad"
-        onOpen={openMiniApp}
-        onUpdateStatus={updateAppStatus}
-        onHide={hideMiniApp}
-        onRemoveCustom={removeCustomMiniApp}
-        onToggleSidebarFavorite={toggleMiniApp}
-        isPinned
-        isSidebarFavorite={miniAppFavoriteIdSet.has(app.appId)}
-        isOpened={openedMiniAppIdSet.has(app.appId)}
-        isActive={miniAppShow && currentMiniAppId === app.appId}
-      />
-    </div>
-  )
-
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
       <ScrollArea className="min-h-0 flex-1">
@@ -311,38 +189,8 @@ export default function LaunchpadPage() {
               />
             </div>
           </section>
-
-          {launchpadMiniAppsVisible && (
-            <section className="flex flex-col gap-2">
-              <h2 className="m-0 px-9 py-0 font-semibold text-[14px] text-foreground opacity-80">
-                {t('launchpad.miniApps')}
-              </h2>
-              <div className={LAUNCHPAD_GRID_CLASS}>
-                <Sortable
-                  items={orderedMiniApps}
-                  itemKey="appId"
-                  layout="grid"
-                  listStyle={SORTABLE_CONTENTS_STYLE}
-                  onDragStart={handleSortableDragStart}
-                  onDragEnd={handleSortableDragSettled}
-                  onDragCancel={handleSortableDragSettled}
-                  onSortEnd={handleMiniAppsSortEnd}
-                  renderItem={(app) => renderMiniAppItem(app)}
-                />
-              </div>
-            </section>
-          )}
         </div>
       </ScrollArea>
     </div>
   )
-}
-
-/** Same pinned mini app objects in the same order. */
-function sameMiniAppItems(a: MiniAppType[], b: MiniAppType[]): boolean {
-  if (a.length !== b.length) return false
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false
-  }
-  return true
 }

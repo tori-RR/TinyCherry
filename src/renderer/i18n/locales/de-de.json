@@ -1403,6 +1403,7 @@
   "conversation_owner.delete_permanently.sessions_kept": "Die Unterhaltungen bleiben erhalten und werden nach \"Nicht verknüpfter Agent\" verschoben.",
   "conversation_owner.delete_permanently.topics_deleted": "Diese Themen und ihre Nachrichten werden ebenfalls gelöscht.",
   "conversation_owner.delete_permanently.topics_kept": "Die Themen bleiben erhalten und werden nach \"Unverknüpfter Assistent\" verschoben.",
+  "desktop.feature_unavailable": "This feature is not available in this desktop version yet.",
   "deviceConnections.capabilities.agent": "Agent-Sitzungen steuern",
   "deviceConnections.capabilities.configuration": "Anbieter und Modelle importieren",
   "deviceConnections.claims.approve": "Zulassen",

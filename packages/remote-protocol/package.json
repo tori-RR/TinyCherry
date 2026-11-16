@@ -1,6 +1,7 @@
 {
   "name": "@cherrystudio/remote-protocol",
   "version": "0.8.0",
+  "private": true,
   "description": "Cherry Studio remote access protocol schemas and Agent recovery contracts.",
   "license": "MIT",
   "repository": {
@@ -32,13 +33,9 @@
       "default": "./dist/configuration.js"
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "build": "tsdown",
-    "prepublishOnly": "pnpm build",
-    "test": "vitest run",
+    "test": "pnpm --workspace-root exec vitest run --project remote-protocol",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

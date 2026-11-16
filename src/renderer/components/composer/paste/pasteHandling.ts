@@ -1,3 +1,5 @@
+import { hasCapability } from '@platform/desktop-api/capabilities'
+
 import { loggerService } from '@logger'
 import { toast } from '@renderer/services/toast'
 import { COMPOSER_FILE_KIND, type PastedTextFileMetadata } from '@renderer/types/file'
@@ -13,6 +15,7 @@ export function shouldHandleClipboardFiles(
   clipboardData: DataTransfer | null,
   supportExts: readonly string[]
 ): boolean {
+  if (!hasCapability('attachments')) return false
   const text = clipboardData?.getData('text/plain') || clipboardData?.getData('text') || ''
   const hasRichText = Boolean(text && clipboardData?.getData('text/html'))
   return Array.from(clipboardData?.files ?? []).some((file) => {
@@ -64,6 +67,7 @@ export const handlePaste = async (
     const clipboardFiles = Array.from(event.clipboardData?.files ?? [])
     const extensionSet = new Set(supportExts)
     const clipboardText = event.clipboardData?.getData('text/plain') || event.clipboardData?.getData('text') || ''
+    if (clipboardText && !hasCapability('attachments')) return false
     if (clipboardText && !shouldHandleClipboardFiles(event.clipboardData, supportExts)) {
       // 1. 文本粘贴（仅在用户开启“长文本转文件”时生效）
       if (pasteLongTextAsFile && clipboardText.length > (pasteLongTextThreshold ?? LONG_TEXT_PASTE_THRESHOLD)) {
@@ -92,6 +96,11 @@ export const handlePaste = async (
       return false
     }
     // 2. 文件/图片粘贴（无文本时，或有本会话愿意接收的文件时）
+    if (clipboardFiles.length > 0 && !hasCapability('attachments')) {
+      event.preventDefault()
+      if (t) toast.info(t('desktop.feature_unavailable'))
+      return true
+    }
     if (clipboardFiles.length > 0) {
       event.preventDefault()
       try {

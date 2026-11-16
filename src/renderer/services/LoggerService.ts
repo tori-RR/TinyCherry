@@ -7,11 +7,11 @@ import { LEVEL, LEVEL_MAP } from '@shared/types/logger'
 const IS_WORKER = typeof window === 'undefined'
 // check if we are in the dev env
 // DO NOT use `constants.ts` here, because the files contains other dependencies that will fail in worker process
-const IS_DEV = IS_WORKER ? false : window.electron?.process?.env?.NODE_ENV === 'development'
+const IS_DEV = IS_WORKER ? false : window.desktop?.environment?.NODE_ENV === 'development'
 // CS_DIAGNOSTICS makes a packaged build behave like dev for logging (verbose level,
 // console output, and the CSLOGGER_RENDERER_* overrides all turn on). Idempotent in dev.
 // The flag reaches the renderer via the preload-exposed process.env, same path as in main.
-const DIAGNOSTICS_ENABLED = IS_WORKER ? false : !!window.electron?.process?.env?.CS_DIAGNOSTICS
+const DIAGNOSTICS_ENABLED = IS_WORKER ? false : !!window.desktop?.environment?.CS_DIAGNOSTICS
 const DEV_LOGGING = IS_DEV || DIAGNOSTICS_ENABLED
 
 const DEFAULT_LEVEL = DEV_LOGGING ? LEVEL.SILLY : LEVEL.INFO
@@ -63,10 +63,10 @@ export class LoggerService {
 
     if (DEV_LOGGING) {
       if (
-        window.electron?.process?.env?.CSLOGGER_RENDERER_LEVEL &&
-        Object.values(LEVEL).includes(window.electron?.process?.env?.CSLOGGER_RENDERER_LEVEL as LogLevel)
+        window.desktop?.environment?.CSLOGGER_RENDERER_LEVEL &&
+        Object.values(LEVEL).includes(window.desktop?.environment?.CSLOGGER_RENDERER_LEVEL as LogLevel)
       ) {
-        this.envLevel = window.electron?.process?.env?.CSLOGGER_RENDERER_LEVEL as LogLevel
+        this.envLevel = window.desktop?.environment?.CSLOGGER_RENDERER_LEVEL as LogLevel
 
         console.log(
           `%c[LoggerService] env CSLOGGER_RENDERER_LEVEL loaded: ${this.envLevel}`,
@@ -74,8 +74,8 @@ export class LoggerService {
         )
       }
 
-      if (window.electron?.process?.env?.CSLOGGER_RENDERER_SHOW_MODULES) {
-        const showModules = window.electron?.process?.env?.CSLOGGER_RENDERER_SHOW_MODULES.split(',')
+      if (window.desktop?.environment?.CSLOGGER_RENDERER_SHOW_MODULES) {
+        const showModules = window.desktop?.environment?.CSLOGGER_RENDERER_SHOW_MODULES.split(',')
           .map((module) => module.trim())
           .filter((module) => module !== '')
         if (showModules.length > 0) {
@@ -218,7 +218,7 @@ export class LoggerService {
               }
             : item
         )
-        void window.electron.ipcRenderer.invoke(IpcChannel.App_LogToMain, source, level, message, serializedData)
+        void window.desktop.request(IpcChannel.App_LogToMain, source, level, message, serializedData)
         if (level === LEVEL.ERROR && data[0] instanceof Error) {
           try {
             this.errorReporter?.(data[0], { ...serializedData[0], ...source, level, data: serializedData.slice(1) })

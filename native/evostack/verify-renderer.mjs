@@ -3,11 +3,13 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { verifyChat } from './verify-chat.mjs'
+
 const [port, profile, revision] = process.argv.slice(2)
 assert(/^\d+$/.test(port) && profile && revision)
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const expectedVersion = JSON.parse(readFileSync(join(repository, 'package.json'), 'utf8')).version
-const deadline = Date.now() + 30_000
+const deadline = Date.now() + 60_000
 const pause = () => new Promise((resolve) => setTimeout(resolve, 100))
 let target
 while (Date.now() < deadline) {
@@ -79,7 +81,10 @@ const command = (method, params) =>
   })
 const evaluate = async (expression) => {
   const result = await command('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })
-  assert(!result.exceptionDetails, result.exceptionDetails?.text ?? 'Renderer evaluation failed')
+  assert(
+    !result.exceptionDetails,
+    result.exceptionDetails?.exception?.description ?? result.exceptionDetails?.text ?? 'Renderer evaluation failed'
+  )
   return result.result.value
 }
 const until = async (expression) => {
@@ -88,7 +93,7 @@ const until = async (expression) => {
     if (value) return value
     await pause()
   }
-  throw new Error('Packaged renderer interaction timed out')
+  throw new Error(`Packaged renderer interaction timed out: ${expression.slice(0, 160)}`)
 }
 try {
   await command('Runtime.enable', {})
@@ -105,9 +110,10 @@ try {
   assert.equal(info.platform, 'win32')
   assert.equal(info.arch, 'x64')
   const locales = resolve(dirname(fileURLToPath(import.meta.url)), '../../src/renderer/i18n/locales')
-  const labels = readdirSync(locales)
+  const localeCatalogs = readdirSync(locales)
     .filter((file) => file.endsWith('.json'))
-    .map((file) => JSON.parse(readFileSync(join(locales, file), 'utf8'))['onboarding.skip'])
+    .map((file) => JSON.parse(readFileSync(join(locales, file), 'utf8')))
+  const labels = localeCatalogs.map((locale) => locale['onboarding.skip'])
   const before = await evaluate(`window.api.preference.get('app.onboarding.provider_setup.status')`)
   assert.equal(before, 'pending')
   const clicked = await evaluate(
@@ -143,7 +149,10 @@ try {
     temporaryTopic: true,
     projectionBaseline: true
   })
+  const journeys = await verifyChat({ evaluate, command, until, localeCatalogs })
   assert.deepEqual(errors, [], 'Unexpected renderer error')
+  const screenshot = await command('Page.captureScreenshot', { format: 'png' })
+  writeFileSync(join(profile, 'workspace-chat.png'), Buffer.from(screenshot.data, 'base64'))
   const result = {
     passed: true,
     revision,
@@ -154,10 +163,24 @@ try {
     before,
     after,
     workspaceVisible: true,
-    contracts
+    contracts,
+    journeys
   }
   writeFileSync(join(profile, 'renderer-ui-smoke.json'), JSON.stringify(result, null, 2))
   process.stdout.write('Packaged React ready and Set Up Later → workspace persistence passed\n')
+} catch (error) {
+  try {
+    const state = await evaluate(
+      `({url:location.href,text:document.body.innerText.slice(0,6000),dataTrace:window.__EVOSTACK_SMOKE_DATA_TRACE__,editors:[...document.querySelectorAll('textarea,[contenteditable]')].map(node=>({tag:node.tagName,editable:node.getAttribute('contenteditable'),parent:node.parentElement?.outerHTML.slice(0,1000)}))})`
+    )
+    writeFileSync(join(profile, 'renderer-failure.json'), JSON.stringify({ state, errors }, null, 2))
+    const capture = await command('Page.captureScreenshot', { format: 'png' })
+    writeFileSync(join(profile, 'renderer-failure.png'), Buffer.from(capture.data, 'base64'))
+    console.error('Synthetic renderer failure state:', JSON.stringify({ state, errors }))
+  } catch {
+    /* Preserve the original verification failure if the owned renderer closed. */
+  }
+  throw error
 } finally {
   socket.close()
   for (const request of pending.values()) clearTimeout(request.timer)

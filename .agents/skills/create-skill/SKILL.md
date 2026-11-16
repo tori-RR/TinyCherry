@@ -57,19 +57,19 @@ If the user wants a **public skill**, before validation:
 1. Add the skill name to `.agents/skills/public-skills.txt` (one per line, no inline comments)
 2. Run sync:
    ```bash
-   pnpm skills:sync
+   pnpm exec tsx scripts/skills-sync.ts
    ```
 
 This creates a symlink at `.claude/skills/<skill-name>/` pointing to `.agents/skills/<skill-name>/`.
 
-**Note**: `pnpm skills:check` primarily validates public skills (those in `public-skills.txt`) and also verifies related governance files, so you must sync first before validating.
+**Note**: `pnpm exec tsx scripts/skills-check.ts` primarily validates public skills (those in `public-skills.txt`) and also verifies related governance files, so you must sync first before validating.
 
 ### Step 5: Validate
 
 Run the validation command:
 
 ```bash
-pnpm skills:check
+pnpm exec tsx scripts/skills-check.ts
 ```
 
 If there are issues, fix them and re-run.
@@ -91,21 +91,21 @@ Present the user with:
 | Type | Location | Sync | Requires |
 |------|----------|------|----------|
 | Private | `.agents/skills/` | No | Just create the folder |
-| Public | Both | Yes | Add to `public-skills.txt` + run `pnpm skills:sync` |
+| Public | Both | Yes | Add to `public-skills.txt` + run `pnpm exec tsx scripts/skills-sync.ts` |
 
 ## Commands Reference
 
 ```bash
 # Validate skill structure
-pnpm skills:check
+pnpm exec tsx scripts/skills-check.ts
 
 # Sync public skills to Claude
-pnpm skills:sync
+pnpm exec tsx scripts/skills-sync.ts
 ```
 
 ## Constraints
 
 - Never create skills outside `.agents/skills/<skill-name>/`
-- Always run `pnpm skills:check` before completing
-- Public skills require both adding to `public-skills.txt` AND running `pnpm skills:sync`
+- Always run `pnpm exec tsx scripts/skills-check.ts` before completing
+- Public skills require both adding to `public-skills.txt` AND running `pnpm exec tsx scripts/skills-sync.ts`
 - If the skill-creator skill is available, you may use it for advanced skill development (evals, iterations), but this skill handles the basic creation workflow.

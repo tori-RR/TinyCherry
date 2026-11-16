@@ -191,7 +191,7 @@ describe('app Sidebar', () => {
     render(<Sidebar />)
     if (width === 0) fireEvent.mouseEnter(screen.getByTestId('docked-sidebar'))
     const sidebar = screen.getByTestId(width === 0 ? 'floating-sidebar' : 'docked-sidebar')
-    await user.click(within(sidebar).getByRole('button', { name: 'User' }))
+    await user.click(within(sidebar).getByRole('button', { name: 'TinyCherry' }))
     expect(screen.getByLabelText('sidebar.account_menu')).toBeVisible()
     fireEvent.blur(within(screen.getByLabelText('sidebar.account_menu')).getAllByRole('button')[0])
     expect(screen.getByLabelText('sidebar.account_menu')).toBeVisible()
@@ -243,13 +243,13 @@ describe('app Sidebar', () => {
     mocks.hasUnread = true
     const user = userEvent.setup()
     const view = render(<Sidebar />)
-    expect(screen.getByRole('button', { name: 'User' })).toHaveAccessibleDescription('notification.center.unread')
-    await user.click(screen.getByRole('button', { name: 'User' }))
+    expect(screen.getByRole('button', { name: 'TinyCherry' })).toHaveAccessibleDescription('notification.center.unread')
+    await user.click(screen.getByRole('button', { name: 'TinyCherry' }))
     expect(screen.getByTestId('account-menu')).toBeVisible()
-    expect(screen.getByRole('button', { name: 'User' })).toHaveAccessibleDescription('notification.center.unread')
+    expect(screen.getByRole('button', { name: 'TinyCherry' })).toHaveAccessibleDescription('notification.center.unread')
     mocks.hasUnread = false
     view.rerender(<Sidebar />)
-    expect(screen.getByRole('button', { name: 'User' })).not.toHaveAttribute('aria-describedby')
+    expect(screen.getByRole('button', { name: 'TinyCherry' })).not.toHaveAttribute('aria-describedby')
   })
 
   it('opens and closes the anchored account menu from the sidebar identity', async () => {
@@ -258,7 +258,7 @@ describe('app Sidebar', () => {
 
     expect(screen.queryByTestId('account-menu')).not.toBeInTheDocument()
 
-    await user.click(within(screen.getByTestId('sidebar-footer-user')).getByRole('button', { name: 'User' }))
+    await user.click(within(screen.getByTestId('sidebar-footer-user')).getByRole('button', { name: 'TinyCherry' }))
     expect(screen.getByTestId('account-menu')).toBeVisible()
     expect(screen.getByLabelText('sidebar.account_menu')).toBeVisible()
 
@@ -269,7 +269,7 @@ describe('app Sidebar', () => {
   it('keeps pointer focus on the avatar and focuses the first account action for keyboard access', async () => {
     const user = userEvent.setup()
     render(<Sidebar />)
-    const avatar = screen.getByRole('button', { name: 'User' })
+    const avatar = screen.getByRole('button', { name: 'TinyCherry' })
 
     await user.click(avatar)
     expect(screen.getByTestId('account-menu')).toBeVisible()
@@ -286,7 +286,7 @@ describe('app Sidebar', () => {
     const user = userEvent.setup()
     const view = render(<Sidebar />)
 
-    await user.click(within(screen.getByTestId('sidebar-footer-user')).getByRole('button', { name: 'User' }))
+    await user.click(within(screen.getByTestId('sidebar-footer-user')).getByRole('button', { name: 'TinyCherry' }))
     expect(screen.getByTestId('account-menu')).toBeVisible()
 
     mocks.sidebarWidth = 0
@@ -313,16 +313,6 @@ describe('app Sidebar', () => {
     expect(screen.getByTestId('floating-sidebar')).toBeVisible()
   })
 
-  it('keeps the update action independent from the account menu', async () => {
-    const user = userEvent.setup()
-    render(<Sidebar />)
-
-    await user.click(screen.getByRole('button', { name: 'Install update' }))
-
-    expect(mocks.showUpdatePopup).toHaveBeenCalledOnce()
-    expect(screen.queryByTestId('account-menu')).not.toBeInTheDocument()
-  })
-
   it.each([170, 50, 0])('moves help into the account menu at sidebar width %s', async (width) => {
     mocks.sidebarWidth = width
     const user = userEvent.setup()
@@ -332,15 +322,15 @@ describe('app Sidebar', () => {
 
     expect(screen.queryByRole('button', { name: 'help.title' })).not.toBeInTheDocument()
 
-    await user.click(within(sidebar).getByRole('button', { name: 'User' }))
+    await user.click(within(sidebar).getByRole('button', { name: 'TinyCherry' }))
     const accountMenu = screen.getByLabelText('sidebar.account_menu')
     await user.click(within(accountMenu).getByRole('button', { name: 'help.title' }))
 
-    expect(screen.getByRole('button', { name: 'help.whats_new' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'help.whats_new' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'help.guide' })).toBeVisible()
-    expect(screen.getByRole('button', { name: 'settings.about.feedback.diagnostics.title' })).toBeVisible()
-    expect(screen.getByRole('button', { name: 'help.feedback' })).toBeVisible()
-    expect(screen.getByRole('button', { name: 'settings.doctor.entry.title' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'settings.about.feedback.diagnostics.title' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'help.feedback' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'settings.doctor.entry.title' })).not.toBeInTheDocument()
 
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('button', { name: 'help.whats_new' })).not.toBeInTheDocument()
@@ -348,23 +338,8 @@ describe('app Sidebar', () => {
     expect(within(accountMenu).getByRole('button', { name: 'help.title' })).toHaveFocus()
 
     await user.click(within(accountMenu).getByRole('button', { name: 'help.title' }))
-    await user.click(screen.getByRole('button', { name: 'help.whats_new' }))
+    await user.click(screen.getByRole('button', { name: 'help.guide' }))
     await waitFor(() => expect(screen.queryByLabelText('sidebar.account_menu')).not.toBeInTheDocument())
-  })
-
-  it('closes both menus and gives focus to the feedback dialog', async () => {
-    const user = userEvent.setup()
-    render(<Sidebar />)
-
-    await user.click(screen.getByRole('button', { name: 'User' }))
-    await user.click(screen.getByRole('button', { name: 'help.title' }))
-    await user.click(screen.getByRole('button', { name: 'help.feedback' }))
-
-    const dialog = await screen.findByRole('dialog', { name: 'settings.about.feedback.dialog.title' })
-    expect(screen.queryByLabelText('sidebar.account_menu')).not.toBeInTheDocument()
-    await waitFor(() =>
-      expect(within(dialog).getByRole('button', { name: /settings.about.feedback.diagnostics.title/ })).toHaveFocus()
-    )
   })
 
   it('keeps a missing resource in place, disables activation, and allows removal', () => {

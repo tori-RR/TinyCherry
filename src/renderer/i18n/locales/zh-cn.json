@@ -1403,6 +1403,7 @@
   "conversation_owner.delete_permanently.sessions_kept": "会话会保留，移到「未关联智能体」下。",
   "conversation_owner.delete_permanently.topics_deleted": "这些话题和其中的消息会一并删除。",
   "conversation_owner.delete_permanently.topics_kept": "话题会保留，移到「未关联助手」下。",
+  "desktop.feature_unavailable": "此功能尚未迁移到当前桌面版本。",
   "deviceConnections.capabilities.agent": "控制智能体会话",
   "deviceConnections.capabilities.configuration": "导入提供商和模型",
   "deviceConnections.claims.approve": "允许",

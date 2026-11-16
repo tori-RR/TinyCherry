@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 import tailwindcss from '@tailwindcss/vite'
@@ -10,48 +9,48 @@ import pkg from '../../package.json'
 import { uiContractPlugin } from '../../scripts/uiContract/vitePlugin'
 
 const rootPath = (path: string) => fileURLToPath(new URL(`../../${path}`, import.meta.url))
-const adapterPath = (path: string) => rootPath(`src/renderer/windows/evostack/${path}`)
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   root: rootPath('src/renderer'),
   base: './',
-  cacheDir: fileURLToPath(new URL('.cache/vite', import.meta.url)),
-  plugins: [
-    {
-      name: 'evostack-window-controls',
-      enforce: 'pre',
-      load(id) {
-        if (
-          id.replaceAll('\\', '/') ===
-          rootPath('src/renderer/components/WindowControls/WindowControls.tsx').replaceAll('\\', '/')
-        ) {
-          return readFileSync(adapterPath('WindowControls.tsx'), 'utf8')
-        }
-        return null
-      }
+  cacheDir: fileURLToPath(new URL('.vite', import.meta.url)),
+  plugins: [uiContractPlugin(), tailwindcss(), react()],
+  define: {
+    ...rendererDefines(pkg.version),
+    __DESKTOP_DEV_ORIGIN__: JSON.stringify(command === 'serve' ? 'http://127.0.0.1:17420' : null)
+  },
+  resolve: { alias: rendererAliases },
+  server: {
+    host: '127.0.0.1',
+    port: 17420,
+    strictPort: true,
+    headers: { 'X-TinyCherry-Dev-Owner': process.env.TINYCHERRY_DEV_OWNER ?? 'standalone' },
+    fs: {
+      allow: [rootPath('')],
+      deny: [
+        '.env',
+        '.env.*',
+        '*.{crt,pem}',
+        '**/.git/**',
+        '**/.cache/**',
+        '**/.pnpm-store/**',
+        '**/evostack-data/**',
+        '**/.code_review/**',
+        '**/README_LOG.*',
+        '**/*.local.md',
+        '**/AGENTS*',
+        '**/.agents/**',
+        '**/.claude/**',
+        '**/local/**'
+      ]
     },
-    uiContractPlugin(),
-    tailwindcss(),
-    react()
-  ],
-  define: rendererDefines(pkg.version),
-  resolve: {
-    alias: [
-      { find: /^electron$/, replacement: adapterPath('electronShim.ts') },
-      { find: /^@electron-toolkit\/preload$/, replacement: adapterPath('toolkitPreload.ts') },
-      { find: /^@renderer\/services\/sentry$/, replacement: adapterPath('sentry.ts') },
-      { find: /^@renderer\/components\/WindowControls$/, replacement: adapterPath('WindowControls.tsx') },
-      ...Object.entries(rendererAliases).map(([find, replacement]) => ({
-        find,
-        replacement
-      }))
-    ]
+    watch: { ignored: ['**/native/evostack/.cache/**', '**/.cache/**', '**/dist/**'] }
   },
   worker: { format: 'es' },
   build: {
-    rolldownOptions: { input: adapterPath('index.html') },
+    rolldownOptions: { input: rootPath('src/renderer/windows/evostack/index.html') },
     outDir: fileURLToPath(new URL('dist/frontend', import.meta.url)),
     emptyOutDir: true,
     target: 'es2022'
   }
-})
+}))

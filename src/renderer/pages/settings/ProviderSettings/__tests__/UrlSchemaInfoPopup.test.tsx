@@ -10,14 +10,11 @@ import { ProviderSchema } from '@shared/data/types/provider'
 
 import { useProviderDeepLinkImport } from '../hooks/useProviderDeepLinkImport'
 import UrlSchemaInfoPopup from '../UrlSchemaInfoPopup'
-
 vi.unmock('@cherrystudio/ui')
 vi.unmock('@renderer/services/popup')
 const { navigateMock } = vi.hoisted(() => ({ navigateMock: vi.fn() }))
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigateMock }))
-
 const params = { id: 'my-relay', name: 'Relay', apiKey: 'test-key', baseUrl: 'https://example.com/v1' }
-
 async function showImport(importParams = params) {
   render(<PopupHost />)
   let result!: ReturnType<typeof UrlSchemaInfoPopup.show>
@@ -27,17 +24,16 @@ async function showImport(importParams = params) {
   await screen.findByRole('dialog')
   return { result }
 }
-
 describe('provider import names', () => {
   beforeEach(async () => {
     await i18n.changeLanguage('en-US')
     MockUseDataApiUtils.mockQueryResult('/providers', { data: [] })
   })
-
   afterEach(() => {
-    act(() => UrlSchemaInfoPopup.hide())
+    act(() => {
+      UrlSchemaInfoPopup.hide()
+    })
   })
-
   it.each(
     [
       { ...params, name: 123 },
@@ -61,7 +57,6 @@ describe('provider import names', () => {
       </>
     )
     renderHook(() => useProviderDeepLinkImport(JSON.stringify(payload), onSelectProvider))
-
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(i18n.t('settings.models.provider_key_add_failed_by_invalid_data'))
     )
@@ -70,19 +65,16 @@ describe('provider import names', () => {
     expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/provider' })
     expect(onSelectProvider).not.toHaveBeenCalled()
   })
-
   it.each([undefined, ''])('uses the string ID when the imported name is %j', async (name) => {
     const user = userEvent.setup()
     const onSelectProvider = vi.fn()
     render(<PopupHost />)
     renderHook(() => useProviderDeepLinkImport(JSON.stringify({ ...params, name }), onSelectProvider))
-
     expect(await screen.findByRole('textbox', { name: i18n.t('settings.models.provider_name') })).toHaveValue(params.id)
     await user.click(screen.getByRole('button', { name: i18n.t('common.cancel') }))
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/provider' }))
     expect(onSelectProvider).not.toHaveBeenCalled()
   })
-
   it('returns the edited, trimmed name when confirming a new provider', async () => {
     const user = userEvent.setup()
     const { result } = await showImport()
@@ -97,7 +89,6 @@ describe('provider import names', () => {
       updatedProvider: { id: params.id, name: 'Work Relay', apiKey: params.apiKey, apiHost: params.baseUrl }
     })
   })
-
   it('does not allow an empty name and discards edits on cancel', async () => {
     const user = userEvent.setup()
     const { result } = await showImport()
@@ -108,7 +99,6 @@ describe('provider import names', () => {
     await user.click(screen.getByRole('button', { name: i18n.t('common.cancel') }))
     await expect(result).resolves.toMatchObject({ updatedProvider: undefined })
   })
-
   it('imports only the edited name while preserving multiple endpoints and connection overrides', async () => {
     const user = userEvent.setup()
     const updateProvider = vi.fn().mockResolvedValue(undefined)
@@ -168,7 +158,6 @@ describe('provider import names', () => {
     })
     expect(addApiKey).not.toHaveBeenCalled()
   })
-
   it('keeps the localized name of canonical presets read-only', async () => {
     const user = userEvent.setup()
     MockUseDataApiUtils.mockQueryResult('/providers', {

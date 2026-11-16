@@ -10,26 +10,21 @@ import { loggerService } from '@logger'
 import { DynamicVirtualList } from '@renderer/components/VirtualList'
 import { ipcApi } from '@renderer/ipc'
 import { normalizeKnowledgeError } from '@renderer/pages/knowledge/utils/error'
-import { isEvoStack } from '@renderer/utils/platform'
 import type { KnowledgeItem, KnowledgeItemChunk } from '@shared/data/types/knowledge'
 
 import { toKnowledgeItemRowViewModel } from './utils/selectors'
-
 const logger = loggerService.withContext('KnowledgeItemChunkDetailPanel')
 const CHUNK_ESTIMATED_HEIGHT = 92
 const CHUNK_ITEM_CONTAINER_STYLE = { paddingBottom: 8 }
 const estimateChunkSize = () => CHUNK_ESTIMATED_HEIGHT
-
 interface KnowledgeItemChunkDetailPanelProps {
   baseId: string
   itemId: string
   item?: KnowledgeItem
   onBack: () => void
 }
-
 const KnowledgeItemChunkCard = ({ chunk }: { chunk: KnowledgeItemChunk }) => {
   const { t } = useTranslation()
-
   return (
     <div className="rounded-lg border border-border-subtle transition-all hover:border-border-strong">
       <div className="flex items-center gap-2 px-3 py-2">
@@ -37,7 +32,7 @@ const KnowledgeItemChunkCard = ({ chunk }: { chunk: KnowledgeItemChunk }) => {
           {chunk.metadata.chunkIndex + 1}
         </span>
         <span className="flex-1 text-xs leading-4 text-foreground-tertiary">
-          {chunk.metadata.tokenCount} {t(isEvoStack ? 'knowledge.rag.characters_unit' : 'knowledge.rag.tokens_unit')}
+          {chunk.metadata.tokenCount} {t('knowledge.rag.characters_unit')}
         </span>
       </div>
       <div className="px-3 pb-3">
@@ -46,15 +41,12 @@ const KnowledgeItemChunkCard = ({ chunk }: { chunk: KnowledgeItemChunk }) => {
     </div>
   )
 }
-
 const renderChunk = (chunk: KnowledgeItemChunk) => <KnowledgeItemChunkCard chunk={chunk} />
-
 const KnowledgeItemChunkState = ({ children }: { children: ReactNode }) => (
   <div className="flex min-h-full items-center justify-center px-4 py-10 text-center text-sm leading-5 text-foreground-tertiary">
     {children}
   </div>
 )
-
 const KnowledgeItemChunkDetailPanel = ({
   baseId,
   itemId,
@@ -81,14 +73,11 @@ const KnowledgeItemChunkDetailPanel = ({
   const Icon = viewModel?.icon.icon
   const chunksCountMeta = t('knowledge.data_source.chunks_count', { count: chunks.length })
   const getChunkKey = useCallback((index: number) => chunks[index]?.id ?? index, [chunks])
-
   useEffect(() => {
     let isActive = true
-
     const loadChunks = async () => {
       setIsLoading(true)
       setError(null)
-
       try {
         const itemChunks = await ipcApi.request('knowledge.list_item_chunks', { baseId, itemId })
         if (isActive) {
@@ -96,7 +85,6 @@ const KnowledgeItemChunkDetailPanel = ({
         }
       } catch (chunkError) {
         const normalizedError = normalizeKnowledgeError(chunkError)
-
         if (isActive) {
           logger.error('Failed to list knowledge item chunks', normalizedError, {
             baseId,
@@ -111,14 +99,11 @@ const KnowledgeItemChunkDetailPanel = ({
         }
       }
     }
-
     void loadChunks()
-
     return () => {
       isActive = false
     }
   }, [baseId, itemId])
-
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="relative flex h-11 shrink-0 items-center gap-2 px-3 after:pointer-events-none after:absolute after:right-3 after:bottom-0 after:left-3 after:border-b after:border-border after:content-['']">
@@ -176,5 +161,4 @@ const KnowledgeItemChunkDetailPanel = ({
     </div>
   )
 }
-
 export default KnowledgeItemChunkDetailPanel

@@ -6,10 +6,9 @@ import { Button, ConfirmDialog } from '@cherrystudio/ui'
 import { useDrag } from '@renderer/hooks/useDrag'
 import { toast } from '@renderer/services/toast'
 import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
-import { isEvoStack } from '@renderer/utils/platform'
 import type { KnowledgeItemSort, KnowledgeItemSortBy } from '@shared/data/api/schemas/knowledges'
 import type { KnowledgeItem, KnowledgeItemOf, KnowledgeItemType } from '@shared/data/types/knowledge'
-import { type AbsoluteFilePath, AbsoluteFilePathSchema } from '@shared/types/file'
+import { type AbsoluteFilePath } from '@shared/types/file'
 
 import { KNOWLEDGE_DATA_SOURCE_TYPES } from '../../components/addKnowledgeItemDialog/constants'
 import KnowledgePanelShell from '../../components/KnowledgePanelShell'
@@ -19,7 +18,6 @@ import DataSourcePanelHeader from './DataSourcePanelHeader'
 import KnowledgeItemList from './KnowledgeItemList'
 import { dataSourceTypeDisplayConfig } from './utils/models'
 import { canReindexKnowledgeItem, getItemTitle } from './utils/selectors'
-
 export interface DataSourcePanelProps {
   sort?: KnowledgeItemSort | null
   onSortChange?: (sortBy: KnowledgeItemSortBy) => void
@@ -50,10 +48,8 @@ export interface DataSourcePanelProps {
   onReindex: (item: KnowledgeItem) => void | Promise<unknown>
   onReindexItems: (itemIds: string[]) => void | Promise<unknown>
 }
-
 const DataSourceEmptyState = ({ onAddSource }: { onAddSource: (source: KnowledgeItemType) => void }) => {
   const { t } = useTranslation()
-
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center px-6 py-12 text-center">
       <div className="flex max-w-4xl flex-col items-center">
@@ -64,7 +60,6 @@ const DataSourceEmptyState = ({ onAddSource }: { onAddSource: (source: Knowledge
         <div className="mt-7 flex flex-wrap justify-center gap-2.5">
           {KNOWLEDGE_DATA_SOURCE_TYPES.map((source) => {
             const Icon = dataSourceTypeDisplayConfig[source.value].icon.icon
-
             return (
               <Button
                 key={source.value}
@@ -83,7 +78,6 @@ const DataSourceEmptyState = ({ onAddSource }: { onAddSource: (source: Knowledge
     </div>
   )
 }
-
 const DataSourcePanelContent = ({
   sort = null,
   onSortChange,
@@ -114,16 +108,13 @@ const DataSourcePanelContent = ({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [pendingDeleteItem, setPendingDeleteItem] = useState<KnowledgeItem | null>(null)
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false)
-
   useEffect(() => {
     setSelectedIds((prev) => {
       const itemIds = new Set(items.map((item) => item.id))
       const next = new Set([...prev].filter((itemId) => itemIds.has(itemId)))
-
       return next.size === prev.size ? prev : next
     })
   }, [items])
-
   const handleSortChange = useCallback(
     (sortBy: KnowledgeItemSortBy) => {
       setSelectedIds(new Set())
@@ -131,9 +122,7 @@ const DataSourcePanelContent = ({
     },
     [onSortChange]
   )
-
   const handleItemClick = (itemId: string) => onItemClick?.(itemId)
-
   // A directory drills in; files and captured URLs preview inline; uncaptured valid HTTP URLs open
   // in the system browser; notes show their original stored content. `previewSource` owns warnings
   // and error toasts. Chunks are a separate advanced action reached from the row's context menu.
@@ -152,12 +141,10 @@ const DataSourcePanelContent = ({
     },
     [invalidatePreviewRequests, onDrillIntoDirectory, onViewNoteContent, previewSource]
   )
-
   const handleNavigateUp = useCallback(() => {
     invalidatePreviewRequests()
     onNavigateUp?.()
   }, [invalidatePreviewRequests, onNavigateUp])
-
   const handleToggleOne = useCallback((itemId: string, next: boolean) => {
     setSelectedIds((prev) => {
       const updated = new Set(prev)
@@ -169,14 +156,12 @@ const DataSourcePanelContent = ({
       return updated
     })
   }, [])
-
   const handleToggleAll = useCallback(
     (next: boolean) => {
       setSelectedIds(next ? new Set(items.map((item) => item.id)) : new Set())
     },
     [items]
   )
-
   const handleBulkReindex = useCallback(async () => {
     const selectedItems = items.filter((item) => selectedIds.has(item.id))
     // The main process rejects the whole batch when any selected item is still
@@ -184,12 +169,10 @@ const DataSourcePanelContent = ({
     // Skip them here instead, mirroring the row menu's own gate.
     const reindexableItems = selectedItems.filter(canReindexKnowledgeItem)
     const skippedCount = selectedItems.length - reindexableItems.length
-
     if (reindexableItems.length === 0) {
       toast.warning(t('knowledge.data_source.bulk.reindex_none_eligible'))
       return
     }
-
     try {
       await onReindexItems(reindexableItems.map((item) => item.id))
     } catch (error) {
@@ -201,7 +184,6 @@ const DataSourcePanelContent = ({
     }
     setSelectedIds(new Set())
   }, [items, onReindexItems, selectedIds, t])
-
   const handleBulkDelete = useCallback(async () => {
     const itemIds = items.filter((item) => selectedIds.has(item.id)).map((item) => item.id)
     try {
@@ -213,22 +195,18 @@ const DataSourcePanelContent = ({
     setSelectedIds(new Set())
     setIsBulkDeleteOpen(false)
   }, [items, onDeleteItems, selectedIds, t])
-
   const handleConfirmDelete = async () => {
     if (!pendingDeleteItem) {
       return
     }
-
     try {
       await onDelete(pendingDeleteItem)
     } catch (error) {
       toast.error(formatErrorMessageWithPrefix(error, t('knowledge.data_source.delete_failed')))
       return
     }
-
     setPendingDeleteItem(null)
   }
-
   const handleAddSource = useCallback((source: KnowledgeItemType) => onAdd(source), [onAdd])
   const handleFileDrop = useCallback(
     (event: DragEvent<HTMLDivElement>) => {
@@ -240,16 +218,10 @@ const DataSourcePanelContent = ({
           if (item.kind !== 'file' || !item.webkitGetAsEntry?.()?.isDirectory) {
             continue
           }
-          if (isEvoStack) {
+          {
             toast.warning(t('knowledge.evostack.text_sources_only'))
             return
           }
-          const file = item.getAsFile()
-          if (!file) {
-            throw new Error('Failed to capture a dropped directory')
-          }
-          directoryPaths.push(AbsoluteFilePathSchema.parse(window.api.file.getPathForFile(file)))
-          directoryFiles.add(file)
         }
       } catch (error) {
         toast.error(formatErrorMessageWithPrefix(error, t('knowledge.data_source.add_dialog.submit.error')))
@@ -270,7 +242,6 @@ const DataSourcePanelContent = ({
   const { isDragging, handleDragEnter, handleDragLeave, handleDragOver, handleDrop } =
     useDrag<HTMLDivElement>(handleFileDrop)
   const canAddSource = !currentDirectory
-
   return (
     <KnowledgePanelShell
       headerClassName="shrink-0 px-3"
@@ -375,5 +346,4 @@ const DataSourcePanelContent = ({
     </KnowledgePanelShell>
   )
 }
-
 export default DataSourcePanelContent

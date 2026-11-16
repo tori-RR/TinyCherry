@@ -23,7 +23,7 @@ This directory is the single source of truth for repository skills.
 For each new public skill, run:
 
 ```bash
-pnpm skills:sync
+pnpm exec tsx scripts/skills-sync.ts
 ```
 
 `skills:sync` will create/update `.claude/skills/<skill-name>` as a symlink pointing to `../../.agents/skills/<skill-name>`.
@@ -38,7 +38,7 @@ This project uses symlinks to synchronize files such as AGENTS.md and skills. Wi
    ```bash
    git config --global core.symlinks true
    ```
-4. Re-clone the repository (or run `pnpm skills:sync`) after enabling symlink support.
+4. Re-clone the repository (or run `pnpm exec tsx scripts/skills-sync.ts`) after enabling symlink support.
 
 ## White-list Tracking Rules
 
@@ -51,13 +51,13 @@ The public white-list is defined in `.agents/skills/public-skills.txt`.
 After updating `public-skills.txt`, run:
 
 ```bash
-pnpm skills:sync
+pnpm exec tsx scripts/skills-sync.ts
 ```
 
 Then validate:
 
 ```bash
-pnpm skills:check
+pnpm exec tsx scripts/skills-check.ts
 ```
 
 The sync/check scripts manage and verify:

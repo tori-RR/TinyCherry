@@ -1,6 +1,7 @@
 {
   "name": "@cherrystudio/web-search",
   "version": "0.8.0",
+  "private": true,
   "description": "Portable web search provider protocols with host-owned transports and policies",
   "license": "MIT",
   "author": "Cherry Studio",
@@ -365,13 +366,9 @@
       "default": "./dist/tools/content.mjs"
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "build": "tsdown",
-    "prepack": "pnpm build",
-    "test": "vitest run --config vitest.config.ts",
+    "test": "pnpm --workspace-root exec vitest run --project web-search",
     "test:package": "pnpm typecheck && pnpm build && node scripts/check-package.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

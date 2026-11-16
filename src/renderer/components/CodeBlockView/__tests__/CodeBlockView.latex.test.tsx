@@ -41,7 +41,7 @@ describe('LaTeX code block preview', () => {
 
     expect(await screen.findByRole('math', { hidden: true })).toHaveTextContent('ab')
     expect(screen.queryByLabelText('Code viewer')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Download Source Code' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Download Source Code' })).not.toBeInTheDocument()
     const more = screen.queryByRole('button', { name: 'More' })
     if (more) await user.click(more)
     expect(screen.queryByRole('button', { name: 'Copy as image' })).not.toBeInTheDocument()

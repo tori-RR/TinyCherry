@@ -15,11 +15,8 @@ import {
   SettingsContentColumn
 } from '@renderer/components/SettingsPrimitives'
 import { ipcApi } from '@renderer/ipc'
-import { isEvoStack } from '@renderer/utils/platform'
-
 const logger = loggerService.withContext('ComputerUseSettings')
 const PERMISSION_KEY = 'computer_use.get_permission_status'
-
 export function ComputerUseSettings() {
   const { t } = useTranslation()
   const [approvedApps] = usePreference('app.computer_use.approved_apps')
@@ -45,8 +42,14 @@ export function ComputerUseSettings() {
     reset
   } = useSWRMutation(
     PERMISSION_KEY,
-    (_, { arg }: { arg: 'accessibility' | 'screenRecording' }) =>
-      ipcApi.request('computer_use.request_permissions', { ids: [arg] }),
+    (
+      _,
+      {
+        arg
+      }: {
+        arg: 'accessibility' | 'screenRecording'
+      }
+    ) => ipcApi.request('computer_use.request_permissions', { ids: [arg] }),
     {
       populateCache: true,
       throwOnError: false,
@@ -54,13 +57,8 @@ export function ComputerUseSettings() {
     }
   )
   const busy = isLoading || isValidating || isMutating
-  const controlUnavailable = isEvoStack && data?.controlAvailable !== true
-  const controlHelpKey = isEvoStack
-    ? controlUnavailable
-      ? 'settings.computerUse.previewHelp'
-      : 'settings.computerUse.nativeHelp'
-    : 'settings.computerUse.controlHelp'
-
+  const controlUnavailable = data?.controlAvailable !== true
+  const controlHelpKey = controlUnavailable ? 'settings.computerUse.previewHelp' : 'settings.computerUse.nativeHelp'
   return (
     <SettingsContentColumn>
       <h1 className="text-xl font-semibold text-foreground">{t('settings.computerUse.title')}</h1>

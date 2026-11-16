@@ -1,6 +1,7 @@
 {
   "name": "@cherrystudio/file-preview",
   "version": "0.2.7",
+  "private": true,
   "description": "Portable read-only document preview for Cherry Studio",
   "license": "MIT",
   "repository": {
@@ -28,13 +29,9 @@
     "./styles.css": "./dist/styles.css",
     "./assets/*": "./dist/assets/*"
   },
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "build": "vite build",
-    "prepack": "pnpm build",
-    "test": "pnpm --workspace-root test:pkg:file-preview",
+    "test": "pnpm --workspace-root exec vitest run --project file-preview",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
@@ -43,6 +40,7 @@
   "devDependencies": {
     "@aiden0z/pptx-renderer": "1.2.2",
     "@cherrystudio/ui": "workspace:*",
+    "@napi-rs/canvas": "0.1.97",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-virtual": "^3.13.24",
     "@types/react": "^19.2.7",

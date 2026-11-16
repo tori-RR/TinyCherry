@@ -710,7 +710,7 @@ function createAssistantTopicsSource(topics?: readonly ApiTopic[]): AssistantTop
     refetch: source.refresh,
     topics: items,
     ...deriveAssistantTopicsView(items)
-  } as unknown as AssistantTopicsSource
+  } as AssistantTopicsSource
 }
 
 function renderTopicList({
@@ -956,7 +956,7 @@ describe('Topics', () => {
     assistantMutationMocks.restoreAssistant.mockResolvedValue(undefined)
     assistantQueryMocks.refetchAssistants.mockResolvedValue(undefined)
     topicDataMocks.clearTopicMessagesTrigger.mockResolvedValue({ deletedIds: ['message-c'] })
-    topicDataMocks.deleteTopicsByAssistantId.mockResolvedValue({ deletedIds: [], deletedCount: 0 })
+    topicDataMocks.deleteTopicsByAssistantId.mockResolvedValue({ deletedIds: [] as string[], deletedCount: 0 })
     ipcMocks.request.mockImplementation((route: string, input: unknown) => {
       if (route === 'trash.assistant.archive' || route === 'trash.assistant.delete_permanently') {
         return assistantMutationMocks.deleteAssistant(input)
@@ -1272,7 +1272,7 @@ describe('Topics', () => {
     })
 
     const topicRow = getTopicRow('Alpha topic')
-    deleteTopicRow(topicRow)
+    deleteTopicRow(topicRow as HTMLElement)
 
     await vi.waitFor(() => expect(topicDataMocks.deleteTopic).toHaveBeenCalledWith('topic-a'))
     await vi.waitFor(() => expect(clearActiveTopic).toHaveBeenCalledOnce())
@@ -1318,7 +1318,7 @@ describe('Topics', () => {
     })
 
     const topicRow = getTopicRow('Default topic')
-    deleteTopicRow(topicRow)
+    deleteTopicRow(topicRow as HTMLElement)
 
     await vi.waitFor(() => expect(topicDataMocks.deleteTopic).toHaveBeenCalledWith('topic-unlinked'))
     // The unlinked assistant group is a display fallback, not a real assistant: deleting its last
@@ -1356,7 +1356,7 @@ describe('Topics', () => {
     })
 
     const topicRow = getTopicRow('Default topic')
-    deleteTopicRow(topicRow)
+    deleteTopicRow(topicRow as HTMLElement)
 
     await vi.waitFor(() => expect(topicDataMocks.deleteTopic).toHaveBeenCalledWith('topic-unlinked'))
     await vi.waitFor(() => expect(clearActiveTopic).toHaveBeenCalledOnce())
@@ -1791,7 +1791,7 @@ describe('Topics', () => {
       fireEvent.click(within(menuContent as HTMLElement).getByRole('button', { name: /Delete Permanently/ }))
     }
 
-    topicDataMocks.deleteTopic.mockResolvedValueOnce({ deletedIds: [], deletedCount: 0 })
+    topicDataMocks.deleteTopic.mockResolvedValueOnce({ deletedIds: [] as string[], deletedCount: 0 })
     permanentDeletePopupMocks.show.mockImplementationOnce(async ({ action }: { action: () => Promise<void> }) => {
       await action()
       return true
@@ -2695,7 +2695,7 @@ describe('Topics', () => {
     let topicRow = getTopicRow('Gamma topic')
     let indicatorRoot = topicRow.querySelector('[data-testid="topic-stream-indicator"]')
     expect(indicatorRoot).toHaveAccessibleName('Running')
-    const runningDeleteButton = within(topicRow).getByRole('button', { name: 'Archive' })
+    const runningDeleteButton = within(topicRow as HTMLElement).getByRole('button', { name: 'Archive' })
     expect(runningDeleteButton).toBeDisabled()
     fireEvent.click(runningDeleteButton)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -2713,7 +2713,7 @@ describe('Topics', () => {
     topicRow = getTopicRow('Gamma topic')
     indicatorRoot = topicRow.querySelector('[data-testid="topic-stream-indicator"]')
     expect(indicatorRoot).toHaveAccessibleName('Done')
-    expect(within(topicRow).getByRole('button', { name: 'Archive' })).toBeEnabled()
+    expect(within(topicRow as HTMLElement).getByRole('button', { name: 'Archive' })).toBeEnabled()
     // The delete button always renders now (revealed on hover); assert only
     // that the row is not in the delete-confirm state.
 
@@ -2732,20 +2732,20 @@ describe('Topics', () => {
     renderTopicList()
 
     let topicRow = getTopicRow('Gamma topic')
-    expect(within(topicRow).queryByRole('img', { name: 'Draft' })).not.toBeInTheDocument()
+    expect(within(topicRow as HTMLElement).queryByRole('img', { name: 'Draft' })).not.toBeInTheDocument()
 
     act(() => setTopicDraft('topic-c', 'First draft'))
 
     topicRow = getTopicRow('Gamma topic')
-    expect(within(topicRow).getByRole('img', { name: 'Draft' })).toBeInTheDocument()
+    expect(within(topicRow as HTMLElement).getByRole('img', { name: 'Draft' })).toBeInTheDocument()
 
     act(() => setTopicDraft('topic-c', 'Updated draft'))
 
-    expect(within(topicRow).getByRole('img', { name: 'Draft' })).toBeInTheDocument()
+    expect(within(topicRow as HTMLElement).getByRole('img', { name: 'Draft' })).toBeInTheDocument()
 
     act(() => setTopicDraft('topic-c', ''))
 
-    expect(within(topicRow).queryByRole('img', { name: 'Draft' })).not.toBeInTheDocument()
+    expect(within(topicRow as HTMLElement).queryByRole('img', { name: 'Draft' })).not.toBeInTheDocument()
   })
 
   it('keeps running and error indicators on the active topic but suppresses its completion dot', () => {
@@ -3511,7 +3511,7 @@ describe('Topics', () => {
 
   it('reports already moved when Assistant Topic deletion changes no rows', async () => {
     MockUsePreferenceUtils.setPreferenceValue('topic.tab.display_mode' as never, 'assistant')
-    topicDataMocks.deleteTopicsByAssistantId.mockResolvedValueOnce({ deletedIds: [], deletedCount: 0 })
+    topicDataMocks.deleteTopicsByAssistantId.mockResolvedValueOnce({ deletedIds: [] as string[], deletedCount: 0 })
     renderTopicList()
 
     const assistantHeader = screen.getByRole('button', { name: 'Alpha Assistant' }).closest('div')
@@ -3551,9 +3551,7 @@ describe('Topics', () => {
 
   it('unpins an already pinned assistant from the assistant group menu', async () => {
     MockUsePreferenceUtils.setPreferenceValue('topic.tab.display_mode' as never, 'assistant')
-    MockUsePreferenceUtils.setPreferenceValue('ui.sidebar_shortcut' as never, [
-      sidebarShortcut('core.assistant', 'assistant-1')
-    ])
+    MockUsePreferenceUtils.setPreferenceValue('ui.sidebar_shortcut', [sidebarShortcut('core.assistant', 'assistant-1')])
 
     renderTopicList()
 

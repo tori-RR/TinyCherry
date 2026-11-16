@@ -1,10 +1,11 @@
 import '@testing-library/jest-dom/vitest'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { UpdateInfo } from 'builder-util-runtime'
 import { createInstance } from 'i18next'
 import { I18nextProvider } from 'react-i18next'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import type { UpdateInfo } from '@shared/types/release'
 
 import en from '../../i18n/locales/en-us.json'
 import zh from '../../i18n/locales/zh-cn.json'

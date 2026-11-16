@@ -257,8 +257,8 @@ describe('Chat', () => {
       panel.props.openBrowserUrl('https://example.com/reference')
     })
 
-    expect(citationBrowserMocks.ensure).toHaveBeenCalledExactlyOnceWith(topic.id, 'https://example.com/reference')
-    expect(citationBrowserMocks.tryOpen).toHaveBeenCalledExactlyOnceWith('browser', { userInitiated: true })
+    expect(window.api.shell.openExternal).toHaveBeenCalledWith('https://example.com/reference')
+    expect(citationBrowserMocks.ensure).not.toHaveBeenCalled()
     expect(conversationShellProps.current.sidePanel.props.children.props.open).toBe(false)
   })
 

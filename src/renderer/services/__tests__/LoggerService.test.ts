@@ -41,7 +41,7 @@ describe('resolveWindowSourceFromMeta', () => {
 describe('LoggerService window source resolution', () => {
   beforeEach(() => {
     document.head.innerHTML = ''
-    vi.spyOn(window.electron.ipcRenderer, 'invoke').mockResolvedValue(undefined)
+    vi.spyOn(window.desktop, 'request').mockResolvedValue(undefined)
     // Silence the logger's own console output so test output stays pristine.
     vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -53,7 +53,7 @@ describe('LoggerService window source resolution', () => {
 
   // `processLog` sends `(channel, source, level, message, data)` to main at WARN+.
   function lastLoggedSource(): { window: string } {
-    const call = vi.mocked(window.electron.ipcRenderer.invoke).mock.calls.at(-1)
+    const call = vi.mocked(window.desktop.request).mock.calls.at(-1)
     return call?.[1] as { window: string }
   }
 
@@ -94,7 +94,7 @@ describe('LoggerService window source resolution', () => {
       retry: () => true
     })
     logger.error('Translation stopped', error)
-    const call = vi.mocked(window.electron.ipcRenderer.invoke).mock.calls.at(-1)!
+    const call = vi.mocked(window.desktop.request).mock.calls.at(-1)!
     const [serialized] = structuredClone(call[4])
     expect(serialized).toMatchObject({
       name: 'AbortError',

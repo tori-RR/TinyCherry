@@ -1403,6 +1403,7 @@
   "conversation_owner.delete_permanently.sessions_kept": "Conversațiile sale sunt păstrate și mutate în „Agent deconectat”.",
   "conversation_owner.delete_permanently.topics_deleted": "Aceste subiecte și mesajele lor vor fi șterse de asemenea.",
   "conversation_owner.delete_permanently.topics_kept": "Subiectele sale sunt păstrate și mutate în „Asistent Deconectat”.",
+  "desktop.feature_unavailable": "This feature is not available in this desktop version yet.",
   "deviceConnections.capabilities.agent": "Controlează sesiunile agentului",
   "deviceConnections.capabilities.configuration": "Importă furnizori și modele",
   "deviceConnections.claims.approve": "Permite",

@@ -19,7 +19,6 @@ import { MIN_WINDOW_HEIGHT, SECOND_MIN_WINDOW_WIDTH } from '@shared/utils/window
 import Sidebar from '../app/Sidebar'
 import { createRecentRouteEntryFromTab, recordGlobalSearchRecentEntry } from '../GlobalSearch/globalSearchGroups'
 import GlobalSearchPopup from '../GlobalSearch/GlobalSearchPopup'
-import MiniAppTabsPool from '../MiniApp/MiniAppTabsPool'
 import { NotificationCenterProvider } from '../NotificationCenter'
 import { ResourceViewSourceProvider } from '../ResourceViewSourceProvider'
 import { AppShellTabBar } from './AppShellTabBar'
@@ -264,7 +263,6 @@ const AppShellContent = () => {
           </ResourceViewSourceProvider>
 
           {/* MiniApp keep-alive WebView pool — global, shared across modes */}
-          <MiniAppTabsPool />
         </main>
       </div>
     </>

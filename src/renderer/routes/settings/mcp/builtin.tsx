@@ -1,7 +1,7 @@
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 
-export function redirectToMcpCatalog() {
-  throw redirect({ to: '/app/marketplace', search: { mcpView: 'curated' } })
-}
-
-export const Route = createFileRoute('/settings/mcp/builtin')({ beforeLoad: redirectToMcpCatalog })
+import { FeatureUnavailable } from '@renderer/components/FeatureUnavailable'
+export const Route = createFileRoute('/settings/mcp/builtin')({
+  validateSearch: (search: Record<string, unknown>) => search,
+  component: FeatureUnavailable
+})

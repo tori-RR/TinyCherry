@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { reportRendererReady } from '../rendererReady'
 
 const host = vi.hoisted(() => ({ invoke: vi.fn() }))
-vi.mock('../transport', () => ({ ipcRenderer: { invoke: host.invoke } }))
+vi.mock('@platform/tauri/transport', () => ({ nativeTransport: { request: host.invoke } }))
 
 afterEach(() => {
   window.dispatchEvent(new Event('pagehide'))

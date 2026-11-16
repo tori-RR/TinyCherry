@@ -1,3 +1,4 @@
+import { isDesktopRouteAvailable } from '@platform/desktop-api/capabilities'
 import {
   Activity,
   Archive,
@@ -52,7 +53,7 @@ export const BUILTIN_TOOLS_GROUP_KEY = 'settings.menuGroups.builtinTools'
  * Adding a settings section requires registering it here, which also makes its
  * title searchable — the settings search baseline is structural, not manual.
  */
-export const settingsMenu: readonly SettingsMenuEntry[] = [
+const allSettingsMenu: readonly SettingsMenuEntry[] = [
   { route: '/settings/provider', titleKey: 'settings.provider.title', icon: createElement(Cloud) },
   { route: '/settings/model', titleKey: 'settings.model', icon: createElement(Package) },
   {
@@ -152,3 +153,5 @@ export const settingsMenu: readonly SettingsMenuEntry[] = [
     groupKey: 'settings.menuGroups.system'
   }
 ]
+
+export const settingsMenu = allSettingsMenu.filter((entry) => isDesktopRouteAvailable(entry.route))

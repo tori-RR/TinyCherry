@@ -1,5 +1,6 @@
-import type { ProgressInfo, UpdateInfo } from 'builder-util-runtime'
 import * as z from 'zod'
+
+import type { ProgressInfo, UpdateInfo } from '@shared/types/release'
 
 import {
   CACHE_CLEANUP_GROUPS,

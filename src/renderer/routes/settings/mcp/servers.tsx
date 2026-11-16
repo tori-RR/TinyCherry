@@ -1,13 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
-import * as z from 'zod'
 
-const mcpServersSearchSchema = z.object({
-  protocolInstallRequestId: z.uuid().optional()
-})
-
-import McpServersList from '@renderer/pages/settings/McpSettings/McpServersList'
-
+import { FeatureUnavailable } from '@renderer/components/FeatureUnavailable'
 export const Route = createFileRoute('/settings/mcp/servers')({
-  validateSearch: (search) => mcpServersSearchSchema.parse(search),
-  component: McpServersList
+  validateSearch: (search: Record<string, unknown>) => search,
+  component: FeatureUnavailable
 })

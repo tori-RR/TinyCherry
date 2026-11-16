@@ -1423,6 +1423,7 @@
   "conversation_owner.delete_permanently.sessions_kept": "Jego rozmowy zostaną zachowane i przeniesione do sekcji Niepowiązany agent.",
   "conversation_owner.delete_permanently.topics_deleted": "Te tematy i ich wiadomości również zostaną usunięte.",
   "conversation_owner.delete_permanently.topics_kept": "Jego tematy zostaną zachowane i przeniesione do sekcji Niepowiązany asystent.",
+  "desktop.feature_unavailable": "This feature is not available in this desktop version yet.",
   "deviceConnections.capabilities.agent": "Sterowanie sesjami agenta",
   "deviceConnections.capabilities.configuration": "Importowanie dostawców i modeli",
   "deviceConnections.claims.approve": "Zatwierdź",

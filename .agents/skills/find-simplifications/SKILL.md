@@ -9,7 +9,7 @@ This skill finds a few strong candidates, not a deletion quota. Diagnosis and pr
 
 ## Establish context
 
-Read root instructions, relevant architecture/reference docs, and active Agent Notes. Run `pnpm change:scope --base <verified-ref>` when auditing a branch. When the user requests broad coverage, divide renderer, data systems, IPC, lifecycle services, Agent/runtime, packages/scripts, and test infrastructure into disjoint surveys.
+Read root instructions, relevant architecture/reference docs, and active Agent Notes. Run `pnpm validation:plan --base <verified-ref>` when auditing a branch. When the user requests broad coverage, divide renderer, data systems, IPC, lifecycle services, Agent/runtime, packages/scripts, and test infrastructure into disjoint surveys.
 
 ## Evidence bar
 

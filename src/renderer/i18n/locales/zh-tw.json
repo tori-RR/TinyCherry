@@ -1403,6 +1403,7 @@
   "conversation_owner.delete_permanently.sessions_kept": "對話會保留，並移至「未連結的智能體」。",
   "conversation_owner.delete_permanently.topics_deleted": "這些話題和其中的訊息會一併刪除。",
   "conversation_owner.delete_permanently.topics_kept": "話題會保留，並移至「未連結的助理」。",
+  "desktop.feature_unavailable": "此功能尚未迁移到当前桌面版本。",
   "deviceConnections.capabilities.agent": "控制智能體工作階段",
   "deviceConnections.capabilities.configuration": "匯入提供商和模型",
   "deviceConnections.claims.approve": "允許",

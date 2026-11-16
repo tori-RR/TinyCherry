@@ -1,0 +1,78 @@
+name: Windows Desktop Candidate
+on:
+  workflow_dispatch:
+    inputs:
+      stress:
+        description: Run ten Go race iterations
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: desktop-build-${{ github.ref }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: pwsh
+jobs:
+  candidate:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      CI: true
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: native/evostack/backend/go.mod
+          cache: false
+      - name: Prepare project-local caches and toolchains
+        run: |
+          . ./native/evostack/prepare-env.ps1
+          rustup toolchain install 1.98.0 --profile minimal --component clippy --component rustfmt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustup default 1.98.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          'C:\mingw64\bin' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "ACTIONLINT=$env:GOPATH\bin\actionlint.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "GOPATH=$env:GOPATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "GOMODCACHE=$env:GOMODCACHE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "GOCACHE=$env:GOCACHE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CARGO_HOME=$env:CARGO_HOME" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CARGO_TARGET_DIR=$env:CARGO_TARGET_DIR" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - uses: actions/cache@v5
+        with:
+          path: |
+            .pnpm-store
+            native/evostack/.cache/go/pkg/mod
+            native/evostack/.cache/go-build
+            native/evostack/.cache/cargo/registry
+            native/evostack/.cache/cargo/git
+            native/evostack/.cache/target
+          key: desktop-windows-${{ hashFiles('pnpm-lock.yaml', 'native/evostack/backend/go.sum', 'native/evostack/src-tauri/Cargo.lock') }}
+          restore-keys: desktop-windows-
+      - name: Install pinned dependencies and workflow validator
+        run: |
+          pnpm install --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify and package the same candidate
+        env:
+          STRESS: ${{ inputs.stress }}
+          EXPECTED_REVISION: ${{ github.sha }}
+        run: |
+          if ($env:STRESS -eq 'true') { pnpm verify --stress --expected-revision $env:EXPECTED_REVISION }
+          else { pnpm verify --expected-revision $env:EXPECTED_REVISION }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: TinyCherry-Windows-${{ github.sha }}
+          path: native/evostack/dist/*.zip
+          if-no-files-found: error

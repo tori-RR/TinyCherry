@@ -1403,6 +1403,7 @@
   "conversation_owner.delete_permanently.sessions_kept": "Its conversations are kept and move to Unlinked Agent.",
   "conversation_owner.delete_permanently.topics_deleted": "These topics and their messages will be deleted too.",
   "conversation_owner.delete_permanently.topics_kept": "Its topics are kept and move to Unlinked Assistant.",
+  "desktop.feature_unavailable": "This feature is not available in this desktop version yet.",
   "deviceConnections.capabilities.agent": "Control agent sessions",
   "deviceConnections.capabilities.configuration": "Import providers and models",
   "deviceConnections.claims.approve": "Approve",

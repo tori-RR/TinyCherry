@@ -24,7 +24,6 @@ import {
 import { useModelById } from '@renderer/hooks/useModel'
 import { useProviders } from '@renderer/hooks/useProvider'
 import { useTheme } from '@renderer/hooks/useTheme'
-import { isEvoStack } from '@renderer/utils/platform'
 import {
   MAX_COMPRESS_THRESHOLD_PERCENT,
   MIN_COMPRESS_THRESHOLD_PERCENT,
@@ -33,7 +32,6 @@ import {
 import type { Model, UniqueModelId } from '@shared/data/types/model'
 import { clampThresholdPercent } from '@shared/utils/contextSettings'
 import { isNonChatModel } from '@shared/utils/model'
-
 const SettingRowTitleWithTooltip = ({ title, description }: { title: string; description: string }) => (
   <SettingRowTitle className="gap-1">
     {title}
@@ -44,7 +42,6 @@ const SettingRowTitleWithTooltip = ({ title, description }: { title: string; des
     />
   </SettingRowTitle>
 )
-
 /**
  * Global layer of the `chat.context_settings.*` preferences (the assistant
  * edit dialog's「上下文管理」override seeds from — and wins over — these).
@@ -61,10 +58,8 @@ export const ContextManagementSettings = () => {
   const [compressEnabled, setCompressEnabled] = usePreference('chat.context_settings.compress.enabled')
   const [compressModelId, setCompressModelId] = usePreference('chat.context_settings.compress.model_id')
   const [compressThreshold, setCompressThreshold] = usePreference('chat.context_settings.compress.threshold_percent')
-
   const { model: compressModel } = useModelById(compressModelId as UniqueModelId | null)
   const { providers } = useProviders({ enabled: true })
-
   // `undefined` is the selector's CLEAR signal — swallowing it left no way
   // back to "follow current model".
   const handleSelectCompressModel = useCallback(
@@ -73,7 +68,6 @@ export const ContextManagementSettings = () => {
     },
     [setCompressModelId]
   )
-
   return (
     <SettingGroup theme={theme}>
       <SettingTitle>{t('settings.models.context_management.title')}</SettingTitle>
@@ -99,10 +93,8 @@ export const ContextManagementSettings = () => {
           />
         </div>
       </SettingRow>
-      {isEvoStack && (
-        <SettingDescription>{t('settings.models.context_management.native_unavailable')}</SettingDescription>
-      )}
-      <fieldset className="contents" disabled={isEvoStack} aria-label={t('settings.models.context_management.enabled')}>
+      {<SettingDescription>{t('settings.models.context_management.native_unavailable')}</SettingDescription>}
+      <fieldset className="contents" disabled={true} aria-label={t('settings.models.context_management.enabled')}>
         <SettingDivider />
         <SettingRow id="setting-general-context-enabled" className="scroll-mt-6">
           <div className="min-w-0 flex-1">

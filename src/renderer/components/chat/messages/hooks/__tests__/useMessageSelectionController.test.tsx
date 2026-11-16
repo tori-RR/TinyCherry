@@ -8,13 +8,10 @@ import { COMPOSER_CLIPBOARD_FRAGMENT_MIME } from '@renderer/utils/message/compos
 import type { CherryMessagePart } from '@shared/data/types/message'
 
 import { useMessageSelectionController } from '../useMessageSelectionController'
-
 const { popupConfirm } = vi.hoisted(() => ({ popupConfirm: vi.fn() }))
-
 vi.mock('@renderer/services/popup', () => ({
   popup: { confirm: popupConfirm }
 }))
-
 const cacheValues = {
   'chat.multi_select_mode': false,
   'chat.selected_message_ids': []
@@ -28,15 +25,17 @@ const setCacheValue = vi.fn((key: string, value: unknown) => {
     Array.isArray(next) &&
     previous.length === next.length &&
     previous.every((item, index) => Object.is(item, next[index]))
-
   if (!Object.is(previous, next) && !isEqualArray) {
     cacheValues[key] = next
   }
 })
-
 vi.mock('react-i18next', () => {
-  const t = (key: string, options?: { count?: number }) =>
-    options?.count === undefined ? key : `${key}:${options.count}`
+  const t = (
+    key: string,
+    options?: {
+      count?: number
+    }
+  ) => (options?.count === undefined ? key : `${key}:${options.count}`)
   return {
     initReactI18next: {
       type: '3rdParty',
@@ -45,7 +44,6 @@ vi.mock('react-i18next', () => {
     useTranslation: () => ({ t })
   }
 })
-
 const message = (id: string) => ({
   id,
   role: 'user' as const,
@@ -54,10 +52,8 @@ const message = (id: string) => ({
   createdAt: '2026-01-01T00:00:00.000Z',
   status: 'success' as const
 })
-
 describe('useMessageSelectionController', () => {
   const writeText = vi.fn()
-
   beforeEach(() => {
     vi.clearAllMocks()
     cacheValues['chat.multi_select_mode'] = false
@@ -81,7 +77,6 @@ describe('useMessageSelectionController', () => {
     }
     popupConfirm.mockResolvedValue(true)
   })
-
   it('copies selected composer tokens through rich clipboard when available', async () => {
     const copyRichContent = vi.fn().mockResolvedValue(undefined)
     const partsByMessageId: Record<string, CherryMessagePart[]> = {
@@ -118,11 +113,9 @@ describe('useMessageSelectionController', () => {
         copyRichContent
       })
     )
-
     await act(async () => {
       await result.current.actions.copySelectedMessages?.(['b', 'a'])
     })
-
     expect(writeText).not.toHaveBeenCalled()
     expect(copyRichContent).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -135,7 +128,6 @@ describe('useMessageSelectionController', () => {
     )
     expect(setCacheValue).toHaveBeenCalledWith('chat.multi_select_mode', false)
   })
-
   it('falls back to plain text for selected messages without composer tokens', async () => {
     writeText.mockResolvedValue(undefined)
     const copyRichContent = vi.fn().mockResolvedValue(undefined)
@@ -147,15 +139,12 @@ describe('useMessageSelectionController', () => {
         copyRichContent
       })
     )
-
     await act(async () => {
       await result.current.actions.copySelectedMessages?.(['a'])
     })
-
     expect(copyRichContent).not.toHaveBeenCalled()
     expect(writeText).toHaveBeenCalledWith('plain')
   })
-
   it('keeps action identities stable while reading the latest streamed message data', async () => {
     writeText.mockResolvedValue(undefined)
     type HookProps = {
@@ -175,19 +164,15 @@ describe('useMessageSelectionController', () => {
         }),
       { initialProps }
     )
-
     rerender({
       messages: [message('b')],
       partsByMessageId: { b: [{ type: 'text', text: 'latest' }] as CherryMessagePart[] }
     })
-
     await act(async () => {
       await result.current.actions.copySelectedMessages?.(['b'])
     })
-
     expect(writeText).toHaveBeenCalledWith('latest')
   })
-
   it('clears multi-select state when the message list unmounts', () => {
     const { unmount } = renderHook(() =>
       useMessageSelectionController({
@@ -196,15 +181,11 @@ describe('useMessageSelectionController', () => {
         partsByMessageId: { a: [{ type: 'text', text: 'plain' }] as any }
       })
     )
-
     setCacheValue.mockClear()
-
     unmount()
-
     expect(setCacheValue).toHaveBeenCalledWith('chat.multi_select_mode', false)
     expect(setCacheValue).toHaveBeenCalledWith('chat.selected_message_ids', [])
   })
-
   it('passes the complete selection plan and disables cascading deletion', async () => {
     const deleteMessage = vi.fn().mockResolvedValue(undefined)
     const messages = [
@@ -220,11 +201,9 @@ describe('useMessageSelectionController', () => {
         deleteMessage
       })
     )
-
     await act(async () => {
       await result.current.actions.deleteSelectedMessages?.(['u1', 'a1'])
     })
-
     expect(popupConfirm).toHaveBeenCalledWith(expect.objectContaining({ content: 'message.delete.confirm.content:2' }))
     expect(deleteMessage.mock.calls).toEqual([
       ['u1', { selectedMessageIds: ['u1', 'a1'] }],
@@ -234,7 +213,6 @@ describe('useMessageSelectionController', () => {
     expect(setCacheValue).toHaveBeenCalledWith('chat.multi_select_mode', false)
     expect(setCacheValue).toHaveBeenCalledWith('chat.selected_message_ids', [])
   })
-
   it('clears multi-select state when deleting a selected message fails', async () => {
     const deleteMessage = vi.fn().mockRejectedValue(new Error('delete failed'))
     const { result } = renderHook(() =>
@@ -245,15 +223,12 @@ describe('useMessageSelectionController', () => {
         deleteMessage
       })
     )
-
     await act(async () => {
       await result.current.actions.deleteSelectedMessages?.(['a'])
     })
-
     expect(setCacheValue).toHaveBeenCalledWith('chat.multi_select_mode', false)
     expect(setCacheValue).toHaveBeenCalledWith('chat.selected_message_ids', [])
   })
-
   it('keeps multi-select state when the delete confirmation is cancelled', async () => {
     const deleteMessage = vi.fn()
     const { result } = renderHook(() =>
@@ -264,31 +239,26 @@ describe('useMessageSelectionController', () => {
         deleteMessage
       })
     )
-
     act(() => {
       result.current.actions.toggleMultiSelectMode?.(true)
       result.current.actions.selectMessage?.('a', true)
     })
     setCacheValue.mockClear()
     popupConfirm.mockResolvedValueOnce(false)
-
     await act(async () => {
       await result.current.actions.deleteSelectedMessages?.(['a'])
     })
-
     expect(deleteMessage).not.toHaveBeenCalled()
     expect(setCacheValue).not.toHaveBeenCalledWith('chat.multi_select_mode', false)
     expect(setCacheValue).not.toHaveBeenCalledWith('chat.selected_message_ids', [])
     expect(cacheValues['chat.multi_select_mode']).toBe(true)
     expect(cacheValues['chat.selected_message_ids']).toEqual(['a'])
   })
-
   describe('per-message delete policy', () => {
     const user = message('user')
     const otherUser = message('other-user')
     const assistant: MessageListItem = { ...message('assistant'), role: 'assistant' }
     const canDeleteMessage = (item: MessageListItem) => item.role !== 'assistant'
-
     const renderPolicyController = () => {
       const stored = new Map([user, otherUser, assistant].map((item) => [item.id, item]))
       const deleteMessage = vi.fn(async (id: string) => {
@@ -311,7 +281,6 @@ describe('useMessageSelectionController', () => {
       )
       return { ...hook, stored, deleteMessage, initialProps }
     }
-
     it.each([
       ['assistant-only', ['assistant']],
       ['user then assistant', ['user', 'assistant']],
@@ -332,7 +301,6 @@ describe('useMessageSelectionController', () => {
       expect(result.current.selection.selectedMessageIds).toEqual(['user'])
       expect(result.current.actions.deleteSelectedMessages).toBeDefined()
     })
-
     it.each([
       ['user then assistant', ['user', 'assistant']],
       ['assistant then user', ['assistant', 'user']]
@@ -354,7 +322,6 @@ describe('useMessageSelectionController', () => {
       expect(cacheValues['chat.selected_message_ids']).toEqual(['user'])
       expect(cacheValues['chat.multi_select_mode']).toBe(true)
     })
-
     it('deletes only requested user messages and leaves the assistant untouched', async () => {
       const { result, stored, deleteMessage } = renderPolicyController()
       await act(async () => {
@@ -372,7 +339,6 @@ describe('useMessageSelectionController', () => {
       expect(cacheValues['chat.multi_select_mode']).toBe(false)
       expect(cacheValues['chat.selected_message_ids']).toEqual([])
     })
-
     it('rejects a complete plan containing an unresolved id before deleting a user', async () => {
       const { result, stored, deleteMessage } = renderPolicyController()
       await act(async () => {
@@ -382,14 +348,14 @@ describe('useMessageSelectionController', () => {
       expect([...stored.values()]).toEqual([user, otherUser, assistant])
       expect(popupConfirm).not.toHaveBeenCalled()
     })
-
     it('hides delete when a selected user id no longer resolves', () => {
       const { result, rerender, initialProps } = renderPolicyController()
-      act(() => result.current.actions.selectMessage?.('user', true))
+      act(() => {
+        result.current.actions.selectMessage?.('user', true)
+      })
       rerender({ ...initialProps, messages: [assistant] })
       expect(result.current.actions.deleteSelectedMessages).toBeUndefined()
     })
-
     it.each(['denied', 'missing'])(
       'revalidates a user that becomes %s while confirmation is pending',
       async (change) => {
@@ -427,7 +393,6 @@ describe('useMessageSelectionController', () => {
         expect(cacheValues['chat.multi_select_mode']).toBe(true)
       }
     )
-
     it('snapshots the requested user plan before confirmation', async () => {
       const { result, stored, deleteMessage } = renderPolicyController()
       let confirm!: (value: boolean) => void
@@ -450,15 +415,18 @@ describe('useMessageSelectionController', () => {
       expect([...stored.values()]).toEqual([otherUser, assistant])
       expect(deleteMessage.mock.calls).toEqual([['user', { selectedMessageIds: ['user'] }]])
     })
-
     it('hides delete after paginated select-all includes an assistant', () => {
       const { result, rerender } = renderPolicyController()
       const pagination = { hasOlder: true, isLoading: false, start: vi.fn(), stop: vi.fn() }
       rerender({ messages: [user], selectAllPagination: pagination })
-      act(() => result.current.actions.selectMessage?.('user', true))
+      act(() => {
+        result.current.actions.selectMessage?.('user', true)
+      })
       rerender({ messages: [user], selectAllPagination: pagination })
       expect(result.current.actions.deleteSelectedMessages).toBeDefined()
-      act(() => result.current.actions.toggleSelectAllMessages?.(true))
+      act(() => {
+        result.current.actions.toggleSelectAllMessages?.(true)
+      })
       rerender({ messages: [user], selectAllPagination: { ...pagination, isLoading: true } })
       const completed = { messages: [user, assistant], selectAllPagination: { ...pagination, hasOlder: false } }
       rerender(completed)
@@ -467,7 +435,6 @@ describe('useMessageSelectionController', () => {
       expect(result.current.actions.deleteSelectedMessages).toBeUndefined()
     })
   })
-
   describe('select all', () => {
     const renderController = (messages: MessageListItem[]) => {
       const utils = renderHook(
@@ -477,7 +444,6 @@ describe('useMessageSelectionController', () => {
       )
       return utils
     }
-
     it('selects every selectable message in order, skipping context boundaries and hidden multi-model siblings', () => {
       const messages: MessageListItem[] = [
         message('u1'),
@@ -487,54 +453,42 @@ describe('useMessageSelectionController', () => {
         message('u2')
       ]
       const { result } = renderController(messages)
-
       act(() => {
         result.current.actions.toggleSelectAllMessages?.(true)
       })
-
       expect(cacheValues['chat.selected_message_ids']).toEqual(['u1', 'a-active', 'u2'])
     })
-
     it('keeps single-model retry group representatives selectable despite carrying siblingsGroupId', () => {
       const messages: MessageListItem[] = [
         message('u1'),
         { ...message('a1'), role: 'assistant' as const, siblingsGroupId: 2, isActiveBranch: true }
       ]
       const { result } = renderController(messages)
-
       act(() => {
         result.current.actions.toggleSelectAllMessages?.(true)
       })
-
       expect(cacheValues['chat.selected_message_ids']).toEqual(['u1', 'a1'])
     })
-
     it('clears the selection when toggled off from fully selected', () => {
       const messages: MessageListItem[] = [message('a'), message('b')]
       const { result } = renderController(messages)
-
       act(() => {
         result.current.actions.toggleSelectAllMessages?.(true)
       })
       act(() => {
         result.current.actions.toggleSelectAllMessages?.(false)
       })
-
       expect(cacheValues['chat.selected_message_ids']).toEqual([])
     })
-
     it('reports indeterminate for a partial selection and completes it on toggle', () => {
       const messages: MessageListItem[] = [message('a'), message('b')]
       const { result, rerender } = renderController(messages)
-
       expect(result.current.selection.selectAllState).toBe(false)
-
       act(() => {
         result.current.actions.selectMessage?.('a', true)
       })
       rerender({ messages })
       expect(result.current.selection.selectAllState).toBe('indeterminate')
-
       act(() => {
         result.current.actions.toggleSelectAllMessages?.(true)
       })
@@ -542,23 +496,19 @@ describe('useMessageSelectionController', () => {
       expect(result.current.selection.selectAllState).toBe(true)
       expect(cacheValues['chat.selected_message_ids']).toEqual(['a', 'b'])
     })
-
     it('marks select-all disabled for a topic without selectable messages', () => {
       const empty = renderController([])
       expect(empty.result.current.selection.selectAllState).toBe(false)
       expect(empty.result.current.selection.selectAllDisabled).toBe(true)
-
       const populated = renderController([message('a')])
       expect(populated.result.current.selection.selectAllDisabled).toBe(false)
     })
   })
-
   describe('select-all with server-side pagination', () => {
     interface PaginationProps {
       messages: MessageListItem[]
       pagination?: MessageListSelectAllPagination
     }
-
     const renderPaginatedController = (
       initialMessages: MessageListItem[],
       pagination?: Partial<MessageListSelectAllPagination>
@@ -582,21 +532,16 @@ describe('useMessageSelectionController', () => {
       )
       return { ...utils, handle }
     }
-
     it('defers select-all and starts load-all when older pages remain', () => {
       const { result, handle } = renderPaginatedController([message('a')], { hasOlder: true })
-
       act(() => {
         result.current.actions.toggleSelectAllMessages?.(true)
       })
-
       expect(handle.start).toHaveBeenCalledTimes(1)
       expect(cacheValues['chat.selected_message_ids']).toEqual([])
     })
-
     it('applies the deferred select-all once every page is loaded', () => {
       const { result, handle, rerender } = renderPaginatedController([message('a')], { hasOlder: true })
-
       act(() => {
         result.current.actions.toggleSelectAllMessages?.(true)
       })
@@ -604,16 +549,13 @@ describe('useMessageSelectionController', () => {
       rerender({ messages: [message('a')], pagination: { ...handle, isLoading: true } })
       expect(result.current.selection.isSelectAllLoading).toBe(true)
       expect(cacheValues['chat.selected_message_ids']).toEqual([])
-
       // Last page arrives: no pages remain, so the pending select-all applies.
       rerender({ messages: [message('a'), message('b')], pagination: { ...handle, hasOlder: false } })
       expect(result.current.selection.isSelectAllLoading).toBe(false)
       expect(cacheValues['chat.selected_message_ids']).toEqual(['a', 'b'])
     })
-
     it('keeps manual deselection made while the deferred select-all is loading', () => {
       const { result, handle, rerender } = renderPaginatedController([message('a')], { hasOlder: true })
-
       // The user has a manual selection, then requests select-all (deferred).
       act(() => {
         result.current.actions.selectMessage?.('a', true)
@@ -622,24 +564,19 @@ describe('useMessageSelectionController', () => {
         result.current.actions.toggleSelectAllMessages?.(true)
       })
       rerender({ messages: [message('a')], pagination: { ...handle, isLoading: true } })
-
       // Mid-load the user unticks a message they no longer want exported.
       act(() => {
         result.current.actions.selectMessage?.('a', false)
       })
-
       // Load completes — the late select-all must not silently re-tick 'a'.
       rerender({ messages: [message('a'), message('b')], pagination: { ...handle, hasOlder: false } })
       // The mock cache setter does not re-render; render once more to observe it.
       rerender({ messages: [message('a'), message('b')], pagination: { ...handle, hasOlder: false } })
-
       expect(cacheValues['chat.selected_message_ids']).toEqual(['b'])
       expect(result.current.selection.selectAllState).toBe('indeterminate')
     })
-
     it('re-includes a message re-ticked while the deferred select-all is loading', () => {
       const { result, handle, rerender } = renderPaginatedController([message('a')], { hasOlder: true })
-
       act(() => {
         result.current.actions.selectMessage?.('a', true)
       })
@@ -654,18 +591,14 @@ describe('useMessageSelectionController', () => {
       act(() => {
         result.current.actions.selectMessage?.('a', true)
       })
-
       rerender({ messages: [message('a'), message('b')], pagination: { ...handle, hasOlder: false } })
       // The mock cache setter does not re-render; render once more to observe it.
       rerender({ messages: [message('a'), message('b')], pagination: { ...handle, hasOlder: false } })
-
       expect(cacheValues['chat.selected_message_ids']).toEqual(['a', 'b'])
       expect(result.current.selection.selectAllState).toBe(true)
     })
-
     it('resets exclusions on a fresh select-all once every page is loaded', () => {
       const { result, handle, rerender } = renderPaginatedController([message('a')], { hasOlder: true })
-
       act(() => {
         result.current.actions.selectMessage?.('a', true)
       })
@@ -679,21 +612,17 @@ describe('useMessageSelectionController', () => {
       rerender({ messages: [message('a'), message('b')], pagination: { ...handle, hasOlder: false } })
       rerender({ messages: [message('a'), message('b')], pagination: { ...handle, hasOlder: false } })
       expect(cacheValues['chat.selected_message_ids']).toEqual(['b'])
-
       // The user clicks select-all again after landing: the previous cycle's
       // exclusions must not leak into this fresh "select everything" intent.
       act(() => {
         result.current.actions.toggleSelectAllMessages?.(true)
       })
       rerender({ messages: [message('a'), message('b')], pagination: { ...handle, hasOlder: false } })
-
       expect(cacheValues['chat.selected_message_ids']).toEqual(['a', 'b'])
       expect(result.current.selection.selectAllState).toBe(true)
     })
-
     it('drops the deferred select-all when toggled off while loading', () => {
       const { result, handle, rerender } = renderPaginatedController([message('a')], { hasOlder: true })
-
       act(() => {
         result.current.actions.toggleSelectAllMessages?.(true)
       })
@@ -701,13 +630,10 @@ describe('useMessageSelectionController', () => {
         result.current.actions.toggleSelectAllMessages?.(false)
       })
       rerender({ messages: [message('a'), message('b')], pagination: handle })
-
       expect(cacheValues['chat.selected_message_ids']).toEqual([])
     })
-
     it('drops the deferred select-all and stops paging when multi-select mode is exited mid-load', () => {
       const { result, handle, rerender } = renderPaginatedController([message('a')], { hasOlder: true })
-
       act(() => {
         result.current.actions.toggleSelectAllMessages?.(true)
       })
@@ -718,14 +644,11 @@ describe('useMessageSelectionController', () => {
         result.current.actions.toggleMultiSelectMode?.(false)
       })
       rerender({ messages: [message('a'), message('b')], pagination: handle })
-
       expect(handle.stop).toHaveBeenCalledTimes(1)
       expect(cacheValues['chat.selected_message_ids']).toEqual([])
     })
-
     it('drops the pending select-all when load-all is abandoned mid-flight', () => {
       const { result, handle, rerender } = renderPaginatedController([message('a')], { hasOlder: true })
-
       act(() => {
         result.current.actions.toggleSelectAllMessages?.(true)
       })
@@ -733,29 +656,23 @@ describe('useMessageSelectionController', () => {
       // falls back to false while older pages still remain.
       rerender({ messages: [message('a')], pagination: { ...handle, isLoading: true } })
       rerender({ messages: [message('a')], pagination: handle })
-
       // The user pages to the end manually — the stale select-all must not fire.
       rerender({ messages: [message('a'), message('b')], pagination: { ...handle, hasOlder: false } })
       expect(cacheValues['chat.selected_message_ids']).toEqual([])
     })
-
     it('never reports fully selected while older pages remain unloaded', () => {
       const { result, handle, rerender } = renderPaginatedController([message('a')], { hasOlder: true })
-
       act(() => {
         result.current.actions.selectMessage?.('a', true)
       })
       rerender({ messages: [message('a')], pagination: handle })
-
       // Every loaded message is ticked, but unloaded pages exist — the
       // checkbox must not claim "all selected".
       expect(result.current.selection.selectAllState).toBe('indeterminate')
-
       rerender({ messages: [message('a')], pagination: { ...handle, hasOlder: false } })
       expect(result.current.selection.selectAllState).toBe(true)
     })
   })
-
   describe('exportSelectedMessages', () => {
     const exportMessages = vi.fn()
     const partsByMessageId = {
@@ -771,7 +688,6 @@ describe('useMessageSelectionController', () => {
           exportMessages
         })
       )
-
     it('exports the selected content in conversation order and clears selection only after success', async () => {
       let finish!: (success: boolean) => void
       exportMessages.mockImplementation(
@@ -806,7 +722,6 @@ describe('useMessageSelectionController', () => {
       expect(cacheValues['chat.multi_select_mode']).toBe(false)
       expect(cacheValues['chat.selected_message_ids']).toEqual([])
     })
-
     it('preserves a newer selection when a long-running export succeeds later', async () => {
       let finish!: (success: boolean) => void
       exportMessages.mockImplementation(
@@ -835,7 +750,6 @@ describe('useMessageSelectionController', () => {
       expect(cacheValues['chat.multi_select_mode']).toBe(true)
       expect(cacheValues['chat.selected_message_ids']).toEqual(['b'])
     })
-
     it('ignores a late export success from an unmounted topic controller', async () => {
       let finish!: (success: boolean) => void
       exportMessages.mockImplementation(
@@ -869,7 +783,6 @@ describe('useMessageSelectionController', () => {
       expect(cacheValues['chat.multi_select_mode']).toBe(true)
       expect(cacheValues['chat.selected_message_ids']).toEqual(['b'])
     })
-
     it.each(['cancelled', 'failed'] as const)('preserves the selection when export is %s', async (outcome) => {
       if (outcome === 'failed') exportMessages.mockRejectedValueOnce(new Error('export failed'))
       else exportMessages.mockResolvedValueOnce(false)

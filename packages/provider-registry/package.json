@@ -1,6 +1,7 @@
 {
   "name": "@cherrystudio/provider-registry",
   "version": "0.5.2",
+  "private": true,
   "description": "Cross-platform AI provider and model catalogs, schemas, and lookup utilities",
   "homepage": "https://github.com/CherryHQ/cherry-studio#readme",
   "bugs": {
@@ -114,9 +115,6 @@
     "./data/providers.json": "./data/providers.json",
     "./data/provider-models.json": "./data/provider-models.json"
   },
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "build": "tsdown",
     "clean": "rm -rf dist",
@@ -126,8 +124,7 @@
     "dev": "pnpm --workspace-root exec tsc -w -p packages/provider-registry/tsconfig.json",
     "generate": "tsx scripts/generate-catalog.ts --write && pnpm --workspace-root exec oxfmt --write packages/provider-registry/data/models.json packages/provider-registry/data/provider-models.json packages/provider-registry/data/providers.json packages/provider-registry/src/patterns/reasoning-families.gen.ts packages/provider-registry/src/patterns/server-tool-models.gen.ts packages/provider-registry/src/patterns/server-tool-constraints.gen.ts",
     "generate:check": "tsx scripts/generate-catalog.ts --report",
-    "prepack": "pnpm build",
-    "test": "vitest run",
+    "test": "pnpm --workspace-root exec vitest run --project provider-registry",
     "test:package": "pnpm typecheck && pnpm build && node scripts/check-package.mjs",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.json"

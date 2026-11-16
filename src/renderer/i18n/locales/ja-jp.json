@@ -1403,6 +1403,7 @@
   "conversation_owner.delete_permanently.sessions_kept": "会話は保持され、「リンクされていないエージェント」に移動されます。",
   "conversation_owner.delete_permanently.topics_deleted": "これらのトピックとそのメッセージも削除されます。",
   "conversation_owner.delete_permanently.topics_kept": "トピックは保持され、「リンクされていないアシスタント」に移動されます。",
+  "desktop.feature_unavailable": "This feature is not available in this desktop version yet.",
   "deviceConnections.capabilities.agent": "エージェントセッションを操作",
   "deviceConnections.capabilities.configuration": "プロバイダーとモデルをインポート",
   "deviceConnections.claims.approve": "許可",

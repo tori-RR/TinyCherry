@@ -319,7 +319,7 @@ export function useTabDrag({
         } else if (rafId.current === null) {
           // Tab has been closed, only need to move the new window
           rafId.current = requestAnimationFrame(() => {
-            window.electron.ipcRenderer.send(IpcChannel.Tab_MoveWindow, {
+            window.desktop.notify(IpcChannel.Tab_MoveWindow, {
               tabId: dragState.tabId,
               x: e.screenX - 400,
               y: e.screenY - 20
@@ -348,7 +348,7 @@ export function useTabDrag({
       if (detaching) {
         // Send the final position even when no further pointermove follows the detach.
         if (dragRef.current.detachedCreated) {
-          window.electron.ipcRenderer.send(IpcChannel.Tab_MoveWindow, {
+          window.desktop.notify(IpcChannel.Tab_MoveWindow, {
             tabId: dragState.tabId,
             x: e.screenX - 400,
             y: e.screenY - 20

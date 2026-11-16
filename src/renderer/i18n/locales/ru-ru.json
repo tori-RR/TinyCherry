@@ -1403,6 +1403,7 @@
   "conversation_owner.delete_permanently.sessions_kept": "Его беседы сохранятся и будут перемещены в «Несвязанный агент».",
   "conversation_owner.delete_permanently.topics_deleted": "Эти темы и их сообщения также будут удалены.",
   "conversation_owner.delete_permanently.topics_kept": "Его темы сохранятся и будут перемещены в «Несвязанный помощник».",
+  "desktop.feature_unavailable": "This feature is not available in this desktop version yet.",
   "deviceConnections.capabilities.agent": "Управлять сессиями агента",
   "deviceConnections.capabilities.configuration": "Импортировать провайдеров и модели",
   "deviceConnections.claims.approve": "Разрешить",

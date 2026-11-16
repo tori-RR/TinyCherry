@@ -3,10 +3,10 @@ import { fileURLToPath } from 'node:url'
 
 import './generate-skills'
 import './generate-computer-tools'
-import { isRetiredProvider } from '../../src/main/data/retiredProviders'
 import { DefaultBootConfig } from '../../src/shared/data/bootConfig/bootConfigSchemas'
 import { DefaultPreferences } from '../../src/shared/data/preference/preferenceSchemas'
 import { isExcludedProviderPreset } from '../../src/shared/data/presets/providerCatalog'
+import { isRetiredProvider } from '../../src/shared/data/presets/retiredProviders'
 import { DEFAULT_ASSISTANT_SETTINGS } from '../../src/shared/data/types/assistant'
 
 const directory = fileURLToPath(new URL('backend/generated/', import.meta.url))

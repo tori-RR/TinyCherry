@@ -41,7 +41,7 @@ vi.mock('swr', async (importOriginal) => {
   }
 })
 
-// `isDev` reads `window.electron.process.env.NODE_ENV`, which isn't populated
+// `isDev` reads the neutral desktop environment, which isn't populated
 // in the Vitest environment. Force it to true so the dev-only pattern
 // assertions fire during these tests.
 vi.mock('@renderer/utils/platform', async (importOriginal) => {

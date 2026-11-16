@@ -67,19 +67,21 @@ import {
   UsageSectionTitle
 } from './UsageSettingsPrimitives'
 import { useUsageData, useUsageEntriesData } from './useUsageData'
-
-type UsageApiKeyStatsBucket = Extract<AiUsageRecordStatsBucket, { groupBy: 'apiKey' }>
+type UsageApiKeyStatsBucket = Extract<
+  AiUsageRecordStatsBucket,
+  {
+    groupBy: 'apiKey'
+  }
+>
 type UsageApiKeyDisplay = Pick<
   UsageApiKeyStatsBucket,
   'apiKeyId' | 'apiKeyLabel' | 'apiKeyMasked' | 'apiKeyAttribution' | 'authMethod'
 >
-
 const CHART_TYPE_ICONS: Record<UsageChartType, LucideIcon> = {
   bar: ChartColumn,
   line: ChartLine,
   pie: ChartPie
 }
-
 const UsageEntriesSection = memo(function UsageEntriesSection({
   range,
   currency,
@@ -89,7 +91,13 @@ const UsageEntriesSection = memo(function UsageEntriesSection({
 }: {
   range: BoundedTimeRange
   currency: Currency | undefined
-  getProviderInfo: (id: string, snapshotName?: string | null) => { id: string; name: string }
+  getProviderInfo: (
+    id: string,
+    snapshotName?: string | null
+  ) => {
+    id: string
+    name: string
+  }
   dateFormatter: Intl.DateTimeFormat
   timeFormatter: Intl.DateTimeFormat
 }) {
@@ -105,7 +113,6 @@ const UsageEntriesSection = memo(function UsageEntriesSection({
     setSortOrder((currentOrder) => (sortBy === nextSortBy && currentOrder === 'desc' ? 'asc' : 'desc'))
     setSortBy(nextSortBy)
   }
-
   return (
     <UsageEntriesTable
       entries={entries}
@@ -123,7 +130,6 @@ const UsageEntriesSection = memo(function UsageEntriesSection({
     />
   )
 })
-
 function UsageSettings() {
   const { t, i18n } = useTranslation()
   const [windowKey, setWindowKey] = usePersistCache('settings.usage.window')
@@ -136,13 +142,10 @@ function UsageSettings() {
   const selectedCurrency = persistedCurrency ?? undefined
   const chartType: UsageChartType =
     selectedChartType === 'pie' ? 'pie' : selectedChartType === 'line' && rollup !== 'total' ? 'line' : 'bar'
-
   const windowRange = useMemo(() => getWindowRange(windowKey), [windowKey])
   const previousWindowRange = useMemo(() => getPreviousWindowRange(windowKey), [windowKey])
-
   const { providers } = useProviders()
   const providerMap = useMemo(() => new Map(providers.map((provider) => [provider.id, provider])), [providers])
-
   const {
     costTotals,
     costCurrency,
@@ -168,7 +171,6 @@ function UsageSettings() {
     topCount,
     selectedCurrency
   })
-
   const activeDateKeys = useMemo(
     () => timelineBuckets.filter((bucket) => bucket.requestCount > 0).map((bucket) => bucket.date),
     [timelineBuckets]
@@ -219,15 +221,26 @@ function UsageSettings() {
     () =>
       overviewBuckets
         .filter(
-          (bucket): bucket is Extract<AiUsageRecordStatsBucket, { groupBy: 'model' }> => bucket.groupBy === 'model'
+          (
+            bucket
+          ): bucket is Extract<
+            AiUsageRecordStatsBucket,
+            {
+              groupBy: 'model'
+            }
+          > => bucket.groupBy === 'model'
         )
-        .reduce<Extract<AiUsageRecordStatsBucket, { groupBy: 'model' }> | undefined>(
-          (best, bucket) => (!best || bucket.totalTokens > best.totalTokens ? bucket : best),
-          undefined
-        ),
+        .reduce<
+          | Extract<
+              AiUsageRecordStatsBucket,
+              {
+                groupBy: 'model'
+              }
+            >
+          | undefined
+        >((best, bucket) => (!best || bucket.totalTokens > best.totalTokens ? bucket : best), undefined),
     [overviewBuckets]
   )
-
   const dateFormatter = useMemo(
     () => new Intl.DateTimeFormat(i18n.language, { year: 'numeric', month: 'short', day: 'numeric' }),
     [i18n.language]
@@ -272,7 +285,6 @@ function UsageSettings() {
       }),
     [i18n.language]
   )
-
   const windowOptions = useMemo(
     () =>
       WINDOW_KEYS.map((value) => ({
@@ -317,13 +329,11 @@ function UsageSettings() {
     () => CHART_TYPE_KEYS.map((value) => ({ value, label: t(CHART_TYPE_LABEL_KEYS[value]) })),
     [t]
   )
-
   const hasUsage = totalRequests > 0 || timelineBuckets.some((bucket) => bucket.requestCount > 0)
   // Explore refetches must not blank the window-scoped cards;
   // the distribution chart renders its own skeleton.
   const isInitialLoading = timelineLoading || overviewLoading
   const totalExploreMetric = getMetricValue(exploreTotals, chartMetric)
-
   const getProviderInfo = useCallback(
     (id: string, snapshotName?: string | null) => {
       const provider = providerMap.get(id)
@@ -338,11 +348,9 @@ function UsageSettings() {
         ? `${t('settings.usage.cards.providerAuth')} · ${apiKey.authMethod}`
         : t('settings.usage.cards.providerAuth')
     }
-
     if (!apiKey.apiKeyId) {
       return t('settings.usage.cards.unattributedApiKey')
     }
-
     const keyLabel = apiKey.apiKeyLabel || apiKey.apiKeyMasked || apiKey.apiKeyId
     const attributionLabel =
       apiKey.apiKeyAttribution === 'matched'
@@ -354,23 +362,19 @@ function UsageSettings() {
     if (!bucket.sourceType || !bucket.sourceId) {
       return t('settings.usage.cards.unattributedSource')
     }
-
     return bucket.sourceName || bucket.sourceId
   }
   const getBucketLabel = (bucket: AiUsageRecordGroupIdentity): string => {
     if (groupBy === 'provider') {
       return getProviderName(bucket.providerId ?? '', bucket.providerName)
     }
-
     if (groupBy === 'model') {
       const modelName = displayModelId(bucket.modelId)
       return modelName || t('settings.usage.cards.none')
     }
-
     if (groupBy === 'source') {
       return getSourceLabel(bucket)
     }
-
     return getApiKeyLabel({
       apiKeyId: bucket.apiKeyId ?? null,
       apiKeyLabel: bucket.apiKeyLabel ?? null,
@@ -379,10 +383,8 @@ function UsageSettings() {
       authMethod: bucket.authMethod ?? null
     })
   }
-
   const formatChartValue = (value: number) =>
     chartMetric === 'cost' ? formatCost(value, exploreTotals.costCurrency) : formatCompactNumber(value)
-
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <UsageResponsiveShell>
@@ -597,7 +599,6 @@ function UsageSettings() {
                     {chartTypeOptions.map((option) => {
                       const Icon = CHART_TYPE_ICONS[option.value]
                       const isActive = chartType === option.value
-
                       return (
                         <Button
                           key={option.value}
@@ -652,5 +653,4 @@ function UsageSettings() {
     </div>
   )
 }
-
 export default UsageSettings

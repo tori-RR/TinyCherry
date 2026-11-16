@@ -12,8 +12,8 @@ const MAX_LINE_BYTES: usize = 1024;
 
 pub fn build_info() -> Value {
     json!({
-        "version": option_env!("EVOSTACK_APP_VERSION").unwrap_or("2.1.10"),
-        "revision": option_env!("EVOSTACK_BUILD_REVISION").unwrap_or("development"),
+        "version": env!("EVOSTACK_APP_VERSION"),
+        "revision": env!("EVOSTACK_BUILD_REVISION"),
         "protocol": 1
     })
 }
@@ -30,6 +30,13 @@ pub fn verify_backend_info(info: &Value) -> Result<(), String> {
 }
 
 pub fn trusted_origin(url: &url::Url) -> bool {
+    #[cfg(debug_assertions)]
+    if url.origin().ascii_serialization() == "http://127.0.0.1:17420"
+        && url.username().is_empty()
+        && url.password().is_none()
+    {
+        return true;
+    }
     url.username().is_empty()
         && url.password().is_none()
         && url.port().is_none()
@@ -175,6 +182,21 @@ mod tests {
             "http://user@tauri.localhost/",
             "http://tauri.localhost.attacker/",
             "file://tauri.localhost/index.html",
+        ] {
+            assert!(!trusted_origin(&url::Url::parse(raw).unwrap()), "{raw}");
+        }
+    }
+
+    #[test]
+    fn dev_origin_is_exact_and_never_a_release_origin() {
+        let origin = url::Url::parse("http://127.0.0.1:17420/windows/evostack/index.html").unwrap();
+        assert_eq!(trusted_origin(&origin), cfg!(debug_assertions));
+        for raw in [
+            "http://localhost:17420/",
+            "http://127.0.0.1:17421/",
+            "http://127.0.0.1:1420/",
+            "http://user@127.0.0.1:17420/",
+            "https://127.0.0.1:17420/",
         ] {
             assert!(!trusted_origin(&url::Url::parse(raw).unwrap()), "{raw}");
         }

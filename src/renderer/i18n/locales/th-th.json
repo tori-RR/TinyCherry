@@ -1403,6 +1403,7 @@
   "conversation_owner.delete_permanently.sessions_kept": "การสนทนาจะยังคงเก็บไว้และย้ายไปที่ \"เอเจนต์ที่ไม่เชื่อมโยง\"",
   "conversation_owner.delete_permanently.topics_deleted": "หัวข้อเหล่านี้และข้อความในหัวข้อจะถูกลบด้วย",
   "conversation_owner.delete_permanently.topics_kept": "หัวข้อจะยังคงเก็บไว้และย้ายไปที่ \"ผู้ช่วยที่ไม่เชื่อมโยง\"",
+  "desktop.feature_unavailable": "This feature is not available in this desktop version yet.",
   "deviceConnections.capabilities.agent": "ควบคุมเซสชันเอเจนต์",
   "deviceConnections.capabilities.configuration": "นำเข้าผู้ให้บริการและโมเดล",
   "deviceConnections.claims.approve": "อนุมัติ",

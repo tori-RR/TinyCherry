@@ -34,13 +34,6 @@ describe('chunking capabilities', () => {
     platform.native = false
   })
 
-  it('keeps Electron smart chunking and token units', () => {
-    renderSection()
-    expect(screen.getByRole('switch', { name: 'knowledge.rag.smart_chunking' })).toBeChecked()
-    expect(screen.getAllByText('knowledge.rag.tokens_unit')).toHaveLength(2)
-    expect(screen.getByRole('textbox', { name: 'knowledge.rag.chunk_separator' })).toBeEnabled()
-  })
-
   it('uses character units and disables the ignored separator in native window mode', async () => {
     platform.native = true
     renderSection()

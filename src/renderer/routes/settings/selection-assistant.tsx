@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import SelectionAssistantSettings from '@renderer/pages/settings/SelectionAssistantSettings/SelectionAssistantSettings'
-
+import { FeatureUnavailable } from '@renderer/components/FeatureUnavailable'
 export const Route = createFileRoute('/settings/selection-assistant')({
-  component: SelectionAssistantSettings
+  validateSearch: (search: Record<string, unknown>) => search,
+  component: FeatureUnavailable
 })

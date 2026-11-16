@@ -2,9 +2,7 @@ import { arrayMove } from '@dnd-kit/sortable'
 import { CircleOff, LoaderCircle, Settings, WifiOff } from 'lucide-react'
 import type { ReactElement, Ref } from 'react'
 import {
-  lazy,
   startTransition,
-  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -24,11 +22,10 @@ import useAvatar from '@renderer/hooks/useAvatar'
 import { useSidebarShortcuts } from '@renderer/hooks/useSidebarShortcuts'
 import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
 import { toast } from '@renderer/services/toast'
-import { isEvoStack, isMac } from '@renderer/utils/platform'
+import { isMac } from '@renderer/utils/platform'
 import { APP_NAME } from '@shared/utils/constants'
 
 import { HelpMenu } from '../layout/HelpMenu'
-import { AppUpdateButton } from '../layout/ShellTabBarActions'
 import { useNotificationCenter } from '../NotificationCenter'
 import {
   getSidebarDisplayWidth,
@@ -47,9 +44,6 @@ import {
   useSidebarShortcutActivation,
   useSidebarShortcutRegistry
 } from './sidebarShortcuts'
-
-const FeedbackDialog = lazy(() => import('../feedback/FeedbackDialog'))
-
 function applyEntryOrder(entries: ResolvedSidebarEntry[], orderedKeys: readonly string[]): ResolvedSidebarEntry[] {
   const byKey = new Map(entries.map((entry) => [entry.key, entry]))
   const optimisticKeys = new Set(orderedKeys)
@@ -61,7 +55,6 @@ function applyEntryOrder(entries: ResolvedSidebarEntry[], orderedKeys: readonly 
     ...entries.filter((entry) => !optimisticKeys.has(entry.key))
   ]
 }
-
 export default function Sidebar({
   ref,
   isFullscreen = false
@@ -79,18 +72,14 @@ export default function Sidebar({
   const resolutions = useResolvedSidebarShortcuts(shortcuts, registry)
   const activateShortcut = useSidebarShortcutActivation()
   const navigation = useSidebarNavigationSnapshot()
-
   const [sidebarWidth, setSidebarWidth] = usePersistCache('ui.sidebar.width')
   const [previewSidebarWidth, setPreviewSidebarWidth] = useState<number | null>(null)
-  const [feedbackDialogMounted, setFeedbackDialogMounted] = useState(false)
-  const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userMenuOpenedByPointerRef = useRef(false)
   const openingNotificationsRef = useRef(false)
   const [hoverVisible, setHoverVisible] = useState(false)
   const activeSidebarWidth = previewSidebarWidth ?? sidebarWidth
   const layout = getSidebarLayout(activeSidebarWidth)
-
   useLayoutEffect(() => {
     document.documentElement.style.setProperty('--sidebar-width', `${getSidebarDisplayWidth(activeSidebarWidth)}px`)
     document.documentElement.style.setProperty(
@@ -98,20 +87,17 @@ export default function Sidebar({
       layout === 'hidden' ? '0px' : `${getSidebarDisplayWidth(activeSidebarWidth)}px`
     )
   }, [activeSidebarWidth, layout])
-
   useEffect(() => {
     if (previewSidebarWidth !== null) return
     const normalizedWidth = normalizeSidebarWidth(sidebarWidth)
     if (normalizedWidth !== sidebarWidth) setSidebarWidth(normalizedWidth)
   }, [previewSidebarWidth, setSidebarWidth, sidebarWidth])
-
   useEffect(() => {
     if (layout === 'hidden') {
       setUserMenuOpen(false)
       setHoverVisible(false)
     }
   }, [layout])
-
   const avatar = useAvatar()
   const handleUserMenuOpenChange = useCallback(
     (open: boolean) => {
@@ -130,13 +116,10 @@ export default function Sidebar({
     window.addEventListener('blur', handleWindowBlur)
     return () => window.removeEventListener('blur', handleWindowBlur)
   }, [handleUserMenuOpenChange, userMenuOpen])
-
   const sidebarUser = useMemo<SidebarUser>(
     () => ({
-      name: isEvoStack
-        ? APP_NAME
-        : userName || t('chat.user', { defaultValue: t('export.user', { defaultValue: 'User' }) }),
-      avatar: isEvoStack ? AppLogo : avatar || undefined,
+      name: APP_NAME,
+      avatar: AppLogo,
       indicator: notificationCenter?.hasUnread ? (
         <span className="pointer-events-none absolute right-0.5 top-0.5 size-1.5 rounded-full bg-destructive">
           <span id={unreadDescriptionId} className="sr-only" aria-hidden="true">
@@ -185,11 +168,10 @@ export default function Sidebar({
           onNotificationsOpen={() => {
             openingNotificationsRef.current = true
           }}>
-          <HelpMenu onFeedbackClick={handleOpenFeedback} onRequestClose={() => handleUserMenuOpenChange(false)} />
+          <HelpMenu onRequestClose={() => handleUserMenuOpenChange(false)} />
         </UserAccountPanel>
       </PopoverContent>
     ) : null
-
   const resolvedEntries = useMemo(
     () =>
       resolutions.map((resolution) => {
@@ -220,7 +202,6 @@ export default function Sidebar({
         }
         const activateInNewTab =
           isResolved && provider && resolution.resource.supportsNewTab ? () => activate(true) : undefined
-
         return {
           key: shortcut.id,
           label,
@@ -259,7 +240,6 @@ export default function Sidebar({
     [activateShortcut, navigation, registry, remove, resolutions, shortcuts, t]
   )
   const [entries, setOptimisticEntryOrder] = useOptimistic(resolvedEntries, applyEntryOrder)
-
   const handleReorder = useCallback(
     ({ oldIndex, newIndex }: { oldIndex: number; newIndex: number }) => {
       if (oldIndex === newIndex) return
@@ -276,12 +256,6 @@ export default function Sidebar({
     },
     [entries, reorder, setOptimisticEntryOrder, shortcuts]
   )
-
-  const handleOpenFeedback = useCallback(() => {
-    setFeedbackDialogMounted(true)
-    setFeedbackOpen(true)
-  }, [])
-
   const sidebarProps = {
     isFullscreen,
     entries,
@@ -311,11 +285,10 @@ export default function Sidebar({
           </Tooltip>
         )
       : undefined,
-    userAction: layout === 'full' ? <AppUpdateButton placement="top" /> : undefined,
+    userAction: undefined,
     renderUserTrigger: renderSidebarUserTrigger,
     onEntriesReorder: handleReorder
   }
-
   return (
     <div ref={ref} id="app-sidebar" data-ui="app.sidebar" className="relative h-full [-webkit-app-region:no-drag]">
       <Popover open={layout !== 'hidden' && userMenuOpen} onOpenChange={handleUserMenuOpenChange}>
@@ -342,11 +315,6 @@ export default function Sidebar({
           {renderUserMenu()}
         </Popover>
       )}
-      {feedbackDialogMounted ? (
-        <Suspense fallback={null}>
-          <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
-        </Suspense>
-      ) : null}
     </div>
   )
 }

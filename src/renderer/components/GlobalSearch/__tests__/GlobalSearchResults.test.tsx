@@ -104,7 +104,7 @@ const props = { active: false, language: 'en-US', query: '', onMouseEnter: vi.fn
 it.each([
   ['/settings/provider', 'title.settings - settings.provider.title'],
   ['/settings/general?focus=language', 'title.settings - settings.general.common.title'],
-  ['/settings/mcp/settings/server-1', 'title.settings - agent.settings.toolsMcp.mcp.tab'],
+  ['/settings/mcp/settings/server-1', 'Saved title'],
   ['/settings/search?q=model', 'title.settings - common.search'],
   ['/app/translate', 'Saved title'],
   ['/settings/unknown', 'Saved title']

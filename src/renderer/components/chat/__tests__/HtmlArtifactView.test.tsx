@@ -1,9 +1,8 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ButtonHTMLAttributes, ReactNode, Ref, RefObject } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { HtmlArtifactPopupHost } from '../HtmlArtifactPopupContext'
 import { HtmlArtifactView } from '../HtmlArtifactView'
 import { ScrollOwnershipProvider } from '../messages/list/ScrollOwnershipContext'
 
@@ -222,86 +221,6 @@ describe('HtmlArtifactView', () => {
     expect(screen.getByTestId('html-preview-frame')).toBe(preview)
   })
 
-  it('shows an artifact card before mounting HTML with scripts', () => {
-    const html = '<script>window.parent.api.file.write("/tmp/example", "unsafe")</script>'
-
-    render(<HtmlArtifactView html={html} title="Preview" />)
-
-    const consentCard = screen.getByTestId('html-artifact-consent-card')
-
-    expect(consentCard.tagName).toBe('BUTTON')
-    expect(consentCard).toHaveAccessibleName('html_artifacts.interactive_preview.action')
-
-    expect(screen.queryByTestId('html-artifact-surface')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('html-preview-frame')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('interactive-html-webview')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'common.maximize' })).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'html_artifacts.interactive_preview.action' }))
-
-    expect(screen.getByTestId('interactive-html-webview')).toHaveAttribute('partition', 'html-artifact-preview')
-    expect(screen.queryByTestId('html-artifact-consent-card')).not.toBeInTheDocument()
-  })
-
-  it('opens approved interactive HTML in the existing artifacts popup', async () => {
-    const html = '<script>document.body.textContent = "interactive"</script>'
-
-    render(<HtmlArtifactView html={html} title="Preview" />)
-
-    expect(screen.queryByRole('button', { name: 'common.maximize' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'html_artifacts.interactive_preview.action' }))
-    const inlineWebview = screen.getByTestId('interactive-html-webview')
-
-    fireEvent.click(screen.getByRole('button', { name: 'common.maximize' }))
-
-    expect(await screen.findByTestId('html-artifacts-popup')).toBeInTheDocument()
-    expect(screen.queryByTestId('html-artifact-surface')).not.toBeInTheDocument()
-    expect(screen.getByTestId('interactive-html-webview')).not.toBe(inlineWebview)
-    expect(mocks.HtmlArtifactsPopup).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        canCapturePreview: false,
-        editable: false,
-        html,
-        open: true,
-        title: 'Preview'
-      }),
-      undefined
-    )
-
-    fireEvent.click(screen.getByTestId('html-artifacts-popup-close'))
-
-    expect(screen.queryByTestId('html-artifacts-popup')).not.toBeInTheDocument()
-    expect(screen.getByTestId('html-artifact-surface')).toBeInTheDocument()
-    expect(screen.getByTestId('interactive-html-webview')).toBeInTheDocument()
-  })
-
-  it('maximizes an interactive fragment into the webview popup regardless of kind', async () => {
-    // Regression lock for the content-only outlet tier: a kind-based guard would route an
-    // active fragment back to the script-less frame in the maximize popup (pre-R2 behavior).
-    const html = '<div><script>fragmentWidget()</script></div>'
-
-    render(<HtmlArtifactView html={html} title="Preview" kind="fragment" />)
-
-    // Inline (non-consented) surface stays script-less for a fragment...
-    expect(screen.getByTestId('html-preview-frame')).toBeInTheDocument()
-    expect(screen.queryByTestId('interactive-html-webview')).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'common.maximize' }))
-
-    // ...but the maximize popup (the explicit viewing action) opens the webview tier.
-    expect(await screen.findByTestId('html-artifacts-popup')).toBeInTheDocument()
-    expect(screen.getByTestId('interactive-html-webview')).toBeInTheDocument()
-    expect(mocks.HtmlArtifactsPopup).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        canCapturePreview: false,
-        html,
-        open: true,
-        title: 'Preview'
-      }),
-      undefined
-    )
-  })
-
   it('opens static HTML in the existing artifacts popup with a restricted iframe', async () => {
     const html = '<main><style>h1 { color: red; }</style><h1>Hello</h1></main>'
     const onSave = vi.fn()
@@ -335,126 +254,6 @@ describe('HtmlArtifactView', () => {
     )
   })
 
-  it('keeps the popup open and previews saved interactive HTML without another consent surface', async () => {
-    const html = '<script>original()</script>'
-    const updatedHtml = '<script>updated()</script>'
-    const onSave = vi.fn()
-    const { rerender } = render(
-      <HtmlArtifactPopupHost>
-        <HtmlArtifactView
-          key="before-save"
-          artifactId="artifact"
-          html={html}
-          title="Preview"
-          onSave={onSave}
-          editable
-        />
-      </HtmlArtifactPopupHost>
-    )
-
-    fireEvent.click(screen.getByRole('button', { name: 'html_artifacts.interactive_preview.action' }))
-    fireEvent.click(screen.getByRole('button', { name: 'common.maximize' }))
-    expect(await screen.findByTestId('html-artifacts-popup')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByTestId('html-artifacts-popup-save'))
-
-    expect(onSave).toHaveBeenCalledWith(updatedHtml)
-    expect(screen.getByTestId('html-artifacts-popup')).toBeInTheDocument()
-    expect(screen.getByTestId('html-artifacts-popup-html')).toHaveTextContent(html)
-
-    rerender(
-      <HtmlArtifactPopupHost>
-        <HtmlArtifactView
-          key="after-save"
-          artifactId="artifact"
-          html={updatedHtml}
-          title="Preview"
-          onSave={onSave}
-          editable
-        />
-      </HtmlArtifactPopupHost>
-    )
-
-    expect(screen.getByTestId('html-artifacts-popup')).toBeInTheDocument()
-    expect(screen.getByTestId('html-artifacts-popup-html')).toHaveTextContent(updatedHtml)
-    expect(screen.queryByTestId('html-artifact-consent-card')).not.toBeInTheDocument()
-    expect(screen.getByTestId('interactive-html-webview')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByTestId('html-artifacts-popup-close'))
-
-    expect(screen.queryByTestId('html-artifacts-popup')).not.toBeInTheDocument()
-    expect(screen.getByTestId('interactive-html-webview')).toBeInTheDocument()
-  })
-
-  it('keeps the existing approval when a popup save is not written back', async () => {
-    const html = '<script>original()</script>'
-    const onSave = vi.fn()
-
-    render(<HtmlArtifactView html={html} title="Preview" onSave={onSave} editable />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'html_artifacts.interactive_preview.action' }))
-    fireEvent.click(screen.getByRole('button', { name: 'common.maximize' }))
-    expect(await screen.findByTestId('html-artifacts-popup')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByTestId('html-artifacts-popup-save'))
-    fireEvent.click(screen.getByTestId('html-artifacts-popup-close'))
-
-    expect(onSave).toHaveBeenCalledWith('<script>updated()</script>')
-    expect(screen.queryByTestId('html-artifact-consent-card')).not.toBeInTheDocument()
-    expect(screen.getByTestId('interactive-html-webview')).toBeInTheDocument()
-  })
-
-  it('previews interactive HTML saved from a static popup without a consent surface', async () => {
-    const onSave = vi.fn()
-    const { rerender } = render(
-      <HtmlArtifactView artifactId="artifact" html="<main>Static</main>" title="Preview" onSave={onSave} editable />
-    )
-
-    fireEvent.click(screen.getByRole('button', { name: 'common.maximize' }))
-    expect(await screen.findByTestId('html-artifacts-popup')).toBeInTheDocument()
-    fireEvent.click(screen.getByTestId('html-artifacts-popup-save'))
-
-    rerender(
-      <HtmlArtifactView
-        artifactId="artifact"
-        html="<script>updated()</script>"
-        title="Preview"
-        onSave={onSave}
-        editable
-      />
-    )
-
-    expect(screen.queryByTestId('html-artifact-consent-card')).not.toBeInTheDocument()
-    expect(screen.getByTestId('interactive-html-webview')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByTestId('html-artifacts-popup-close'))
-
-    expect(screen.queryByTestId('html-artifact-consent-card')).not.toBeInTheDocument()
-    expect(screen.getByTestId('interactive-html-webview')).toBeInTheDocument()
-  })
-
-  it('routes webview boundary wheels through the scroll runtime', () => {
-    const scrollByWheel = vi.fn(() => true)
-    renderWithScrollRuntime(<HtmlArtifactView html="<script>go()</script>" title="Preview" />, { scrollByWheel })
-    fireEvent.click(screen.getByRole('button', { name: 'html_artifacts.interactive_preview.action' }))
-
-    const webview = screen.getByTestId('interactive-html-webview')
-    const src = webview.getAttribute('src')
-    if (!src) throw new Error('Expected an instrumented webview source')
-    const instrumentedHtml = decodeURIComponent(src.slice(src.indexOf(',') + 1))
-    const messagePrefix = instrumentedHtml.match(/__cherry_html_artifact_[^:]+:/)?.[0]
-    if (!messagePrefix) throw new Error('Expected the bridge message prefix')
-
-    const event = new Event('console-message') as Event & { message: string }
-    Object.defineProperty(event, 'message', {
-      configurable: true,
-      value: `${messagePrefix}${JSON.stringify({ type: 'wheel', value: 480 })}`
-    })
-    webview.dispatchEvent(event)
-
-    expect(scrollByWheel).toHaveBeenCalledWith(480)
-  })
-
   it('renders static inline HTML immediately in the restricted iframe', () => {
     const html = '<main><style>h1 { color: red; }</style><h1>Hello</h1></main>'
 
@@ -469,19 +268,6 @@ describe('HtmlArtifactView', () => {
       }),
       undefined
     )
-  })
-
-  it('requires new consent when interactive HTML content changes', () => {
-    const { rerender } = render(<HtmlArtifactView html="<script>one()</script>" title="Preview" />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'html_artifacts.interactive_preview.action' }))
-    expect(screen.getByTestId('interactive-html-webview')).toBeInTheDocument()
-
-    rerender(<HtmlArtifactView html="<script>two()</script>" title="Preview" />)
-
-    expect(screen.getByTestId('html-artifact-consent-card')).toBeInTheDocument()
-    expect(screen.queryByTestId('html-artifact-surface')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('interactive-html-webview')).not.toBeInTheDocument()
   })
 
   it('adapts the surface height to the iframe content within the conversation viewport', () => {
@@ -1257,27 +1043,6 @@ describe('HtmlArtifactView', () => {
     } finally {
       vi.useRealTimers()
     }
-  })
-
-  it('opens the HTML source externally from the inline controls', async () => {
-    render(<HtmlArtifactView html="<main>Page</main>" title="Preview" />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'chat.artifacts.button.openExternal' }))
-
-    await waitFor(() =>
-      expect(mocks.ipcRequest).toHaveBeenCalledWith('system.shell.open_path', '/tmp/artifacts-preview.html')
-    )
-    expect(mocks.createTempFile).toHaveBeenCalledWith('artifacts-preview.html')
-    expect(mocks.write).toHaveBeenCalledWith('/tmp/artifacts-preview.html', '<main>Page</main>')
-  })
-
-  it('downloads the HTML source from the inline controls', async () => {
-    render(<HtmlArtifactView html="<main>Page</main>" title="Preview Page" />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'code_block.download.label' }))
-
-    await waitFor(() => expect(mocks.save).toHaveBeenCalledWith('Preview-Page.html', '<main>Page</main>'))
-    expect(mocks.toastSuccess).toHaveBeenCalledWith('message.download.success')
   })
 
   it('copies the entire untrimmed source instead of displayed or selected content', async () => {

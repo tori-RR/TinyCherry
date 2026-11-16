@@ -3,32 +3,24 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import {
-  Alert,
-  Button,
-  Dialog,
-  DialogContent,
-  Dropzone,
-  DropzoneEmptyState,
-  Input,
-  Label,
-  ScrollArea
-} from '@cherrystudio/ui'
+import { Alert, Button, Dialog, DialogContent, Input, Label, ScrollArea } from '@cherrystudio/ui'
 import { useSkillInstall } from '@renderer/hooks/useSkills'
-import { ipcApi } from '@renderer/ipc'
 import { toast } from '@renderer/services/toast'
 import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
-import { isEvoStack } from '@renderer/utils/platform'
 import { AbsoluteFilePathSchema } from '@shared/types/file'
 import type { InstalledSkill } from '@shared/types/skill'
-import { createFilePathHandle } from '@shared/utils/file'
-
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
 }
-
-type ImportStatus = { kind: 'idle' } | { kind: 'error'; message: string }
+type ImportStatus =
+  | {
+      kind: 'idle'
+    }
+  | {
+      kind: 'error'
+      message: string
+    }
 type InstallingKey = null | 'zip' | 'directory'
 type ImportKind = 'zip' | 'directory'
 type ImportItemStatus = 'pending' | 'installing' | 'success' | 'error'
@@ -41,7 +33,6 @@ type ImportItem = {
   skillName?: string
   error?: string
 }
-
 /**
  * Skill import dialog — local install only (ZIP file or directory
  * containing `SKILL.md`). Online registry search stays in the sibling
@@ -55,12 +46,10 @@ type ImportItem = {
 export function ImportSkillDialog({ open, onOpenChange }: Props) {
   const { t } = useTranslation()
   const { installFromZip, installFromDirectory } = useSkillInstall()
-
   const [status, setStatus] = useState<ImportStatus>({ kind: 'idle' })
   const [installing, setInstalling] = useState<InstallingKey>(null)
   const [items, setItems] = useState<ImportItem[]>([])
   const [nativePath, setNativePath] = useState('')
-
   // Reset transient state on open / close.
   useEffect(() => {
     if (!open) {
@@ -70,12 +59,10 @@ export function ImportSkillDialog({ open, onOpenChange }: Props) {
       setNativePath('')
     }
   }, [open])
-
   const close = () => {
     if (installing) return
     onOpenChange(false)
   }
-
   const getInstallErrorMessage = useCallback(
     (e: unknown, fallbackName?: string) => {
       const prefix = t('settings.skills.installFailed', { name: fallbackName ?? t('library.type.skill') })
@@ -83,28 +70,23 @@ export function ImportSkillDialog({ open, onOpenChange }: Props) {
     },
     [t]
   )
-
   const updateItem = useCallback((id: string, patch: Partial<ImportItem>) => {
     setItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)))
   }, [])
-
   const runImportQueue = useCallback(
     async (nextItems: ImportItem[], installingKey: Exclude<InstallingKey, null>) => {
       if (installing) return
       setInstalling(installingKey)
       setStatus({ kind: 'idle' })
       setItems(nextItems)
-
       let successCount = 0
       const preErrorCount = nextItems.filter((item) => item.status === 'error').length
       let failedCount = preErrorCount
       let lastSkill: InstalledSkill | null = null
-
       try {
         for (const item of nextItems) {
           if (item.status === 'error') continue
           updateItem(item.id, { status: 'installing', error: undefined })
-
           try {
             const skill = item.kind === 'zip' ? await installFromZip(item.path) : await installFromDirectory(item.path)
             if (!skill) {
@@ -112,7 +94,6 @@ export function ImportSkillDialog({ open, onOpenChange }: Props) {
               updateItem(item.id, { status: 'error', error: getInstallErrorMessage(undefined, item.name) })
               continue
             }
-
             lastSkill = skill
             successCount += 1
             updateItem(item.id, { status: 'success', skillName: skill.name })
@@ -121,9 +102,7 @@ export function ImportSkillDialog({ open, onOpenChange }: Props) {
             updateItem(item.id, { status: 'error', error: getInstallErrorMessage(error, item.name) })
           }
         }
-
         if (preErrorCount === nextItems.length) return
-
         if (failedCount > 0) {
           if (nextItems.length > 1) {
             setStatus({
@@ -137,7 +116,6 @@ export function ImportSkillDialog({ open, onOpenChange }: Props) {
           }
           return
         }
-
         const message =
           nextItems.length === 1 && lastSkill
             ? t('settings.skills.installSuccess', { name: lastSkill.name })
@@ -150,7 +128,6 @@ export function ImportSkillDialog({ open, onOpenChange }: Props) {
     },
     [getInstallErrorMessage, installFromDirectory, installFromZip, installing, onOpenChange, t, updateItem]
   )
-
   const createImportItem = useCallback(
     (
       kind: ImportKind,
@@ -167,15 +144,13 @@ export function ImportSkillDialog({ open, onOpenChange }: Props) {
     }),
     []
   )
-
   const getNameFromPath = (filePath: string) => {
     const name = filePath.split(/[/\\]/).pop()
     return name || filePath
   }
-
   const handleZipPick = async () => {
     if (installing) return
-    if (isEvoStack) {
+    {
       const path = nativePath.trim()
       if (!AbsoluteFilePathSchema.safeParse(path).success) {
         setStatus({ kind: 'error', message: t('settings.skills.evostack.path_required') })
@@ -184,24 +159,10 @@ export function ImportSkillDialog({ open, onOpenChange }: Props) {
       await runImportQueue([createImportItem('zip', path, getNameFromPath(path), 0)], 'zip')
       return
     }
-    try {
-      const selected = await window.api.file.select({
-        filters: [{ name: 'ZIP', extensions: ['zip'] }],
-        properties: ['openFile', 'multiSelections']
-      })
-      if (!selected || selected.length === 0) return
-      const zipItems = selected.map((file, index) =>
-        createImportItem('zip', file.path, file.name ?? getNameFromPath(file.path), index)
-      )
-      await runImportQueue(zipItems, 'zip')
-    } catch (e) {
-      setStatus({ kind: 'error', message: getInstallErrorMessage(e) })
-    }
   }
-
   const handleDirPick = async () => {
     if (installing) return
-    if (isEvoStack) {
+    {
       const path = nativePath.trim()
       if (!AbsoluteFilePathSchema.safeParse(path).success) {
         setStatus({ kind: 'error', message: t('settings.skills.evostack.path_required') })
@@ -210,69 +171,7 @@ export function ImportSkillDialog({ open, onOpenChange }: Props) {
       await runImportQueue([createImportItem('directory', path, getNameFromPath(path), 0)], 'directory')
       return
     }
-    try {
-      const selected = await window.api.file.select({
-        properties: ['openDirectory', 'multiSelections']
-      })
-      if (!selected || selected.length === 0) return
-      const directoryItems = selected.map((directory, index) =>
-        createImportItem('directory', directory.path, directory.name ?? getNameFromPath(directory.path), index)
-      )
-      await runImportQueue(directoryItems, 'directory')
-    } catch (e) {
-      setStatus({ kind: 'error', message: getInstallErrorMessage(e) })
-    }
   }
-
-  /**
-   * Drag-and-drop accepts ZIP files and directories. Settings
-   * page uses the same probe (`file.get_metadata`'s `kind`) since dropped
-   * directories show up as `File` entries on Electron.
-   */
-  const handleDroppedEntries = async (files: File[]) => {
-    if (installing) return
-    if (files.length === 0) return
-
-    try {
-      const droppedItems: ImportItem[] = []
-
-      for (const [index, file] of files.entries()) {
-        const filePath = window.api.file.getPathForFile(file)
-        if (!filePath) continue
-
-        const meta = await ipcApi.request(
-          'file.get_metadata',
-          createFilePathHandle(AbsoluteFilePathSchema.parse(filePath))
-        )
-        // A `null` metadata (path unreadable / vanished — near-nil since dropped
-        // paths resolve) folds into "not a directory": it falls through to the
-        // filename-based zip/invalid classification below, and a genuine read
-        // failure still surfaces downstream when the item is actually imported.
-        if (meta?.kind === 'directory') {
-          droppedItems.push(createImportItem('directory', filePath, file.name || getNameFromPath(filePath), index))
-          continue
-        }
-
-        if (file.name.toLowerCase().endsWith('.zip')) {
-          droppedItems.push(createImportItem('zip', filePath, file.name || getNameFromPath(filePath), index))
-          continue
-        }
-
-        droppedItems.push({
-          ...createImportItem('zip', filePath, file.name || getNameFromPath(filePath), index, 'error'),
-          error: t('settings.skills.invalidFormat')
-        })
-      }
-
-      if (droppedItems.length === 0) return
-
-      const installingKey = droppedItems.some((item) => item.kind === 'zip') ? 'zip' : 'directory'
-      await runImportQueue(droppedItems, installingKey)
-    } catch (e) {
-      setStatus({ kind: 'error', message: getInstallErrorMessage(e) })
-    }
-  }
-
   return (
     <Dialog
       open={open}
@@ -292,7 +191,7 @@ export function ImportSkillDialog({ open, onOpenChange }: Props) {
 
         {/* Body */}
         <div className="min-w-0">
-          {isEvoStack ? (
+          {
             <div className="space-y-2">
               <Label htmlFor="native-skill-import-path">{t('settings.skills.evostack.import_path')}</Label>
               <Input
@@ -303,40 +202,7 @@ export function ImportSkillDialog({ open, onOpenChange }: Props) {
               />
               <p className="text-xs text-muted-foreground">{t('settings.skills.evostack.import_hint')}</p>
             </div>
-          ) : (
-            <Dropzone
-              disabled={Boolean(installing)}
-              getFilesFromEvent={async (event) => {
-                if ('dataTransfer' in event && event.dataTransfer) {
-                  return Array.from(event.dataTransfer.files)
-                }
-
-                if ('target' in event && event.target && 'files' in event.target) {
-                  const target = event.target
-                  return target.files ? Array.from(target.files) : []
-                }
-
-                return []
-              }}
-              maxFiles={0}
-              multiple
-              onDrop={(files, _rejections, event) => {
-                const droppedFiles =
-                  'dataTransfer' in event && event.dataTransfer ? Array.from(event.dataTransfer.files) : files
-                void handleDroppedEntries(droppedFiles)
-              }}
-              className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border-subtle bg-transparent p-8 text-center whitespace-normal shadow-none transition-colors hover:border-border-strong hover:bg-accent disabled:pointer-events-none disabled:opacity-60">
-              <DropzoneEmptyState>
-                <Import size={26} strokeWidth={1.2} className="mb-3 text-foreground-tertiary" />
-                <p className="mb-1 w-full text-xs whitespace-normal text-wrap break-words text-muted-foreground">
-                  {t('library.import_skill_dialog.local.drop_hint')}
-                </p>
-                <p className="w-full text-xs whitespace-normal text-wrap break-words text-muted-foreground">
-                  {t('library.import_skill_dialog.local.formats')}
-                </p>
-              </DropzoneEmptyState>
-            </Dropzone>
-          )}
+          }
 
           <div className="mt-4 flex items-center gap-2">
             <Button
@@ -366,12 +232,9 @@ export function ImportSkillDialog({ open, onOpenChange }: Props) {
     </Dialog>
   )
 }
-
 function ImportResultList({ items }: { items: ImportItem[] }) {
   const { t } = useTranslation()
-
   if (items.length === 0) return null
-
   return (
     <ScrollArea
       viewportProps={{ 'data-testid': 'skill-import-results', className: 'overflow-x-hidden' }}
@@ -379,7 +242,6 @@ function ImportResultList({ items }: { items: ImportItem[] }) {
       <div className="min-w-0 divide-y divide-border-subtle">
         {items.map((item) => {
           const displayName = item.status === 'success' ? (item.skillName ?? item.name) : item.name
-
           return (
             <div key={item.id} className="flex min-w-0 items-start gap-2 px-3 py-2 text-xs">
               <ImportItemStatusIcon status={item.status} />
@@ -404,7 +266,6 @@ function ImportResultList({ items }: { items: ImportItem[] }) {
     </ScrollArea>
   )
 }
-
 function ImportItemStatusIcon({ status }: { status: ImportItemStatus }) {
   if (status === 'installing') {
     return <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin text-foreground-tertiary" />
@@ -417,7 +278,6 @@ function ImportItemStatusIcon({ status }: { status: ImportItemStatus }) {
   }
   return <span className="mt-1.5 size-2 shrink-0 rounded-full border border-border-strong bg-muted" />
 }
-
 function StatusBanner({ status }: { status: ImportStatus }) {
   return (
     <AnimatePresence>

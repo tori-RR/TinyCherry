@@ -41,8 +41,7 @@ import type {
   MenuPresentationMode,
   NativePopupMenuItem,
   NativePopupMenuModel,
-  ResolvedMenuItem,
-  SupportedPlatform
+  ResolvedMenuItem
 } from '@shared/types/command'
 import { type CommandId, findKeybindingRule, resolveMenuPresentationMode } from '@shared/utils/command'
 
@@ -402,7 +401,7 @@ export function CommandContextMenu({
       return getCommandShortcutLabel(command, preference, {
         context,
         isMac,
-        platform: platform as SupportedPlatform
+        platform: platform
       })
     },
     [context, shortcutPreferences]
@@ -811,7 +810,7 @@ export function CommandPopupMenu({
       return getCommandShortcutLabel(command, preference, {
         context,
         isMac,
-        platform: platform as SupportedPlatform
+        platform: platform
       })
     },
     [context, shortcutPreferences]

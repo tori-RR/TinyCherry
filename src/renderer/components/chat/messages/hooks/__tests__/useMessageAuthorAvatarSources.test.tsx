@@ -107,13 +107,4 @@ describe('message author avatar sources', () => {
     unmount()
     expect(native.revoke).toHaveBeenLastCalledWith('blob:history-2')
   })
-
-  it('keeps Electron batch-path resolution and does not allocate native object URLs', async () => {
-    native.enabled = false
-    native.request.mockResolvedValue({ avatar: 'C:/fixture/avatar.webp' })
-    const { result } = renderHook(() => useMessageAuthorAvatarSources(messages('avatar'), 'list'))
-    await waitFor(() => expect(result.current.get('avatar')).toMatch(/^file:\/\//))
-    expect(native.request).toHaveBeenCalledExactlyOnceWith('file.batch_get_physical_paths', { ids: ['avatar'] })
-    expect(native.create).not.toHaveBeenCalled()
-  })
 })

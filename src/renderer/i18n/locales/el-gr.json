@@ -1403,6 +1403,7 @@
   "conversation_owner.delete_permanently.sessions_kept": "Οι συνομιλίες του διατηρούνται και μεταφέρονται στο «Αποσυνδεδεμένος πράκτορας».",
   "conversation_owner.delete_permanently.topics_deleted": "Αυτά τα θέματα και τα μηνύματά τους θα διαγραφούν επίσης.",
   "conversation_owner.delete_permanently.topics_kept": "Τα θέματά του διατηρούνται και μεταφέρονται στο «Αποσυνδεδεμένος Βοηθός».",
+  "desktop.feature_unavailable": "This feature is not available in this desktop version yet.",
   "deviceConnections.capabilities.agent": "Έλεγχος συνεδριών agent",
   "deviceConnections.capabilities.configuration": "Εισαγωγή παρόχων και μοντέλων",
   "deviceConnections.claims.approve": "Έγκριση",

@@ -28,12 +28,6 @@ describe('knowledge display titles', () => {
     expect(note.data.relativePath).toBe(snapshot)
   })
 
-  it('retains Electron deduplicated snapshot titles', () => {
-    expect(getKnowledgeDisplayTitle({ ...note, data: { ...note.data, relativePath: '柠檬协议_2.md' } })).toBe(
-      '柠檬协议_2'
-    )
-  })
-
   it('uses original native filenames and URLs instead of UUID snapshots', () => {
     runtime.isEvoStack = true
     expect(

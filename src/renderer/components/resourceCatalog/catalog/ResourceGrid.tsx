@@ -49,19 +49,15 @@ import { SettingDescription, SettingTitle } from '@renderer/components/SettingsP
 import { useGroupMutations } from '@renderer/hooks/useGroups'
 import { toast } from '@renderer/services/toast'
 import type { GroupItem, ResourceItem, ResourceType } from '@renderer/types/resourceCatalog'
-import { isEvoStack } from '@renderer/utils/platform'
 import { RESOURCE_TYPE_META } from '@renderer/utils/resourceCatalog'
 import { cn } from '@renderer/utils/style'
 import type { Group } from '@shared/data/types/group'
 
 import { ResourceCatalogSearchInput } from '../ResourceCatalogSearchInput'
 import { ResourceCard } from './ResourceCards'
-
 const logger = loggerService.withContext('ResourceGrid')
-
 const GRID_GAP_PX = 12
 const RESOURCE_CARD_ROW_ESTIMATE_PX = 92
-
 interface Props {
   resources: ResourceItem[]
   /** True when a catalog-level filter hides otherwise available resources. */
@@ -97,55 +93,44 @@ interface Props {
   toolbarFooter?: ReactNode
   allowColumnToggle?: boolean
 }
-
 function getGridColumnCount(width: number) {
   if (width >= 1024) return 3
   if (width >= 640) return 2
   return 1
 }
-
 function useGridColumnCount(scrollRef: RefObject<HTMLDivElement | null>) {
   const [gridState, setGridState] = useState({ columnCount: 1, measured: false })
-
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-
     const update = () => {
       const columnCount = getGridColumnCount(el.clientWidth)
       setGridState((prev) =>
         prev.measured && prev.columnCount === columnCount ? prev : { columnCount, measured: true }
       )
     }
-
     update()
-
     if (typeof ResizeObserver === 'undefined') {
       window.addEventListener('resize', update)
       return () => window.removeEventListener('resize', update)
     }
-
     const observer = new ResizeObserver(update)
     observer.observe(el)
     return () => observer.disconnect()
   }, [scrollRef])
-
   return gridState.columnCount
 }
-
 interface AssistantAddActionsProps {
   onNew: () => void
   onImport: () => void
   onExportAssistants: () => void
   onOpenLibrary?: () => void
 }
-
 /**
  * Assistant creation actions are intentionally flat so each entry point stays visible in the toolbar.
  */
 function AssistantAddActions({ onNew, onImport, onExportAssistants, onOpenLibrary }: AssistantAddActionsProps) {
   const { t } = useTranslation()
-
   return (
     <>
       <Button variant="default" size="sm" onClick={onNew} className="shrink-0">
@@ -169,14 +154,12 @@ function AssistantAddActions({ onNew, onImport, onExportAssistants, onOpenLibrar
     </>
   )
 }
-
 interface SkillAddActionsProps {
   onCreateWithAgent?: () => void
   onSearchMarketplace: () => void
   onSearchSystem?: () => void
   onImportLocal: () => void
 }
-
 function SkillAddActions({
   onCreateWithAgent,
   onSearchMarketplace,
@@ -184,7 +167,6 @@ function SkillAddActions({
   onImportLocal
 }: SkillAddActionsProps) {
   const { t } = useTranslation()
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -199,8 +181,8 @@ function SkillAddActions({
           <DropdownMenuItem
             onSelect={onCreateWithAgent}
             className="gap-2"
-            disabled={isEvoStack}
-            title={isEvoStack ? t('settings.skills.evostack.execution_unavailable') : undefined}>
+            disabled={true}
+            title={t('settings.skills.evostack.execution_unavailable')}>
             <Bot size={13} />
             <span>{t('library.skill_add.create_with_agent')}</span>
           </DropdownMenuItem>
@@ -208,8 +190,8 @@ function SkillAddActions({
         <DropdownMenuItem
           onSelect={onSearchMarketplace}
           className="gap-2"
-          disabled={isEvoStack}
-          title={isEvoStack ? t('settings.skills.evostack.execution_unavailable') : undefined}>
+          disabled={true}
+          title={t('settings.skills.evostack.execution_unavailable')}>
           <Search size={13} />
           <span>{t('library.skill_add.online_search')}</span>
         </DropdownMenuItem>
@@ -217,8 +199,8 @@ function SkillAddActions({
           <DropdownMenuItem
             onSelect={onSearchSystem}
             className="gap-2"
-            disabled={isEvoStack}
-            title={isEvoStack ? t('settings.skills.evostack.execution_unavailable') : undefined}>
+            disabled={true}
+            title={t('settings.skills.evostack.execution_unavailable')}>
             <FolderSearch size={13} />
             <span>{t('library.skill_add.system_search')}</span>
           </DropdownMenuItem>
@@ -231,7 +213,6 @@ function SkillAddActions({
     </DropdownMenu>
   )
 }
-
 export const ResourceGrid: FC<Props> = ({
   resources,
   hasHiddenResources = false,
@@ -293,7 +274,6 @@ export const ResourceGrid: FC<Props> = ({
   }, [allGroups, groups])
   const visibleGroups = useMemo(() => {
     if (!showAllGroups) return groups
-
     const countById = new Map(groups.map((group) => [group.id, group.count] as const))
     return allGroups.map((group) => ({
       id: group.id,
@@ -301,7 +281,6 @@ export const ResourceGrid: FC<Props> = ({
       count: countById.get(group.id) ?? 0
     }))
   }, [allGroups, groups, showAllGroups])
-
   const handleAddGroup = useCallback(
     async (name: string) => {
       try {
@@ -315,22 +294,18 @@ export const ResourceGrid: FC<Props> = ({
     },
     [onAddGroup]
   )
-
   const handleOpenRenameGroup = useCallback((group: GroupItem) => {
     setRenamingGroup(group)
     setRenameValue(group.name)
   }, [])
-
   const handleRenameGroup = useCallback(async () => {
     const group = renamingGroup
     const nextName = renameValue.trim()
     if (!group || renaming || !nextName) return
-
     if (nextName === group.name) {
       setRenamingGroup(null)
       return
     }
-
     setRenaming(true)
     try {
       await updateGroup(group.id, { name: nextName })
@@ -347,11 +322,9 @@ export const ResourceGrid: FC<Props> = ({
       setRenaming(false)
     }
   }, [renameValue, renaming, renamingGroup, t, updateGroup])
-
   const handleConfirmDeleteGroup = useCallback(async () => {
     const group = deletingGroup
     if (!group || deleting) return
-
     setDeleting(true)
     try {
       await deleteGroup(group.id)
@@ -368,7 +341,6 @@ export const ResourceGrid: FC<Props> = ({
       setDeleting(false)
     }
   }, [activeGroupId, deleteGroup, deleting, deletingGroup, onGroupFilter, t])
-
   const addActions =
     activeResourceType === 'assistant' ? (
       <AssistantAddActions
@@ -394,7 +366,6 @@ export const ResourceGrid: FC<Props> = ({
         <span>{t('library.create_menu.create', { type: t(RESOURCE_TYPE_META[activeResourceType].labelKey) })}</span>
       </Button>
     )
-
   const searchInput = (
     <ResourceCatalogSearchInput
       value={search}
@@ -403,7 +374,6 @@ export const ResourceGrid: FC<Props> = ({
       className="max-w-64 flex-1"
     />
   )
-
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div
@@ -618,10 +588,8 @@ export const ResourceGrid: FC<Props> = ({
     </div>
   )
 }
-
 function ResourceGridLoadingState({ columnCount, resourceType }: { columnCount: number; resourceType: ResourceType }) {
   const count = Math.max(columnCount, 1) * 4
-
   return (
     <div
       className="grid gap-3"
@@ -646,7 +614,6 @@ function ResourceGridLoadingState({ columnCount, resourceType }: { columnCount: 
     </div>
   )
 }
-
 interface VirtualizedResourceGridProps {
   scrollRef: RefObject<HTMLDivElement | null>
   columnCount: number
@@ -659,7 +626,6 @@ interface VirtualizedResourceGridProps {
   onExport: (r: ResourceItem) => void
   onLaunchSkill?: (r: ResourceItem) => void
 }
-
 function VirtualizedResourceGrid({
   scrollRef,
   columnCount,
@@ -679,14 +645,12 @@ function VirtualizedResourceGrid({
     }
     return nextRows
   }, [columnCount, resources])
-
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => RESOURCE_CARD_ROW_ESTIMATE_PX + GRID_GAP_PX,
     overscan: 4
   })
-
   return (
     <div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative' }}>
       {rowVirtualizer.getVirtualItems().map((virtualRow) => {
@@ -725,5 +689,4 @@ function VirtualizedResourceGrid({
     </div>
   )
 }
-
 export default ResourceGrid

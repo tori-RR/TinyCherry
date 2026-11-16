@@ -1,4 +1,5 @@
 import { Icon } from '@iconify/react'
+import { hasCapability } from '@platform/desktop-api/capabilities'
 import { Check, Code2, Compass, DownloadIcon, Eye, Maximize2, ShieldAlert, ZoomIn, ZoomOut } from 'lucide-react'
 import {
   lazy,
@@ -32,7 +33,6 @@ import {
   getMaxPreviewHeight,
   htmlArtifactPreviewRequiresInteractive,
   HtmlArtifactPreviewSurface,
-  InteractiveHtmlPreview,
   routeWheelScroll,
   SCROLL_ACTIVATION_DELAY_MS
 } from '@renderer/components/CodeBlockView/HtmlArtifactPreviewSurface'
@@ -45,11 +45,8 @@ import { toast } from '@renderer/services/toast'
 import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
 import { getFileNameFromHtmlTitle } from '@renderer/utils/formats'
 import { stripMetaRefresh } from '@renderer/utils/htmlArtifact'
-
 const HtmlArtifactsPopup = lazy(() => import('@renderer/components/CodeBlockView/HtmlArtifactsPopup'))
-
 const logger = loggerService.withContext('HtmlArtifactView')
-
 const DEFAULT_ZOOM = 100
 const MIN_ZOOM = 50
 const MAX_ZOOM = 200
@@ -64,7 +61,6 @@ const MAX_STREAMING_PREVIEW_HEIGHT = 350
 const STREAMING_PREVIEW_REFRESH_MS = 250
 const STREAMING_PREVIEW_MAX_REFRESH_MS = 4000
 const STREAMING_PREVIEW_CHARS_PER_MS = 2000
-
 interface HtmlArtifactViewProps {
   /** Stable Markdown-node identity used only to preserve an open popup across renderer remounts. */
   artifactId?: string
@@ -83,42 +79,38 @@ interface HtmlArtifactViewProps {
   /** Purely presentational: caps the height and hides the toolbar / code view while generating. */
   isStreaming?: boolean
 }
-
 function isWheelConsumedByEmbeddedDocument(event: WheelEvent): boolean {
   const targetNode = event.target as Node | null
   const element =
     targetNode?.nodeType === Node.ELEMENT_NODE ? (targetNode as Element) : (targetNode?.parentElement ?? null)
   const frameDocument = element?.ownerDocument
   if (!frameDocument) return false
-
   if (findVerticalWheelConsumer(element, event.deltaY, frameDocument.documentElement)) return true
-
   const root = frameDocument.scrollingElement ?? frameDocument.documentElement
   return canConsumeVerticalWheel(root, event.deltaY, true)
 }
-
 interface PreviewContentMemory {
   extent: number
   sweep: number | null
 }
-
 function getIframeContentHeight(
   iframe: HTMLIFrameElement,
   memory: PreviewContentMemory | null
-): { height: number | null; memory: PreviewContentMemory | null } {
+): {
+  height: number | null
+  memory: PreviewContentMemory | null
+} {
   try {
     const frameDocument = iframe.contentDocument
     const body = frameDocument?.body
     const documentElement = frameDocument?.documentElement
     const frameWindow = iframe.contentWindow
     if (!frameDocument || !body || !documentElement || !frameWindow) return { height: null, memory: null }
-
     const documentScrollHeight = Math.max(
       body.scrollHeight,
       documentElement.scrollHeight,
       frameDocument.scrollingElement?.scrollHeight ?? 0
     )
-
     const bodyStyle = frameWindow.getComputedStyle(body)
     const bodyEndSpacing =
       (Number.parseFloat(bodyStyle.paddingBottom) || 0) + (Number.parseFloat(bodyStyle.borderBottomWidth) || 0)
@@ -128,21 +120,17 @@ function getIframeContentHeight(
     if (documentScrollHeight > iframe.clientHeight + 1) {
       return { height: documentScrollHeight, memory: { extent: documentScrollHeight, sweep: null } }
     }
-
     const scrollTop = frameWindow.scrollY || documentElement.scrollTop || body.scrollTop
     let renderedContentBottom = 0
-
     for (const element of body.querySelectorAll('*')) {
       const bounds = element.getBoundingClientRect()
       if (bounds.width === 0 && bounds.height === 0) continue
-
       const elementMarginBottom = Number.parseFloat(frameWindow.getComputedStyle(element).marginBottom) || 0
       renderedContentBottom = Math.max(
         renderedContentBottom,
         bounds.bottom + scrollTop + Math.max(elementMarginBottom, bodyMarginBottom) + bodyEndSpacing
       )
     }
-
     // Bare text after the last element escapes querySelectorAll('*'), so measure the whole body
     // range too (jsdom omits Range#getBoundingClientRect, hence the guard).
     const contentRange = frameDocument.createRange()
@@ -156,7 +144,6 @@ function getIframeContentHeight(
         )
       }
     }
-
     const sweep = Math.ceil(renderedContentBottom)
     if (memory === null) {
       return { height: sweep > 0 ? sweep : documentScrollHeight || null, memory: null }
@@ -173,14 +160,11 @@ function getIframeContentHeight(
     return { height: null, memory: null }
   }
 }
-
 function useDelayedScrollActivation<T extends HTMLElement>(viewportRef: RefObject<T | null>) {
   const isScrollActiveRef = useRef(true)
-
   useEffect(() => {
     const viewport = viewportRef.current
     if (!viewport) return
-
     let activationTimer: ReturnType<typeof setTimeout> | undefined
     const lockScroll = () => {
       if (activationTimer !== undefined) {
@@ -196,21 +180,17 @@ function useDelayedScrollActivation<T extends HTMLElement>(viewportRef: RefObjec
         isScrollActiveRef.current = true
       }, SCROLL_ACTIVATION_DELAY_MS)
     }
-
     viewport.addEventListener('mouseenter', scheduleScrollActivation)
     viewport.addEventListener('mouseleave', lockScroll)
     if (viewport.matches(':hover')) scheduleScrollActivation()
-
     return () => {
       viewport.removeEventListener('mouseenter', scheduleScrollActivation)
       viewport.removeEventListener('mouseleave', lockScroll)
       if (activationTimer !== undefined) clearTimeout(activationTimer)
     }
   }, [viewportRef])
-
   return isScrollActiveRef
 }
-
 /**
  * Paces the HTML handed to the preview frame while generating.
  *
@@ -224,10 +204,8 @@ function useStreamingPacedHtml(html: string, isStreaming: boolean): string {
   const [pacedHtml, setPacedHtml] = useState(html)
   const latestHtmlRef = useRef(html)
   latestHtmlRef.current = html
-
   useEffect(() => {
     if (!isStreaming) return
-
     // Show whatever has arrived by the time generation starts, then rebuild on a
     // cadence that stretches as the document grows.
     setPacedHtml(latestHtmlRef.current)
@@ -243,13 +221,10 @@ function useStreamingPacedHtml(html: string, isStreaming: boolean): string {
       }, interval)
     }
     schedule()
-
     return () => window.clearTimeout(timer)
   }, [isStreaming])
-
   return isStreaming ? pacedHtml : html
 }
-
 const AdaptiveHtmlPreview = memo(function AdaptiveHtmlPreview({
   html,
   title,
@@ -271,23 +246,19 @@ const AdaptiveHtmlPreview = memo(function AdaptiveHtmlPreview({
   // Same tier contract as StaticHtmlPreview: the static inline preview is a preview,
   // never navigation, so meta-refresh is stripped before the frame sees the bytes.
   const staticHtml = useMemo(() => stripMetaRefresh(html), [html])
-
   useLayoutEffect(() => {
     contentMemoryRef.current = null
     const viewport = viewportRef.current
     const iframe = iframeRef.current
     if (!viewport || !iframe) return
-
     let isDisposed = false
     let documentResizeObserver: ResizeObserver | undefined
     let documentMutationObserver: MutationObserver | undefined
     let observedDocument: Document | undefined
-
     const syncHeight = () => {
       const { height, memory } = getIframeContentHeight(iframe, contentMemoryRef.current)
       contentMemoryRef.current = memory
       if (height === null) return
-
       const nextHeight = Math.min(
         getMaxPreviewHeight(viewport, scrollRuntime.getScrollContainer()),
         Math.max(1, Math.ceil(height * zoomScale))
@@ -296,7 +267,6 @@ const AdaptiveHtmlPreview = memo(function AdaptiveHtmlPreview({
       lastReportedHeightRef.current = nextHeight
       onHeightChange(nextHeight)
     }
-
     const forwardWheelIntent = (event: Event) => {
       const wheelEvent = event as WheelEvent
       if (!isScrollActiveRef.current) {
@@ -304,27 +274,21 @@ const AdaptiveHtmlPreview = memo(function AdaptiveHtmlPreview({
         routeWheelScroll(viewport, scrollRuntime, wheelEvent.deltaY)
         return
       }
-
       if (isWheelConsumedByEmbeddedDocument(wheelEvent)) return
       scrollRuntime.notifyWheelIntent(wheelEvent.deltaY)
     }
-
     const observeDocument = () => {
       documentResizeObserver?.disconnect()
       documentMutationObserver?.disconnect()
       observedDocument?.removeEventListener('load', syncHeight, true)
       observedDocument?.removeEventListener('wheel', forwardWheelIntent, true)
-
       const frameDocument = iframe.contentDocument
       const body = frameDocument?.body
       if (!frameDocument || !body) return
       observedDocument = frameDocument
-
       // Capture phase: the frame's own content must not be able to swallow the signal.
       frameDocument.addEventListener('wheel', forwardWheelIntent, { capture: true, passive: false })
-
       syncHeight()
-
       if (typeof ResizeObserver !== 'undefined') {
         documentResizeObserver = new ResizeObserver(syncHeight)
         // In-flow child changes propagate to body size (per-child observe is
@@ -332,24 +296,20 @@ const AdaptiveHtmlPreview = memo(function AdaptiveHtmlPreview({
         documentResizeObserver.observe(body)
         documentResizeObserver.observe(frameDocument.documentElement)
       }
-
       if (typeof MutationObserver !== 'undefined') {
         // Re-measure only; observers stay attached because body itself is what
         // they watch, and document replacement is covered by the load listener.
         documentMutationObserver = new MutationObserver(() => syncHeight())
         documentMutationObserver.observe(body, { childList: true, subtree: true, characterData: true })
       }
-
       frameDocument.addEventListener('load', syncHeight, true)
       void frameDocument.fonts?.ready.then(() => {
         if (!isDisposed) syncHeight()
       })
     }
-
     observeDocument()
     iframe.addEventListener('load', observeDocument)
     window.addEventListener('resize', syncHeight)
-
     let layoutResizeObserver: ResizeObserver | undefined
     if (typeof ResizeObserver !== 'undefined') {
       layoutResizeObserver = new ResizeObserver(syncHeight)
@@ -357,7 +317,6 @@ const AdaptiveHtmlPreview = memo(function AdaptiveHtmlPreview({
       const scroller = scrollRuntime.getScrollContainer()
       if (scroller?.contains(viewport)) layoutResizeObserver.observe(scroller)
     }
-
     return () => {
       isDisposed = true
       documentResizeObserver?.disconnect()
@@ -369,7 +328,6 @@ const AdaptiveHtmlPreview = memo(function AdaptiveHtmlPreview({
       window.removeEventListener('resize', syncHeight)
     }
   }, [html, isScrollActiveRef, onHeightChange, scrollRuntime, zoomScale])
-
   return (
     <div ref={viewportRef} data-testid="adaptive-html-preview" className="relative h-full w-full overflow-hidden">
       <div
@@ -393,7 +351,6 @@ const AdaptiveHtmlPreview = memo(function AdaptiveHtmlPreview({
     </div>
   )
 })
-
 const HtmlArtifactConsentCard = memo(function HtmlArtifactConsentCard({
   title,
   description,
@@ -406,7 +363,6 @@ const HtmlArtifactConsentCard = memo(function HtmlArtifactConsentCard({
   onAccept: () => void
 }) {
   const descriptionId = useId()
-
   return (
     <Tooltip content={description} delay={300} fullWidthTrigger>
       <Button
@@ -416,7 +372,8 @@ const HtmlArtifactConsentCard = memo(function HtmlArtifactConsentCard({
         className="h-auto w-full max-w-xl justify-start gap-0 overflow-hidden rounded-lg border-[0.5px] border-border bg-background-subtle p-0 font-[var(--font-family-body)] text-foreground hover:bg-accent"
         aria-label={actionLabel}
         aria-describedby={descriptionId}
-        onClick={onAccept}>
+        onClick={onAccept}
+        disabled={!hasCapability('browser')}>
         <span className="flex min-h-12 min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2">
           <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background">
             <Icon icon="material-icon-theme:html" className="text-[20px]" />
@@ -437,19 +394,16 @@ const HtmlArtifactConsentCard = memo(function HtmlArtifactConsentCard({
     </Tooltip>
   )
 })
-
 export function HtmlArtifactPopupOutlet() {
   const popupContext = useHtmlArtifactPopupContext()
   const popupSession = popupContext.popupSession
   if (!popupSession) return null
-
   // Opening the full-screen popup is the explicit viewing action, so it never renders a
   // consent surface — active content (fragment or document) goes straight to the webview.
   const requiresInteractivePreview = htmlArtifactPreviewRequiresInteractive(popupSession.html)
   // Only a whole document may be promoted in the INLINE view after viewing, so the
   // approve-on-close memory stays kind-gated (fragments remain script-less inline).
   const approvesInlineInteractive = requiresInteractivePreview && popupSession.kind === 'document'
-
   return (
     <Suspense fallback={null}>
       <HtmlArtifactsPopup
@@ -482,7 +436,6 @@ export function HtmlArtifactPopupOutlet() {
     </Suspense>
   )
 }
-
 const HtmlArtifactViewContent = memo(function HtmlArtifactViewContent({
   artifactId,
   html,
@@ -491,7 +444,9 @@ const HtmlArtifactViewContent = memo(function HtmlArtifactViewContent({
   editable = false,
   kind = 'document',
   isStreaming = false
-}: HtmlArtifactViewProps & { artifactId: string }) {
+}: HtmlArtifactViewProps & {
+  artifactId: string
+}) {
   const { t } = useTranslation()
   const popupContext = useHtmlArtifactPopupContext()
   const { syncPopup } = popupContext
@@ -557,14 +512,12 @@ const HtmlArtifactViewContent = memo(function HtmlArtifactViewContent({
       const fileName = `${getFileNameFromHtmlTitle(title) || 'html-artifact'}.html`
       const savedPath = await window.api.file.save(fileName, html)
       if (!savedPath) return
-
       toast.success(t('message.download.success'))
     } catch (error) {
       logger.error('Failed to download HTML artifact', error as Error)
       toast.error(formatErrorMessageWithPrefix(error, t('message.download.failed')))
     }
   }
-
   const handleCopySource = async () => {
     try {
       await navigator.clipboard.writeText(html)
@@ -576,7 +529,6 @@ const HtmlArtifactViewContent = memo(function HtmlArtifactViewContent({
       setCopiedTemporarily(false)
     }
   }
-
   useLayoutEffect(() => {
     syncPopup({
       artifactId,
@@ -587,20 +539,18 @@ const HtmlArtifactViewContent = memo(function HtmlArtifactViewContent({
       kind
     })
   }, [artifactId, editable, html, kind, onSave, syncPopup, title])
-
   if (isPreviewBlocked && !isPopupOpen) {
     return (
       <div data-testid="html-artifact-view" className="w-full">
         <HtmlArtifactConsentCard
           title={title}
-          description={t('html_artifacts.interactive_preview.description')}
-          actionLabel={t('html_artifacts.interactive_preview.action')}
+          description={t('desktop.feature_unavailable')}
+          actionLabel={t('desktop.feature_unavailable')}
           onAccept={handleApproveInteractivePreview}
         />
       </div>
     )
   }
-
   return (
     <div data-testid="html-artifact-view" className="w-full">
       {!isPopupOpen ? (
@@ -610,12 +560,7 @@ const HtmlArtifactViewContent = memo(function HtmlArtifactViewContent({
           style={{ height: surfaceHeight }}>
           <div className="relative h-full min-h-0 overflow-hidden bg-background">
             <div className={cn('h-full min-h-0', showCode && 'hidden')} aria-hidden={showCode || undefined}>
-              {requiresUserConsent ? (
-                // Not paced: the webview may only ever load the exact bytes the user consented to.
-                <InteractiveHtmlPreview html={html} title={title} zoom={zoom} onHeightChange={setPreviewHeight} />
-              ) : (
-                <AdaptiveHtmlPreview html={previewHtml} title={title} zoom={zoom} onHeightChange={setPreviewHeight} />
-              )}
+              <AdaptiveHtmlPreview html={previewHtml} title={title} zoom={zoom} onHeightChange={setPreviewHeight} />
             </div>
             {showCode && (
               <div className="h-full min-h-0">
@@ -676,7 +621,7 @@ const HtmlArtifactViewContent = memo(function HtmlArtifactViewContent({
                   size="icon-sm"
                   className="size-6 text-muted-foreground"
                   aria-label={t('chat.artifacts.button.openExternal')}
-                  disabled={!hasContent}
+                  disabled={!hasContent || !hasCapability('browser')}
                   onClick={handleOpenExternal}>
                   <Compass className="size-3" />
                 </Button>
@@ -688,7 +633,7 @@ const HtmlArtifactViewContent = memo(function HtmlArtifactViewContent({
                   size="icon-sm"
                   className="size-6 text-muted-foreground"
                   aria-label={t('code_block.download.label')}
-                  disabled={!hasContent}
+                  disabled={!hasContent || !hasCapability('downloads')}
                   onClick={handleDownload}>
                   <DownloadIcon className="size-3" />
                 </Button>
@@ -740,12 +685,10 @@ const HtmlArtifactViewContent = memo(function HtmlArtifactViewContent({
     </div>
   )
 })
-
 export const HtmlArtifactView = memo(function HtmlArtifactView(props: HtmlArtifactViewProps) {
   const popupContext = useOptionalHtmlArtifactPopupContext()
   const generatedArtifactId = useId()
   const artifactId = props.artifactId ?? generatedArtifactId
-
   return popupContext ? (
     <HtmlArtifactViewContent {...props} artifactId={artifactId} />
   ) : (

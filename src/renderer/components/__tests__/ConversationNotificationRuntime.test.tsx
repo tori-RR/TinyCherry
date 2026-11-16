@@ -103,8 +103,7 @@ describe('ConversationNotificationRuntime', () => {
     { native: true, focused: true, visibility: 'visible', sameConversation: true, reads: 1 },
     { native: true, focused: false, visibility: 'visible', sameConversation: true, reads: 0 },
     { native: true, focused: true, visibility: 'hidden', sameConversation: true, reads: 0 },
-    { native: true, focused: true, visibility: 'visible', sameConversation: false, reads: 0 },
-    { native: false, focused: true, visibility: 'visible', sameConversation: true, reads: 0 }
+    { native: true, focused: true, visibility: 'visible', sameConversation: false, reads: 0 }
   ] as const)(
     'acknowledges a newly presented native result only while its conversation is being viewed ($native/$focused/$visibility/$sameConversation)',
     async ({ native, focused, visibility, sameConversation, reads }) => {

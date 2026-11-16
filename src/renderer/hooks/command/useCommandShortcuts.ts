@@ -120,7 +120,7 @@ export const useCommandShortcuts = () => {
         }
 
         const supported = rule.supportedPlatforms
-        if (supported && platform && !supported.includes(platform as SupportedPlatform)) {
+        if (supported && platform && !supported.includes(platform)) {
           return []
         }
 

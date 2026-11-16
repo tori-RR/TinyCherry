@@ -1,3 +1,4 @@
+import { hasCapability } from '@platform/desktop-api/capabilities'
 import { ArrowLeft, Plus, X } from 'lucide-react'
 import {
   cloneElement,
@@ -718,11 +719,12 @@ export const AppShellTabBar = ({
   activeTabIdRef.current = activeTabId
   const hasUnpinnedTabs = normalTabs.length > 0
   const normalReorderStartIndex = 0
+  const canDetach = hasCapability('extraWindows') && !!detachTab
   // Shared input for `getTabCapabilities` — every per-tab affordance is derived
   // from this, so the render stays declarative.
   const tabContext = useMemo(
-    () => ({ pinnedCount: pinnedTabs.length, normalCount: normalTabs.length, canDetach: !!detachTab }),
-    [pinnedTabs.length, normalTabs.length, detachTab]
+    () => ({ pinnedCount: pinnedTabs.length, normalCount: normalTabs.length, canDetach }),
+    [pinnedTabs.length, normalTabs.length, canDetach]
   )
 
   // ─── Context menu actions ───────────────────────────────────────────────────
@@ -800,7 +802,7 @@ export const AppShellTabBar = ({
     pinnedTabs,
     normalTabs,
     normalReorderStartIndex,
-    canDetach: !!detachTab,
+    canDetach,
     reorderTabs,
     closeTab,
     setActiveTab

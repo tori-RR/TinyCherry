@@ -6,7 +6,6 @@ import { I18nextProvider } from 'react-i18next'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import en from '@renderer/i18n/locales/en-us.json'
-import type { Topic } from '@renderer/types/topic'
 
 import { MessageListProvider } from '../../MessageListProvider'
 import {
@@ -59,7 +58,7 @@ function renderToolbar(
   const actions: MessageListActions = { deleteMessage, canDeleteMessage: policy, copyText: vi.fn() }
   const value: MessageListProviderValue = {
     state: {
-      topic: { id: 'topic-1', name: 'Topic', messages: [] } as unknown as Topic,
+      topic: { id: 'topic-1', name: 'Topic', messages: [] } as Topic,
       messages: [message],
       partsByMessageId: { [message.id]: [{ type: 'text', text: 'hello' }] },
       hasOlder: false,

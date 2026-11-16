@@ -10,7 +10,6 @@ import type { CherryUIMessage } from '@shared/data/types/message'
 
 import { useExecutionOverlay } from '../useExecutionOverlay'
 import { useTopicOverlayHandoffOnTerminal } from '../useTopicStreamStatus'
-
 afterEach(() => vi.restoreAllMocks())
 const base = (topicId: string, text: string): MessageProjectionView => ({
   kind: 'topic',
@@ -19,7 +18,6 @@ const base = (topicId: string, text: string): MessageProjectionView => ({
   executions: [{ executionId: 'p::m', attemptId: 1, anchorMessageId: 'a', messageId: 'a', status: 'active' }],
   messages: [{ id: 'a', role: 'assistant', parts: [{ type: 'text', text }] }]
 })
-
 // The old topic's async attach must not put its text into the newly selected topic.
 it('isolates topic switches and uses the Main baseline without renderer history seeds', async () => {
   const ipc = projectionIpc()
@@ -30,7 +28,7 @@ it('isolates topic switches and uses the Main baseline without renderer history 
     ipc.attachments[1].resolve(base('hook-b', 'new'))
   })
   expect(hook.result.current.liveAssistants[0].parts[0]).toMatchObject({ text: 'new' })
-  act(() =>
+  act(() => {
     ipc.emit(ipc.attachments[0].subscriptionId, {
       kind: 'topic',
       topicId: 'hook-a',
@@ -39,11 +37,10 @@ it('isolates topic switches and uses the Main baseline without renderer history 
       patches: [{ type: 'append', messageId: 'a', part: 0, text: 'stale' }],
       order: ['a']
     })
-  )
+  })
   expect(hook.result.current.liveAssistants[0].parts[0]).toMatchObject({ text: 'new' })
   hook.unmount()
 })
-
 // A retained terminal baseline must not override saved edits or resurrect deleted replies on attachment.
 it.each([
   { statusFirst: true, deleted: false },
@@ -92,7 +89,6 @@ it.each([
   await waitFor(() => expect(hook.result.current).toEqual(saved))
   hook.unmount()
 })
-
 // A refresh racing a new attempt or a failed archive must not discard the only readable output.
 it.each(['active', 'unresolved'] as const)(
   'retains %s projection content during terminal history handoff',

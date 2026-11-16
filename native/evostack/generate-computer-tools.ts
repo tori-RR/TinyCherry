@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 import * as z from 'zod'
 
-import { computerUseToolDefinitions } from '../../src/main/ai/tools/computerUse'
+import { computerUseToolDefinitions } from '../../src/shared/ai/computerUseTools'
 
 const directory = fileURLToPath(new URL('backend/generated/', import.meta.url))
 mkdirSync(directory, { recursive: true })

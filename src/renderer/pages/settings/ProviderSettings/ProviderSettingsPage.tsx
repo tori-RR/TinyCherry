@@ -65,7 +65,10 @@ function ProviderSettingsContent({ rawProviders }: ProviderSettingsContentProps)
     setPendingApiSetup((current) => (current?.providerId === providerId ? null : current))
   }, [])
 
-  useProviderDeepLinkImport(search.addProviderData, setSelectedProviderId)
+  useProviderDeepLinkImport(
+    typeof search.addProviderData === 'string' ? search.addProviderData : undefined,
+    setSelectedProviderId
+  )
 
   useEffect(() => {
     let shouldConsume = false

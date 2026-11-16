@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { resolveCommandDisplayState, resolveCommandPresentationKeybinding } from '@renderer/utils/command'
 import { isMac, platform } from '@renderer/utils/platform'
-import type { MenuLocation, ResolvedMenuModel, SupportedPlatform } from '@shared/types/command'
+import type { MenuLocation, ResolvedMenuModel } from '@shared/types/command'
 import { type CommandId, findCommandDefinition, findKeybindingRule, resolveMenu } from '@shared/utils/command'
 
 import { useCommandContextReader } from './useCommandContext'
@@ -26,7 +26,7 @@ export function useResolvedCommandMenu(location: MenuLocation): ResolvedMenuMode
           const preference = rule ? shortcutPreferences[command] : undefined
           const keybinding = resolveCommandPresentationKeybinding(command, preference, {
             context,
-            platform: platform as SupportedPlatform
+            platform: platform
           })
           const state = resolveCommandDisplayState(command, {
             definition,
@@ -35,7 +35,7 @@ export function useResolvedCommandMenu(location: MenuLocation): ResolvedMenuMode
             hasHandler: runtime.hasHandler,
             translate: t,
             isMac,
-            platform: platform as SupportedPlatform
+            platform: platform
           })
 
           return {

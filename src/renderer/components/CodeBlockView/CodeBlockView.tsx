@@ -1,4 +1,5 @@
 import { Icon } from '@iconify/react'
+import { hasCapability } from '@platform/desktop-api/capabilities'
 import type { EditorState } from '@uiw/react-codemirror'
 import dayjs from 'dayjs'
 import React, {
@@ -102,7 +103,7 @@ export const CodeBlockView: React.FC<Props> = memo((props) => {
     setDocument({
       accepted: children,
       language,
-      stateRef: echoed ? document.stateRef : { current: null },
+      stateRef: echoed ? document.stateRef : { current: null as EditorState | null },
       epoch: document.epoch + Number(!echoed)
     })
   }
@@ -166,6 +167,7 @@ export const CodeBlockView: React.FC<Props> = memo((props) => {
   const [tools, setTools] = useState<ActionTool[]>([])
 
   const isExecutable = useMemo(() => {
+    if (!hasCapability('skillExecution')) return false
     return allowExecution && codeExecutionEnabled && language === 'python'
   }, [allowExecution, codeExecutionEnabled, language])
 
@@ -294,6 +296,7 @@ export const CodeBlockView: React.FC<Props> = memo((props) => {
   })
 
   useDownloadTool({
+    enabled: hasCapability('downloads'),
     showPreviewTools,
     previewRef: specialViewRef,
     onDownloadSource: handleDownloadSource,

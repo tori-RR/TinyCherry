@@ -8,16 +8,12 @@ import { type CommandContextMenuExtraItem, CommandPopupMenu } from '@renderer/co
 import { useAssistantMutationsById } from '@renderer/hooks/resourceCatalog'
 import { toast } from '@renderer/services/toast'
 import type { ResourceItem } from '@renderer/types/resourceCatalog'
-import { isEvoStack } from '@renderer/utils/platform'
 import { isProtectedBuiltinAgentRole } from '@shared/ai/builtinAgent'
 import type { Group } from '@shared/data/types/group'
-
 const logger = loggerService.withContext('ResourceCardMenu')
-
 function canDuplicateResource(resource: ResourceItem) {
   return resource.type === 'assistant'
 }
-
 interface ResourceCardMenuProps {
   resource: ResourceItem
   onClose?: () => void
@@ -27,7 +23,6 @@ interface ResourceCardMenuProps {
   allGroups: Group[]
   triggerClassName?: string
 }
-
 function useResourceCardMenuItems({
   resource,
   onClose,
@@ -43,18 +38,15 @@ function useResourceCardMenuItems({
   )
   const [bindingPending, setBindingPending] = useState(false)
   const bindingPendingRef = useRef(false)
-
   const { updateAssistant } = useAssistantMutationsById(resource.id)
   const canAssignGroup = resource.type === 'assistant'
   const canDuplicate = canDuplicateResource(resource)
   const canExport = resource.type === 'assistant'
   const hasActionsBeforeDelete = canAssignGroup || canDuplicate || canExport
-
   useEffect(() => {
     if (bindingPendingRef.current) return
     setLocalGroupId(resourceGroupId)
   }, [resource.id, resourceGroupId])
-
   const persistGroup = useCallback(
     async (nextGroupId: string | null, previousGroupId: string | null) => {
       if (!canAssignGroup) return
@@ -81,7 +73,6 @@ function useResourceCardMenuItems({
     },
     [canAssignGroup, updateAssistant, resource.id, resource.type, t]
   )
-
   const selectGroup = useCallback(
     (groupId: string) => {
       if (bindingPendingRef.current) return
@@ -93,10 +84,8 @@ function useResourceCardMenuItems({
     },
     [localGroupId, onClose, persistGroup]
   )
-
   return useMemo(() => {
     const items: CommandContextMenuExtraItem[] = []
-
     if (canAssignGroup) {
       items.push({
         type: 'submenu',
@@ -124,7 +113,6 @@ function useResourceCardMenuItems({
               ]
       })
     }
-
     if (canDuplicate) {
       items.push({
         type: 'item',
@@ -137,7 +125,6 @@ function useResourceCardMenuItems({
         }
       })
     }
-
     if (canExport) {
       items.push({
         type: 'item',
@@ -150,11 +137,9 @@ function useResourceCardMenuItems({
         }
       })
     }
-
     if (hasActionsBeforeDelete) {
       items.push({ type: 'separator' })
     }
-
     const isOwner = resource.type === 'assistant' || resource.type === 'agent'
     const protectedAgent =
       resource.type === 'agent' && isProtectedBuiltinAgentRole(resource.raw.configuration?.builtin_role)
@@ -173,7 +158,7 @@ function useResourceCardMenuItems({
       items.push({
         type: 'item',
         id: 'delete',
-        enabled: !(isEvoStack && resource.type === 'skill' && resource.raw.source === 'builtin'),
+        enabled: !(resource.type === 'skill' && resource.raw.source === 'builtin'),
         label: resource.type === 'skill' ? t('library.action.uninstall') : t('common.delete'),
         icon: <Trash2 size={14} />,
         destructive: true,
@@ -182,7 +167,6 @@ function useResourceCardMenuItems({
           onClose?.()
         }
       })
-
     return items
   }, [
     allGroups,
@@ -201,11 +185,9 @@ function useResourceCardMenuItems({
     selectGroup
   ])
 }
-
 export function ResourceCardMenu({ triggerClassName, ...props }: ResourceCardMenuProps) {
   const { t } = useTranslation()
   const menuItems = useResourceCardMenuItems(props)
-
   return (
     <CommandPopupMenu
       location="webcontents.context"

@@ -723,7 +723,7 @@ describe('HistoryRecordsView agent mode', () => {
 
   it('activates a session when the history title is clicked', () => {
     const { onClose, onRecordSelect } = setupAgentHistory()
-    const betaRow = screen.getByText('Beta session').closest('[role="row"]')
+    const betaRow = screen.getByText('Beta session').closest('[role="row"]') as HTMLElement
 
     expect(betaRow).not.toBeNull()
     fireEvent.click(betaRow as HTMLElement)
@@ -751,7 +751,7 @@ describe('HistoryRecordsView agent mode', () => {
 
   it('does not activate a session when the selection checkbox is clicked', () => {
     const { onClose, onRecordSelect } = setupAgentHistory()
-    const betaRow = screen.getByText('Beta session').closest('[role="row"]')
+    const betaRow = screen.getByText('Beta session').closest('[role="row"]') as HTMLElement
 
     expect(betaRow).not.toBeNull()
     fireEvent.click(within(betaRow as HTMLElement).getByRole('checkbox'))
@@ -786,8 +786,8 @@ describe('HistoryRecordsView agent mode', () => {
 
     const alphaRow = screen.getByText('Alpha session').closest('[role="row"]') as HTMLElement
     const betaRow = screen.getByText('Beta session').closest('[role="row"]') as HTMLElement
-    fireEvent.click(within(alphaRow).getByRole('checkbox'))
-    fireEvent.click(within(betaRow).getByRole('checkbox'))
+    fireEvent.click(within(alphaRow as HTMLElement).getByRole('checkbox'))
+    fireEvent.click(within(betaRow as HTMLElement).getByRole('checkbox'))
 
     await clickBulkDelete()
 
@@ -819,12 +819,12 @@ describe('HistoryRecordsView agent mode', () => {
     const { onActiveRecordChange } = setupAgentHistory({ activeRecordId: 'session-alpha' })
     const alphaRow = screen.getByText('Alpha session').closest('[role="row"]') as HTMLElement
     const betaRow = screen.getByText('Beta session').closest('[role="row"]') as HTMLElement
-    fireEvent.click(within(alphaRow).getByRole('checkbox'))
-    fireEvent.click(within(betaRow).getByRole('checkbox'))
+    fireEvent.click(within(alphaRow as HTMLElement).getByRole('checkbox'))
+    fireEvent.click(within(betaRow as HTMLElement).getByRole('checkbox'))
     await clickBulkDelete()
 
-    expect(within(alphaRow).getByRole('checkbox')).toHaveAttribute('aria-checked', 'false')
-    expect(within(betaRow).getByRole('checkbox')).toHaveAttribute('aria-checked', 'true')
+    expect(within(alphaRow as HTMLElement).getByRole('checkbox')).toHaveAttribute('aria-checked', 'false')
+    expect(within(betaRow as HTMLElement).getByRole('checkbox')).toHaveAttribute('aria-checked', 'true')
     expect(onActiveRecordChange).toHaveBeenCalledWith('session-beta')
     expect(recycleBinFeedbackMocks.showRecycleBinBatchUndo).toHaveBeenCalledWith({
       itemCount: 1,
@@ -840,12 +840,12 @@ describe('HistoryRecordsView agent mode', () => {
     const { onActiveRecordChange } = setupAgentHistory({ activeRecordId: 'session-alpha' })
     const alphaRow = screen.getByText('Alpha session').closest('[role="row"]') as HTMLElement
     const betaRow = screen.getByText('Beta session').closest('[role="row"]') as HTMLElement
-    fireEvent.click(within(alphaRow).getByRole('checkbox'))
-    fireEvent.click(within(betaRow).getByRole('checkbox'))
+    fireEvent.click(within(alphaRow as HTMLElement).getByRole('checkbox'))
+    fireEvent.click(within(betaRow as HTMLElement).getByRole('checkbox'))
     await clickBulkDelete()
 
-    expect(within(alphaRow).getByRole('checkbox')).toHaveAttribute('aria-checked', 'true')
-    expect(within(betaRow).getByRole('checkbox')).toHaveAttribute('aria-checked', 'true')
+    expect(within(alphaRow as HTMLElement).getByRole('checkbox')).toHaveAttribute('aria-checked', 'true')
+    expect(within(betaRow as HTMLElement).getByRole('checkbox')).toHaveAttribute('aria-checked', 'true')
     expect(onActiveRecordChange).not.toHaveBeenCalled()
     expect(recycleBinFeedbackMocks.showRecycleBinBatchUndo).not.toHaveBeenCalled()
     expect(toast.info).toHaveBeenCalledExactlyOnceWith('Already in Recycle Bin')
@@ -857,12 +857,12 @@ describe('HistoryRecordsView agent mode', () => {
     const { onActiveRecordChange } = setupAgentHistory({ activeRecordId: 'session-alpha' })
     const alphaRow = screen.getByText('Alpha session').closest('[role="row"]') as HTMLElement
     const betaRow = screen.getByText('Beta session').closest('[role="row"]') as HTMLElement
-    fireEvent.click(within(alphaRow).getByRole('checkbox'))
-    fireEvent.click(within(betaRow).getByRole('checkbox'))
+    fireEvent.click(within(alphaRow as HTMLElement).getByRole('checkbox'))
+    fireEvent.click(within(betaRow as HTMLElement).getByRole('checkbox'))
     await clickBulkDelete()
 
-    expect(within(alphaRow).getByRole('checkbox')).toHaveAttribute('aria-checked', 'true')
-    expect(within(betaRow).getByRole('checkbox')).toHaveAttribute('aria-checked', 'true')
+    expect(within(alphaRow as HTMLElement).getByRole('checkbox')).toHaveAttribute('aria-checked', 'true')
+    expect(within(betaRow as HTMLElement).getByRole('checkbox')).toHaveAttribute('aria-checked', 'true')
     expect(onActiveRecordChange).not.toHaveBeenCalled()
     expect(recycleBinFeedbackMocks.showRecycleBinBatchUndo).not.toHaveBeenCalled()
     expect(toast.error).toHaveBeenCalledExactlyOnceWith('Could not move to Recycle Bin')
@@ -876,12 +876,12 @@ describe('HistoryRecordsView agent mode', () => {
     const { onActiveRecordChange } = setupAgentHistory({ activeRecordId: 'session-alpha' })
     const alphaRow = screen.getByText('Alpha session').closest('[role="row"]') as HTMLElement
     const betaRow = screen.getByText('Beta session').closest('[role="row"]') as HTMLElement
-    fireEvent.click(within(alphaRow).getByRole('checkbox'))
-    fireEvent.click(within(betaRow).getByRole('checkbox'))
+    fireEvent.click(within(alphaRow as HTMLElement).getByRole('checkbox'))
+    fireEvent.click(within(betaRow as HTMLElement).getByRole('checkbox'))
     await clickBulkDelete()
 
-    expect(within(alphaRow).getByRole('checkbox')).toHaveAttribute('aria-checked', 'false')
-    expect(within(betaRow).getByRole('checkbox')).toHaveAttribute('aria-checked', 'true')
+    expect(within(alphaRow as HTMLElement).getByRole('checkbox')).toHaveAttribute('aria-checked', 'false')
+    expect(within(betaRow as HTMLElement).getByRole('checkbox')).toHaveAttribute('aria-checked', 'true')
     expect(onActiveRecordChange).toHaveBeenCalledWith('session-beta')
     expect(recycleBinFeedbackMocks.showRecycleBinBatchUndo).toHaveBeenCalledWith({
       itemCount: 1,
@@ -912,8 +912,8 @@ describe('HistoryRecordsView agent mode', () => {
 
     const alphaRow = screen.getByText('Alpha session').closest('[role="row"]') as HTMLElement
     const betaRow = screen.getByText('Beta session').closest('[role="row"]') as HTMLElement
-    fireEvent.click(within(alphaRow).getByRole('checkbox'))
-    fireEvent.click(within(betaRow).getByRole('checkbox'))
+    fireEvent.click(within(alphaRow as HTMLElement).getByRole('checkbox'))
+    fireEvent.click(within(betaRow as HTMLElement).getByRole('checkbox'))
 
     await clickBulkDelete()
 
@@ -933,7 +933,7 @@ describe('HistoryRecordsView agent mode', () => {
     })
 
     const alphaRow = screen.getByText('Alpha session').closest('[role="row"]') as HTMLElement
-    fireEvent.click(within(alphaRow).getByRole('checkbox'))
+    fireEvent.click(within(alphaRow as HTMLElement).getByRole('checkbox'))
 
     expect(screen.getByRole('button', { name: 'Batch Archive' })).toBeDisabled()
     expect(hookMocks.deleteSession).not.toHaveBeenCalled()
@@ -1130,12 +1130,12 @@ describe('HistoryRecordsView agent mode', () => {
     setupAgentHistory()
 
     const alphaRow = screen.getByText('Alpha session').closest('[role="row"]') as HTMLElement
-    const checkbox = within(alphaRow).getByRole('checkbox')
+    const checkbox = within(alphaRow as HTMLElement).getByRole('checkbox')
     fireEvent.click(checkbox)
     expect(checkbox).toHaveAttribute('aria-checked', 'true')
 
     await act(async () => {
-      fireEvent.click(within(alphaRow).getByTestId('history-pin-button'))
+      fireEvent.click(within(alphaRow as HTMLElement).getByTestId('history-pin-button'))
       await flushAnimationFrame()
     })
 
@@ -1148,12 +1148,12 @@ describe('HistoryRecordsView agent mode', () => {
     setupAgentHistory()
 
     const alphaRow = screen.getByText('Alpha session').closest('[role="row"]') as HTMLElement
-    const checkbox = within(alphaRow).getByRole('checkbox')
+    const checkbox = within(alphaRow as HTMLElement).getByRole('checkbox')
     fireEvent.click(checkbox)
     expect(checkbox).toHaveAttribute('aria-checked', 'true')
 
     await act(async () => {
-      fireEvent.click(within(alphaRow).getByTestId('history-pin-button'))
+      fireEvent.click(within(alphaRow as HTMLElement).getByTestId('history-pin-button'))
       await flushAnimationFrame()
     })
 
@@ -1167,7 +1167,7 @@ describe('HistoryRecordsView agent mode', () => {
     )
     const getActiveSession = vi.spyOn(dataApiService, 'get').mockResolvedValue({ id: 'session-alpha' })
     const { onClose, onActiveRecordChange } = setupAgentHistory()
-    const alphaRow = screen.getByText('Alpha session').closest('[role="row"]')
+    const alphaRow = screen.getByText('Alpha session').closest('[role="row"]') as HTMLElement
 
     expect(alphaRow).not.toBeNull()
     fireEvent.click(within(alphaRow as HTMLElement).getByTestId('history-delete-button'))
@@ -1630,10 +1630,10 @@ describe('HistoryRecordsView agent mode', () => {
 
   it('disables permanent delete while the session is generating and rechecks the latest stream on confirm', async () => {
     const user = userEvent.setup()
-    cacheService.setShared(
-      'topic.stream.statuses.agent-session:session-alpha' as never,
-      { status: 'pending', awaitingApprovalAnchors: [] } as never
-    )
+    cacheService.setShared('topic.stream.statuses.agent-session:session-alpha', {
+      status: 'pending',
+      awaitingApprovalAnchors: []
+    })
     setupAgentHistory()
     expect(permanentDeleteButton('Alpha session')).toBeDisabled()
     cleanup()
@@ -1649,10 +1649,10 @@ describe('HistoryRecordsView agent mode', () => {
     await act(async () => {
       await flushCommandMenuAction()
     })
-    cacheService.setShared(
-      'topic.stream.statuses.agent-session:session-alpha' as never,
-      { status: 'streaming', awaitingApprovalAnchors: [] } as never
-    )
+    cacheService.setShared('topic.stream.statuses.agent-session:session-alpha', {
+      status: 'streaming',
+      awaitingApprovalAnchors: []
+    })
     await expect(confirm?.()).rejects.toThrow('Stop generation before permanently deleting this conversation.')
     expect(hookMocks.deleteSessionWithOutcome).not.toHaveBeenCalled()
     expect(recycleBinFeedbackMocks.showRecycleBinUndo).not.toHaveBeenCalled()

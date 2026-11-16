@@ -284,7 +284,9 @@ const AGENTS_RESPONSE = {
   page: 1
 } as const
 
-beforeAll(() => {
+beforeAll(async () => {
+  // This suite checks dialog lifecycle, independently of cold chunk loading.
+  await import('@renderer/components/resourceCatalog/dialogs/edit')
   globalThis.ResizeObserver = class {
     observe() {}
     unobserve() {}

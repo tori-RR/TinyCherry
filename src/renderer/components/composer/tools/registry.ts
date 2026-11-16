@@ -7,11 +7,11 @@ const DEFAULT_COMPOSER_TOOL_SCOPE: ComposerToolScope = TopicType.Chat
 const composerToolConfigRegistry: Partial<Record<ComposerToolScope, ComposerToolScopeConfig>> = {
   [TopicType.Chat]: {
     enableQuickPanel: true,
-    enableDragDrop: true
+    enableDragDrop: false
   },
   [TopicType.Session]: {
     enableQuickPanel: true,
-    enableDragDrop: true
+    enableDragDrop: false
   },
   'quick-assistant': {
     enableQuickPanel: true,
@@ -23,7 +23,7 @@ const composerToolConfigRegistry: Partial<Record<ComposerToolScope, ComposerTool
   // constraint is enforced via couldAddImageFile / switchModel, not here).
   painting: {
     enableQuickPanel: true,
-    enableDragDrop: true
+    enableDragDrop: false
   }
 }
 

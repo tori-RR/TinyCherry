@@ -22,11 +22,6 @@
     "experimentalDecorators": true,
     "useDefineForClassFields": true,
     "paths": {
-      "@cherrystudio/ai-core": ["./packages/aiCore/src/index.ts"],
-      "@cherrystudio/ai-core/*": ["./packages/aiCore/src/*"],
-      "@cherrystudio/ai-core/built-in/plugins": ["./packages/aiCore/src/core/plugins/built-in/index.ts"],
-      "@cherrystudio/ai-core/provider": ["./packages/aiCore/src/core/providers/index.ts"],
-      "@cherrystudio/ai-sdk-provider": ["./packages/ai-sdk-provider/src/index.ts"],
       "@cherrystudio/extension-table-plus": ["./packages/extension-table-plus/src/index.ts"],
       "@cherrystudio/provider-registry": ["./packages/provider-registry/src/index.ts"],
       "@cherrystudio/ui": ["./packages/ui/src/index.ts"],
@@ -62,23 +57,17 @@
       "@cherrystudio/web-search/providers/serpkite": ["./packages/web-search/src/providers/serpkite.ts"],
       "@cherrystudio/web-search/tools/config": ["./packages/web-search/src/tools/config.ts"],
       "@cherrystudio/web-search/tools/url-filter": ["./packages/web-search/src/tools/urlFilter.ts"],
-      "@cherrystudio/web-search/tools/content": ["./packages/web-search/src/tools/content.ts"]
+      "@cherrystudio/web-search/tools/content": ["./packages/web-search/src/tools/content.ts"],
+      "@platform/*": ["./src/platform/*"],
+      "@cherrystudio/remote-protocol": ["./packages/remote-protocol/src/index.ts"]
     },
     "tsBuildInfoFile": ".tsbuildinfo/tsconfig.web.tsbuildinfo"
   },
-  "exclude": ["packages/aiCore/src/**/__tests__/**"],
+  "exclude": ["**/__tests__/**", "**/*.test.ts", "**/*.test.tsx", "**/*.stories.tsx"],
   "include": [
-    "local/src/renderer/**/*",
-    "src/renderer/**/*",
-    "src/preload/*.d.ts",
-    "tests/__mocks__/**/*",
-    "packages/aiCore/src/**/*",
-    "packages/ai-sdk-provider/**/*",
-    "packages/extension-table-plus/**/*",
-    "packages/provider-registry/**/*",
-    "src/shared/**/*",
-    "packages/ui/**/*",
-    "packages/file-preview/src/**/*",
-    "packages/web-search/src/**/*"
+    "src/renderer/env.d.ts",
+    "src/renderer/types/**/*.d.ts",
+    "src/platform/desktop-api/globals.d.ts",
+    "src/renderer/windows/evostack/entryPoint.tsx"
   ]
 }

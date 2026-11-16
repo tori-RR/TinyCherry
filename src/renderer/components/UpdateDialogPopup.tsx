@@ -1,4 +1,3 @@
-import type { UpdateInfo } from 'builder-util-runtime'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -17,6 +16,7 @@ import { useAppUpdateState } from '@renderer/hooks/useAppUpdateState'
 import { ipcApi } from '@renderer/ipc'
 import { createPopup, type PopupInjectedProps } from '@renderer/services/popup'
 import { toast } from '@renderer/services/toast'
+import type { UpdateInfo } from '@shared/types/release'
 
 import { UpgradeReleaseNotes } from './UpgradeReleaseNotes'
 

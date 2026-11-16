@@ -1,8 +1,9 @@
 import { MockUsePreferenceUtils } from '@test-mocks/renderer/usePreference'
 import { act, fireEvent, render, waitFor } from '@testing-library/react'
 import { EditorView } from '@uiw/react-codemirror'
-import { beforeEach, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, expect, it, vi } from 'vitest'
 
+import { getCmThemeByName } from '@cherrystudio/ui'
 import { codeBlockHighlightStyle } from '@cherrystudio/ui/code-block'
 
 import { CodeStyleProvider } from '../CodeStyleProvider'
@@ -11,6 +12,11 @@ import { LazyCodeEditor } from '../LazyCodeEditor'
 vi.unmock('@cherrystudio/ui')
 const appearance = vi.hoisted(() => ({ theme: 'light' }))
 vi.mock('@renderer/hooks/useTheme', () => ({ useTheme: () => appearance }))
+
+// Resolve the cold lazy catalog outside the editor state assertion deadline.
+beforeAll(async () => {
+  await getCmThemeByName('dracula')
+})
 
 beforeEach(() => {
   MockUsePreferenceUtils.resetMocks()

@@ -1,6 +1,6 @@
 # TinyCherry EvoStack
 
-Windows x64 desktop host using TinyCherry's React UI and the Cherry Studio v2.2.2 shared contracts. This target keeps host-specific adaptations and a separate Electron build.
+Windows x64 desktop host using TinyCherry's React UI and the Cherry Studio v2.2.2 shared contracts. This is the only desktop target.
 
 ```mermaid
 flowchart LR
@@ -31,7 +31,7 @@ flowchart LR
 - SQLite WAL, transaction rollback and recovery of replies left pending after a crash. API keys are protected with Windows DPAPI in the SQLite secret table; provider snapshots contain key metadata only.
 - All backend traffic uses private stdio pipes. There is no local HTTP/WebSocket listener and no Electron or Node runtime in the portable package.
 
-This is a working migration slice, not feature parity. Agent runtimes (Claude Code/Pi), MCP, chat attachments, browser automation, painting, translation, backups/imports, tray/global shortcuts, multi-window, multi-model groups, advanced reasoning controls and downloads are not migrated. Their original screens may still be reachable; unsupported actions return `EVOSTACK_NOT_MIGRATED` instead of claiming success. Knowledge bases are retained again; the native full-text path is independent of the original `sqlite-vec` store. Existing renderer cache/SWR state is retained for this slice; a wholesale Zustand conversion is not part of it.
+This is a working migration slice, not feature parity. Agent runtimes (Claude Code/Pi), MCP, chat attachments, browser automation, painting, translation, backups/imports, tray/global shortcuts, multi-window, multi-model groups, advanced reasoning controls and downloads are not migrated. Their routes show an unavailable shell and their primary navigation entries are hidden. Internal unsupported requests still fail explicitly. Knowledge bases are retained again; the native full-text path is independent of the original `sqlite-vec` store. Existing renderer cache/SWR state is retained for this slice; a wholesale Zustand conversion is not part of it.
 
 ## Data and provider setup
 
@@ -69,19 +69,25 @@ Non-GET DataApi mutations are never automatically retried. If their reply is los
 
 ## Build
 
-Requires the workspace's Node/pnpm dependencies, Go 1.27+, Rust 1.98+/MSVC and an installed Microsoft Edge WebView2 Runtime. Windows Computer Use also needs the system Windows PowerShell runtime and an interactive desktop. Go race checks additionally require a MinGW-w64-compatible C compiler with `libsynchronization.a`. Dependencies are pinned by `go.sum` and `src-tauri/Cargo.lock`. No global environment settings are changed.
+Requires the pinned Node/pnpm workspace, Go 1.27+, Rust 1.98+/MSVC and an installed Microsoft Edge WebView2 Runtime. Computer Use additionally needs Windows PowerShell and an interactive desktop. Go race checks require MinGW-w64 GCC with `libsynchronization.a`.
 
 From the repository root:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File native/evostack/build.ps1
+pnpm dev
+pnpm build
+pnpm start
+pnpm verify
+pnpm package
 ```
 
-The script keeps Go/Cargo/npm caches, temporary files and outputs under this directory. It checks the installed Evergreen WebView2 Runtime using Microsoft's [documented registry locations](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution#detect-if-a-webview2-runtime-is-already-installed); it does not download or install a runtime. It generates the UI before the first Rust compilation, including tests and Clippy, so a checkout without `dist/frontend` can build. TypeScript checks cover the full renderer (`tsconfig.web.json`) and native entry points/build helpers (`tsconfig.tauri.json`); Rust fmt/tests/Clippy and Go integration checks remain enabled. Each build uses a fresh staging directory and an eight-file whitelist; the previous portable folder is preserved under `.cache/portable-backups` before replacement. Package checks compare the app version, source revision and protocol of both x64 executables, then start an isolated window/Go process. A smoke-only token/PID/revision handshake confirms React is ready, and the original Set Up Later button must persist the skipped state and open the workspace before graceful shutdown. Normal launches do not enable this handshake or CDP. SHA256 hashes and the ZIP are generated from those staged files only. The portable folder and ZIP are in `dist/`. The main EXE, `tinycherry-evostack-backend.exe` and `open-computer-use.exe` must stay together. The computer-use helper and its MIT/third-party notices come from the pinned installed Windows x64 package version `0.1.11`; it adds no Node runtime. This is a portable directory/ZIP, not a standalone single-file EXE. No installer, registration or automatic updater runs.
+Build generates a complete candidate under `dist/candidates/` and changes `dist/current.json` only on success. Build does not run tests. Start checks candidate hashes, source/version/protocol identity and required helpers; it never installs, rebuilds or falls back. CLI start keeps the existing stable `dist/portable/evostack-data` local profile, independent of candidate staging. A delivered portable still uses `evostack-data` beside its EXE.
 
-`test-race.ps1` runs `go test -race -count=10` when a compatible Windows MinGW-w64 `gcc` is available; it fails explicitly if that prerequisite is missing. The Windows workflow runs this check separately from ordinary tests and builds a smoke-tested ZIP artifact. See [Go's race-detector prerequisites](https://go.dev/doc/articles/race_detector#Requirements).
+Verify builds once, runs the current TypeScript/Go/Rust tests, private helper preflight/cleanup tests, DTO contracts and actual packaged React startup. Package archives the same verified bytes without recompiling. Both the EXE and sidecar report the root product version and source revision. A modified, incomplete or mismatched candidate is rejected. The archive contains executables, notices, README and identity/hash manifests; profiles, keys, logs and debug evidence are excluded.
 
-The native workflow runs on every push and pull request targeting `main` or `evostack`, and supports manual runs on a candidate branch. It passes GitHub's exact workflow SHA to `build.ps1 -ExpectedRevision <sha>`. This mode requires that HEAD match the supplied SHA and that tracked, staged and untracked source remain clean before and after building; ignored caches and package outputs are allowed. Both executables and the React startup handshake must report that externally supplied revision. CI checks source state again before uploading the ZIP, and missing WebView2 or a failed real startup/interaction check blocks the job. Local builds without `-ExpectedRevision` retain the development `-dirty` revision suffix for tracked changes.
+All build outputs, temporary files and Go/Cargo/pnpm caches stay inside the project. The script checks the installed Evergreen WebView2 Runtime using Microsoft's [documented registry locations](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution#detect-if-a-webview2-runtime-is-already-installed); it does not install a runtime. The pinned Windows helper package supplies the native executable and license notices, without its JavaScript SDK or a Node runtime in the product.
+
+The default Go race check runs once. `pnpm verify --stress` opts into ten iterations. CI has no schedule: one Windows workflow selects current checks by changed paths, and a separate manual Windows workflow verifies complete candidates. macOS/Linux are pending platform ports and are not in the CI matrix.
 
 ## Verification
 

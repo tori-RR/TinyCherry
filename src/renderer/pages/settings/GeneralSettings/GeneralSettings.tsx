@@ -45,8 +45,6 @@ import { ipcApi } from '@renderer/ipc'
 import { popup } from '@renderer/services/popup'
 import { toast } from '@renderer/services/toast'
 import { formatErrorMessage } from '@renderer/utils/error'
-import { isEvoStack } from '@renderer/utils/platform'
-import { isValidProxyUrl } from '@renderer/utils/url'
 import { isManagedCherryCloudModel } from '@shared/data/presets/cherryai'
 import { isUniqueModelId, parseUniqueModelId, type UniqueModelId } from '@shared/data/types/model'
 import type { OutputFor } from '@shared/ipc/types'
@@ -54,7 +52,6 @@ import { defaultLanguage } from '@shared/utils/languages'
 import { isNonChatModel } from '@shared/utils/model'
 
 import { ContextManagementSettings } from './ContextManagementSettings'
-
 function getRetryFallbackModelsTriggerLabel(
   rawFallbackModelIds: readonly UniqueModelId[],
   resolvedFallbackModelIds: readonly UniqueModelId[],
@@ -63,39 +60,31 @@ function getRetryFallbackModelsTriggerLabel(
   if (rawFallbackModelIds.length === 0) {
     return t('settings.models.empty')
   }
-
   const staleCount = countStaleSelectedModelIds(rawFallbackModelIds, resolvedFallbackModelIds)
   const validCount = resolvedFallbackModelIds.length
-
   if (validCount === 0) {
     return t('settings.models.retry.fallback_models_unavailable', { count: staleCount })
   }
-
   if (staleCount > 0) {
     return t('settings.models.retry.fallback_models_count_with_invalid', {
       valid: validCount,
       invalid: staleCount
     })
   }
-
   return t('settings.models.retry.fallback_models_count', { count: validCount })
 }
-
 const defaultByPassRules = 'localhost,127.0.0.1,::1'
 const NATIVE_PROXY_PROTOCOLS = new Set(['http:', 'https:', 'socks:', 'socks5:', 'socks5h:'])
-
 const TRAY_PREFERENCE_KEYS = {
   enabled: 'app.tray.enabled',
   onClose: 'app.tray.on_close',
   onLaunch: 'app.tray.on_launch',
   clickTrayToShowQuickAssistant: 'feature.quick_assistant.click_tray_to_show'
 } as const
-
 const GeneralSettings: FC = () => {
   const { t } = useTranslation()
   const { theme } = useTheme()
   const { setTimeoutTimer } = useTimer()
-
   const [language, setLanguage] = usePreference('app.language')
   const [disableHardwareAcceleration, setDisableHardwareAcceleration] = usePreference(
     'BootConfig.app.disable_hardware_acceleration'
@@ -176,13 +165,14 @@ const GeneralSettings: FC = () => {
     : configuredRetryFallbackModelIds.length > 0
       ? t('settings.models.retry.fallback_models_count', { count: configuredRetryFallbackModelIds.length })
       : t('settings.models.empty')
-
-  const proxyModeOptions: { value: 'system' | 'custom' | 'none'; label: string }[] = [
+  const proxyModeOptions: {
+    value: 'system' | 'custom' | 'none'
+    label: string
+  }[] = [
     { value: 'system', label: t('settings.proxy.mode.system') },
     { value: 'custom', label: t('settings.proxy.mode.custom') },
     { value: 'none', label: t('settings.proxy.mode.none') }
   ]
-
   const updateTray = (isShowTray: boolean) => {
     void setTrayPreferences(
       isShowTray
@@ -190,66 +180,52 @@ const GeneralSettings: FC = () => {
         : { enabled: false, onClose: false, onLaunch: false, clickTrayToShowQuickAssistant: false }
     )
   }
-
   const updateTrayOnClose = (isTrayOnClose: boolean) => {
     void setTrayPreferences(isTrayOnClose && !tray ? { enabled: true, onClose: true } : { onClose: isTrayOnClose })
   }
-
   const updateLaunchToTray = (isLaunchToTray: boolean) => {
     void setTrayPreferences(isLaunchToTray && !tray ? { enabled: true, onLaunch: true } : { onLaunch: isLaunchToTray })
   }
-
   const isProxyTestAction = (event: FocusEvent<HTMLInputElement>) =>
     event.relatedTarget instanceof Node && proxyTestButtonRef.current?.contains(event.relatedTarget)
-
   const saveProxyUrl = () => {
     let parsed: URL | undefined
     try {
       parsed = new URL(proxyUrl)
-    } catch {
-      /* Empty values clear the saved proxy. */
-    }
-    if (proxyUrl && isEvoStack && parsed && !NATIVE_PROXY_PROTOCOLS.has(parsed.protocol)) {
+    } catch {}
+    if (proxyUrl && true && parsed && !NATIVE_PROXY_PROTOCOLS.has(parsed.protocol)) {
       toast.error(t('settings.proxy.native_protocols'))
       return
     }
-    if (proxyUrl && (!parsed?.hostname || (!isEvoStack && !isValidProxyUrl(proxyUrl)))) {
+    if (proxyUrl && (!parsed?.hostname || false)) {
       toast.error(t('message.error.invalid.proxy.url'))
       return
     }
-
     void _setProxyUrl(proxyUrl)
   }
-
   const onSetProxyUrl = (event: FocusEvent<HTMLInputElement>) => {
     if (isProxyTestAction(event)) {
       pendingProxyPreferenceSave.current = saveProxyUrl
       return
     }
-
     saveProxyUrl()
   }
-
   const saveProxyBypassRules = () => {
     void _setProxyBypassRules(proxyBypassRules)
   }
-
   const onSetProxyBypassRules = (event: FocusEvent<HTMLInputElement>) => {
     if (isProxyTestAction(event)) {
       pendingProxyPreferenceSave.current = saveProxyBypassRules
       return
     }
-
     saveProxyBypassRules()
   }
-
   const updateProxyTestInput = (nextInput: typeof proxyTestInput.current) => {
     proxyTestInput.current = nextInput
     proxyTestGeneration.current += 1
     setProxyTestLoading(false)
     setProxyTestResult(null)
   }
-
   const handleProxyTest = async () => {
     pendingProxyPreferenceSave.current = null
     const input = { ...proxyTestInput.current }
@@ -259,7 +235,6 @@ const GeneralSettings: FC = () => {
       input.mode === proxyTestInput.current.mode &&
       input.url === proxyTestInput.current.url &&
       input.bypassRules === proxyTestInput.current.bypassRules
-
     setProxyTestLoading(true)
     setProxyTestResult(null)
     try {
@@ -271,7 +246,6 @@ const GeneralSettings: FC = () => {
       if (isCurrent()) setProxyTestLoading(false)
     }
   }
-
   const getProxyTestRouteLabel = (route: OutputFor<'proxy.test_connection'>['route']) => {
     switch (route) {
       case 'proxy':
@@ -284,7 +258,6 @@ const GeneralSettings: FC = () => {
         return t('settings.proxy.test.route.fallback')
     }
   }
-
   const getProxyTestErrorLabel = (error: NonNullable<OutputFor<'proxy.test_connection'>['error']>) => {
     switch (error) {
       case 'invalid_config':
@@ -301,21 +274,17 @@ const GeneralSettings: FC = () => {
         return t('settings.proxy.test.error.connection_failed')
     }
   }
-
   const getProxyTestDescription = () => {
     if (!proxyTestResult) {
       return null
     }
-
     const values = {
       target: proxyTestResult.target,
       route: getProxyTestRouteLabel(proxyTestResult.route),
       reason: proxyTestResult.error ? getProxyTestErrorLabel(proxyTestResult.error) : ''
     }
-
     return proxyTestResult.success ? t('settings.proxy.test.success', values) : t('settings.proxy.test.failure', values)
   }
-
   const handleHardwareAccelerationChange = async (checked: boolean) => {
     const confirmed = await popup.confirm({
       title: t('settings.hardware_acceleration.confirm.title'),
@@ -327,14 +296,12 @@ const GeneralSettings: FC = () => {
       centered: true
     })
     if (!confirmed) return
-
     try {
       await setDisableHardwareAcceleration(checked)
     } catch (error) {
       toast.error(formatErrorMessage(error))
       throw error
     }
-
     setTimeoutTimer(
       'handleHardwareAccelerationChange',
       () => {
@@ -343,7 +310,6 @@ const GeneralSettings: FC = () => {
       500
     )
   }
-
   const saveDeveloperSettings = async (save: () => Promise<void>) => {
     if (developerSettingsSaving.current) return
     developerSettingsSaving.current = true
@@ -357,16 +323,13 @@ const GeneralSettings: FC = () => {
       setIsSavingDeveloperSettings(false)
     }
   }
-
   const handleRemoteDebuggingChange = (checked: boolean) =>
     saveDeveloperSettings(() => setRemoteDebuggingEnabled(checked))
-
   const handleDeveloperModeChange = (checked: boolean) =>
     saveDeveloperSettings(async () => {
       if (!checked) await setRemoteDebuggingEnabled(false)
       await setEnableDeveloperMode(checked)
     })
-
   const handleRemoteDebuggingPortChange = async (port: number | null) => {
     if (port === null || !Number.isInteger(port) || port < 1 || port > 65534) {
       toast.error(t('settings.developer.cdp.invalid_port'))
@@ -378,14 +341,11 @@ const GeneralSettings: FC = () => {
       toast.error(formatErrorMessage(error))
     }
   }
-
   const onSelectLanguage = (value: string) => {
     if (!isAppLanguage(value)) return
-
     void i18n.changeLanguage(value)
     void setLanguage(value)
   }
-
   return (
     <SettingsContentColumn theme={theme}>
       <SettingGroup theme={theme}>
@@ -495,7 +455,7 @@ const GeneralSettings: FC = () => {
                 type="url"
               />
             </SettingRow>
-            {isEvoStack && <SettingDescription>{t('settings.proxy.native_protocols')}</SettingDescription>}
+            {<SettingDescription>{t('settings.proxy.native_protocols')}</SettingDescription>}
             <SettingDivider />
             <SettingRow>
               <SettingRowTitle style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -555,10 +515,8 @@ const GeneralSettings: FC = () => {
 
       <SettingGroup theme={theme}>
         <SettingTitle>{t('settings.general.sections.retry')}</SettingTitle>
-        <SettingDescription>
-          {t(isEvoStack ? 'settings.models.retry.native_unavailable' : 'settings.models.retry.description')}
-        </SettingDescription>
-        <fieldset className="contents" disabled={isEvoStack} aria-label={t('settings.general.sections.retry')}>
+        <SettingDescription>{t('settings.models.retry.native_unavailable')}</SettingDescription>
+        <fieldset className="contents" disabled={true} aria-label={t('settings.general.sections.retry')}>
           <SettingDivider />
           <SettingRow id="setting-general-retry-enabled" className="scroll-mt-6">
             <SettingRowTitle className="gap-1">
@@ -734,5 +692,4 @@ const GeneralSettings: FC = () => {
     </SettingsContentColumn>
   )
 }
-
 export default GeneralSettings

@@ -1,12 +1,10 @@
 import { useTranslation } from 'react-i18next'
 
 import { Switch } from '@cherrystudio/ui'
-import { isEvoStack } from '@renderer/utils/platform'
 import { DEFAULT_KNOWLEDGE_CHUNK_SEPARATOR, type KnowledgeChunkStrategy } from '@shared/data/types/knowledge'
 
 import type { KnowledgeRagChunkValidationErrorCode } from '../../utils/validate'
 import { RagFieldRow, RagHintText, RagInlineField } from './panelPrimitives'
-
 interface ChunkingSectionProps {
   chunkStrategy: KnowledgeChunkStrategy
   chunkSeparator: string
@@ -20,7 +18,6 @@ interface ChunkingSectionProps {
   onChunkSizeChange: (value: string) => void
   onChunkOverlapChange: (value: string) => void
 }
-
 const ChunkingSection = ({
   chunkStrategy,
   chunkSeparator,
@@ -44,28 +41,25 @@ const ChunkingSection = ({
       case 'chunkOverlapMustBeSmaller':
         return t('knowledge.rag.chunk_overlap_must_be_smaller')
       case 'chunkSeparatorRequired':
-        return t(isEvoStack ? 'knowledge.rag.character_separator_required' : 'knowledge.rag.chunk_separator_required')
+        return t('knowledge.rag.character_separator_required')
       default:
         return undefined
     }
   }
-
   return (
     <div className="space-y-2">
       <div className="flex flex-col gap-4">
-        <RagFieldRow
-          label={t(isEvoStack ? 'knowledge.rag.character_window' : 'knowledge.rag.smart_chunking')}
-          hint={t(isEvoStack ? 'knowledge.rag.hints.character_window' : 'knowledge.rag.hints.smart_chunking')}>
+        <RagFieldRow label={t('knowledge.rag.character_window')} hint={t('knowledge.rag.hints.character_window')}>
           <Switch
-            aria-label={t(isEvoStack ? 'knowledge.rag.character_window' : 'knowledge.rag.smart_chunking')}
+            aria-label={t('knowledge.rag.character_window')}
             checked={chunkStrategy === 'structured'}
             onCheckedChange={(checked) => onChunkStrategyChange(checked ? 'structured' : 'delimiter')}
           />
         </RagFieldRow>
-        <fieldset className="contents" disabled={isEvoStack && chunkStrategy === 'structured'}>
+        <fieldset className="contents" disabled={chunkStrategy === 'structured'}>
           <RagInlineField
             label={t('knowledge.rag.chunk_separator')}
-            hint={t(isEvoStack ? 'knowledge.rag.hints.character_separator' : 'knowledge.rag.hints.chunk_separator')}
+            hint={t('knowledge.rag.hints.character_separator')}
             value={chunkSeparator}
             placeholder={DEFAULT_KNOWLEDGE_CHUNK_SEPARATOR}
             onChange={onChunkSeparatorChange}
@@ -73,17 +67,17 @@ const ChunkingSection = ({
         </fieldset>
         <RagInlineField
           label={t('knowledge.rag.chunk_size')}
-          hint={t(isEvoStack ? 'knowledge.rag.hints.character_size' : 'knowledge.rag.hints.chunk_size')}
+          hint={t('knowledge.rag.hints.character_size')}
           value={chunkSize}
-          suffix={t(isEvoStack ? 'knowledge.rag.characters_unit' : 'knowledge.rag.tokens_unit')}
+          suffix={t('knowledge.rag.characters_unit')}
           inputMode="numeric"
           onChange={onChunkSizeChange}
         />
         <RagInlineField
           label={t('knowledge.rag.chunk_overlap')}
-          hint={t(isEvoStack ? 'knowledge.rag.hints.character_overlap' : 'knowledge.rag.hints.chunk_overlap')}
+          hint={t('knowledge.rag.hints.character_overlap')}
           value={chunkOverlap}
-          suffix={t(isEvoStack ? 'knowledge.rag.characters_unit' : 'knowledge.rag.tokens_unit')}
+          suffix={t('knowledge.rag.characters_unit')}
           inputMode="numeric"
           onChange={onChunkOverlapChange}
         />
@@ -102,5 +96,4 @@ const ChunkingSection = ({
     </div>
   )
 }
-
 export default ChunkingSection

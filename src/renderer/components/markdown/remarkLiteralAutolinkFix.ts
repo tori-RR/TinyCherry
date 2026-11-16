@@ -5,7 +5,6 @@ import type { Plugin } from 'unified'
 import { unified } from 'unified'
 import type { Parent } from 'unist'
 import { visit } from 'unist-util-visit'
-
 /**
  * Repairs literal autolinks that swallowed adjacent emphasis markers. remark-gfm's autolink
  * extends a bare URL through any following non-whitespace run unless it is entirely strippable
@@ -24,7 +23,6 @@ import { visit } from 'unist-util-visit'
  * left alone because a bare `*` is a valid URL character, making the boundary unresolvable;
  * underscore emphasis (`_`/`__`) is not swallowed by remark-gfm at all and needs no repair.
  */
-
 const CLOSER = '**'
 // Caps the chained-tail recursion on adversarially long chains (each repaired link spends 1);
 // over-budget links keep their GFM shape — content is never dropped. Real citation lists stay
@@ -33,24 +31,20 @@ const MAX_TAIL_REPAIRS = 50
 // Chars after the markers that continue a URL (scheme/port/query/path/extension); anything
 // else — letters, CJK, brackets, whitespace, EOF — is prose resuming.
 const URL_CONTINUATION_REGEX = /^[/:#?&=%@+~.\-_]/
-
 interface FixPlan {
   parent: Parent
   startIndex: number
   removeCount: number
   nodes: RootContent[]
 }
-
 // Shares the document pipeline so a second URL inside a tail stays clickable.
 const tailProcessor = unified().use(remarkParse).use(remarkGfm)
-
 function stripPositions(nodes: PhrasingContent[]): void {
   for (const node of nodes) {
     delete node.position
     if ('children' in node) stripPositions(node.children)
   }
 }
-
 function parseInlineTail(value: string): PhrasingContent[] {
   const tree = tailProcessor.parse(value)
   const paragraphs = tree.children.filter((child): child is Paragraph => child.type === 'paragraph')
@@ -62,8 +56,9 @@ function parseInlineTail(value: string): PhrasingContent[] {
       // to the plain text so no user-visible suffix is dropped.
       [{ type: 'text', value }]
 }
-
-function isSwallowedLiteralAutolink(node: Link): node is Link & { children: [Text] } {
+function isSwallowedLiteralAutolink(node: Link): node is Link & {
+  children: [Text]
+} {
   if (node.children.length !== 1 || node.children[0].type !== 'text') return false
   const value = node.children[0].value
   const isWww = node.url === `http://${value}` || node.url === `https://${value}`
@@ -73,10 +68,14 @@ function isSwallowedLiteralAutolink(node: Link): node is Link & { children: [Tex
   const linkStart = node.position?.start.offset
   return linkStart !== undefined && linkStart === node.children[0].position?.start.offset
 }
-
 // Cut at the FIRST boundary run — earlier runs are URL continuations (`/a/**/b`) and a chained
 // tail is repaired recursively by the caller. `indexOf` strictly increases, so no looping.
-function findCloserRun(url: string): { start: number; tailStart: number } | undefined {
+function findCloserRun(url: string):
+  | {
+      start: number
+      tailStart: number
+    }
+  | undefined {
   let index = url.indexOf(CLOSER)
   while (index >= 0) {
     const after = url[index + CLOSER.length]
@@ -91,15 +90,17 @@ function findCloserRun(url: string): { start: number; tailStart: number } | unde
   }
   return undefined
 }
-
 interface Cut {
   url: string
   text: string
   tail: string
 }
-
 // Cut href and label with the same scan so they never diverge; also returns the residual tail.
-function computeCut(node: Link & { children: [Text] }): Cut | undefined {
+function computeCut(
+  node: Link & {
+    children: [Text]
+  }
+): Cut | undefined {
   const closer = findCloserRun(node.url)
   if (!closer) return undefined
   const text = node.children[0]
@@ -111,7 +112,6 @@ function computeCut(node: Link & { children: [Text] }): Cut | undefined {
     tail: node.url.slice(closer.tailStart)
   }
 }
-
 // Repair one flat inline sequence for chains of back-to-back bolded urls: cut, wrap in
 // strong, recurse on the tail. The escape check uses the tail substring as its own source.
 // `budget` spends one per repaired link; over-budget links keep their GFM shape.
@@ -156,16 +156,23 @@ function repairTailNodes(nodes: PhrasingContent[], tailSource: string, budget = 
   stripPositions(repaired)
   return repaired
 }
-
 // An extractor instead of an assertion: tsgo and typescript-eslint resolve the mdast/unist
 // union differently, so a direct `as Text` at the call site trips one toolchain or the other.
 function toTextNode(node: unknown): Text | undefined {
-  if (typeof node === 'object' && node !== null && 'type' in node && (node as { type: string }).type === 'text') {
+  if (
+    typeof node === 'object' &&
+    node !== null &&
+    'type' in node &&
+    (
+      node as {
+        type: string
+      }
+    ).type === 'text'
+  ) {
     return node as Text
   }
   return undefined
 }
-
 // True when the opener's trailing markers are literal, unescaped `*` characters in the raw
 // source span — present as stars (a character reference like `&ast;` leaves the span short of
 // stars) and not preceded by an odd backslash run (`\**`). Anything else fails closed.
@@ -186,7 +193,6 @@ function openerHasLiteralMarkers(opener: Text, spanSource: string): boolean {
   }
   return slashes % 2 === 0
 }
-
 function buildFix(node: Link, index: number, parent: Parent, source: string): FixPlan | undefined {
   if (!isSwallowedLiteralAutolink(node)) return undefined
   // Without an opener hugging the link there is no evidence the stars were emphasis, and an
@@ -198,19 +204,15 @@ function buildFix(node: Link, index: number, parent: Parent, source: string): Fi
   // earlier in the span (`\\**`, `\q**`, `&amp;**`) must not disqualify real emphasis.
   const openerSource = opener.position && source.slice(opener.position.start.offset, opener.position.end.offset)
   if (!openerSource || !openerHasLiteralMarkers(opener, openerSource)) return undefined
-
   const cut = computeCut(node)
   if (!cut) return undefined
-
   const text = node.children[0]
   node.url = cut.url
   text.value = cut.text
   // Both spans covered the swallowed run, which no longer belongs to either node.
   delete node.position
   delete text.position
-
   const tailNodes = repairTailNodes(parseInlineTail(cut.tail), cut.tail)
-
   const strong: Strong = { type: 'strong', children: [node] }
   const head: RootContent[] = []
   // Consume the opener's full run too, so `***url***` does not leave stray stars behind.
@@ -220,23 +222,18 @@ function buildFix(node: Link, index: number, parent: Parent, source: string): Fi
   // Splice covers the opener too so the trimmed text replaces it in one step.
   return { parent, startIndex: index - 1, removeCount: 2, nodes: [...head, ...tailNodes] }
 }
-
 export const remarkLiteralAutolinkFix: Plugin<[], Root> = () => (tree, file) => {
   // VFile.frozen may not hold value; read it explicitly rather than relying on toString.
   const source = typeof file.value === 'string' ? file.value : String(file)
   if (!source.includes(CLOSER)) return tree
-
   const plans: FixPlan[] = []
-
   visit(tree, 'link', (node, index, parent) => {
     if (!parent || typeof index !== 'number') return
     const plan = buildFix(node, index, parent, source)
     if (plan) plans.push(plan)
   })
-
   for (const plan of plans.reverse()) {
     plan.parent.children.splice(plan.startIndex, plan.removeCount, ...plan.nodes)
   }
-
   return tree
 }

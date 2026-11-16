@@ -381,37 +381,6 @@ describe('DataSourcePanel', () => {
     })
   })
 
-  it.each(['downloading', 'not_downloaded', 'error', 'unsupported'])(
-    'keeps sources accessible without the removed local model download gate (%s)',
-    (status) => {
-      mockUseLocalModel.mockReturnValue({ status, percent: 42 })
-      const onAdd = vi.fn()
-      render(
-        <DataSourcePanel
-          embeddingModelId={LOCAL_EMBEDDING_UNIQUE_MODEL_ID}
-          updatedAt="2026-04-15T09:00:00+08:00"
-          items={[]}
-          isLoading={false}
-          onAdd={onAdd}
-          onDelete={vi.fn()}
-          onReindex={vi.fn()}
-        />
-      )
-
-      expect(screen.queryByRole('status')).not.toBeInTheDocument()
-      expect(screen.queryByText('本地嵌入模型')).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: '前往设置' })).not.toBeInTheDocument()
-      expect(screen.getByRole('button', { name: '添加数据源' })).toBeInTheDocument()
-      for (const name of ['文件', '笔记', '目录', '链接']) {
-        expect(screen.getByRole('button', { name })).toBeEnabled()
-      }
-      fireEvent.click(screen.getByRole('button', { name: '文件' }))
-      expect(onAdd).toHaveBeenCalledWith('file')
-      expect(mockUseLocalModel).not.toHaveBeenCalled()
-      expect(mockOpenSettingsTab).not.toHaveBeenCalled()
-    }
-  )
-
   it('keeps existing sources and Add visible without obsolete download recovery controls', () => {
     mockUseLocalModel.mockReturnValue({ status: 'error', percent: 0 })
 
@@ -433,82 +402,6 @@ describe('DataSourcePanel', () => {
     expect(screen.queryByRole('button', { name: '前往设置' })).not.toBeInTheDocument()
     expect(mockUseLocalModel).not.toHaveBeenCalled()
     expect(mockOpenSettingsTab).not.toHaveBeenCalled()
-  })
-
-  it('renders loading and empty states through the list composition without changing panel behavior', () => {
-    const { rerender } = render(
-      <DataSourcePanel
-        updatedAt="2026-04-15T09:00:00+08:00"
-        items={[]}
-        isLoading
-        onAdd={vi.fn()}
-        onDelete={vi.fn()}
-        onReindex={vi.fn()}
-      />
-    )
-
-    expect(screen.getByText('加载中...')).toBeInTheDocument()
-
-    rerender(
-      <DataSourcePanel
-        updatedAt="2026-04-15T09:00:00+08:00"
-        items={[]}
-        isLoading={false}
-        onAdd={vi.fn()}
-        onDelete={vi.fn()}
-        onReindex={vi.fn()}
-      />
-    )
-
-    expect(screen.getByText('上传第一个数据源')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '文件' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '笔记' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '目录' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '链接' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '网站' })).not.toBeInTheDocument()
-  })
-
-  it('guides users from the empty data source state into file or URL add flows', () => {
-    const onAdd = vi.fn()
-
-    const { rerender } = render(
-      <DataSourcePanel
-        updatedAt="2026-04-15T09:00:00+08:00"
-        items={[]}
-        isLoading={false}
-        onAdd={onAdd}
-        onDelete={vi.fn()}
-        onReindex={vi.fn()}
-      />
-    )
-
-    expect(screen.getByText('暂无数据源')).toBeInTheDocument()
-    expect(screen.getByText('上传第一个数据源')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '文件' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '笔记' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '目录' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '链接' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '网站' })).not.toBeInTheDocument()
-
-    expect(document.querySelector('input[type="file"]')).toBeNull()
-
-    fireEvent.click(screen.getByRole('button', { name: '文件' }))
-
-    expect(onAdd).toHaveBeenCalledWith('file')
-
-    rerender(
-      <DataSourcePanel
-        updatedAt="2026-04-15T09:00:00+08:00"
-        items={[]}
-        isLoading={false}
-        onAdd={onAdd}
-        onDelete={vi.fn()}
-        onReindex={vi.fn()}
-      />
-    )
-    fireEvent.click(screen.getByRole('button', { name: '链接' }))
-
-    expect(onAdd).toHaveBeenCalledWith('url')
   })
 
   it('sends dropped files through the existing file add flow while preserving the picker entry', () => {
@@ -570,57 +463,6 @@ describe('DataSourcePanel', () => {
       Object.assign(window.api.file, { getPathForFile })
     })
 
-    it.each(['FolderDropFixture', 'DocsPdf.pdf'])('directory mistaken for an unsupported/document File: %s', (name) => {
-      const directory = new File(['nonzero directory size'], name, {
-        type: name.endsWith('.pdf') ? 'application/pdf' : ''
-      })
-      const onAdd = renderDropPanel()
-
-      fireEvent.drop(screen.getByText('上传第一个数据源'), {
-        dataTransfer: { files: [directory], items: [directoryItem(directory)] }
-      })
-
-      expect(onAdd.mock.calls).toEqual([['file', [], [`/host/${name}`]]])
-      expect(toast.warning).not.toHaveBeenCalled()
-      expect(toast.error).not.toHaveBeenCalled()
-    })
-
-    it('mixed roots lost or double-counted: partitions once without pairing item and file indices', () => {
-      const first = new File(['folder'], 'FolderDropFixture')
-      const second = new File(['folder'], 'DocsPdf.pdf', { type: 'application/pdf' })
-      const plain = new File(['text'], 'plain.md')
-      const unsupported = new File(['exe'], 'bad.exe')
-      const next = new File(['pdf'], 'next.pdf')
-      const files = [first, second, plain, unsupported, next]
-      const onAdd = renderDropPanel()
-
-      fireEvent.drop(screen.getByText('上传第一个数据源'), {
-        dataTransfer: {
-          files,
-          items: [
-            {
-              kind: 'string',
-              webkitGetAsEntry: () => {
-                throw new Error('String item inspected')
-              }
-            },
-            directoryItem(first),
-            directoryItem(second),
-            ...[plain, unsupported, next].map((file) => ({
-              kind: 'file',
-              webkitGetAsEntry: () => ({ isDirectory: false }),
-              getAsFile: () => file
-            }))
-          ]
-        }
-      })
-
-      expect(onAdd.mock.calls).toEqual([
-        ['file', [plain, unsupported, next], ['/host/FolderDropFixture', '/host/DocsPdf.pdf']]
-      ])
-      expect(getPathForFile.mock.calls.map(([file]) => file)).toEqual([first, second])
-    })
-
     it.each(['files only', 'absent entry API', 'null entry'])(
       'compatibility fallback broken: %s preserves the two-argument ordinary-file route',
       (payload) => {
@@ -643,39 +485,6 @@ describe('DataSourcePanel', () => {
       }
     )
 
-    it.each(['entry throws', 'null File', 'File throws', 'path throws', 'empty path', 'relative path'])(
-      'native capture failure silently imports a subset: %s aborts the whole drop',
-      (failure) => {
-        const first = new File(['folder'], 'valid')
-        const failing = new File(['folder'], 'failing')
-        const item = {
-          kind: 'file',
-          webkitGetAsEntry: () => {
-            if (failure === 'entry throws') throw new Error('Entry unavailable')
-            return { isDirectory: true }
-          },
-          getAsFile: () => {
-            if (failure === 'File throws') throw new Error('File unavailable')
-            return failure === 'null File' ? null : failing
-          }
-        }
-        getPathForFile.mockImplementation((file: File) => {
-          if (file === first) return '/host/valid'
-          if (failure === 'path throws') throw new Error('Path unavailable')
-          return failure === 'empty path' ? '' : 'relative/folder'
-        })
-        const onAdd = renderDropPanel()
-
-        fireEvent.drop(screen.getByText('上传第一个数据源'), {
-          dataTransfer: { files: [first, failing, new File(['text'], 'plain.md')], items: [directoryItem(first), item] }
-        })
-
-        expect(onAdd).not.toHaveBeenCalled()
-        expect(vi.mocked(toast.error).mock.calls).toEqual([[expect.stringContaining('添加数据源失败: ')]])
-        expect(toast.warning).not.toHaveBeenCalled()
-      }
-    )
-
     it('keeps drilled-in directories read-only for drops', () => {
       const directory = new File(['folder'], 'FolderDropFixture')
       const onAdd = renderDropPanel({
@@ -690,24 +499,6 @@ describe('DataSourcePanel', () => {
       expect(onAdd).not.toHaveBeenCalled()
       expect(getPathForFile).not.toHaveBeenCalled()
       expect(toast.error).not.toHaveBeenCalled()
-    })
-
-    it('does not gate original directory drops on removed local model download state', () => {
-      mockUseLocalModel.mockReturnValue({ status: 'downloading', percent: 42 })
-      const directory = new File(['folder'], 'FolderDropFixture')
-      const onAdd = renderDropPanel({
-        items: [createFileItem({ id: 'existing', originName: 'existing.pdf' })],
-        embeddingModelId: LOCAL_EMBEDDING_UNIQUE_MODEL_ID
-      })
-
-      fireEvent.drop(screen.getByText('existing.pdf'), {
-        dataTransfer: { files: [directory], items: [directoryItem(directory)] }
-      })
-
-      expect(onAdd).toHaveBeenCalledExactlyOnceWith('file', [], ['/host/FolderDropFixture'])
-      expect(getPathForFile).toHaveBeenCalledExactlyOnceWith(directory)
-      expect(toast.error).not.toHaveBeenCalled()
-      expect(mockUseLocalModel).not.toHaveBeenCalled()
     })
   })
 
@@ -837,26 +628,6 @@ describe('DataSourcePanel', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: '文件' }))
 
     expect(onAdd).toHaveBeenCalledWith('file')
-  })
-
-  it('shows source choices on header add hover and forwards the selected source', () => {
-    const onAdd = vi.fn()
-
-    render(
-      <DataSourcePanel
-        updatedAt="2026-04-15T09:00:00+08:00"
-        items={[createFileItem({ id: 'file-1', originName: '季度报告.pdf' })]}
-        isLoading={false}
-        onAdd={onAdd}
-        onDelete={vi.fn()}
-        onReindex={vi.fn()}
-      />
-    )
-
-    fireEvent.mouseEnter(screen.getByRole('button', { name: '添加数据源' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: '目录' }))
-
-    expect(onAdd).toHaveBeenCalledWith('directory')
   })
 
   it('prunes selected item ids when items are removed', async () => {

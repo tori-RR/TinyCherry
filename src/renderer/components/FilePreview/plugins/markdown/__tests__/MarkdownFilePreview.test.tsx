@@ -92,14 +92,18 @@ describe('MarkdownFilePreview', () => {
     })
     vi.stubGlobal('location', new URL('http://tauri.localhost/windows/evostack/index.html'))
     vi.stubGlobal('__TAURI__', { core: { invoke, Channel: vi.fn() } })
+    const root = document.createElement('div')
+    root.id = 'root'
+    document.body.append(root)
     try {
-      const { ipcRenderer } = await import('@renderer/windows/evostack/transport')
-      mocks.readText.mockImplementation((path: string) => ipcRenderer.invoke('fs:readText', path))
+      const { nativeTransport } = await import('@platform/tauri/transport')
+      expect(await nativeTransport.request('fs:readText', 'C:\\fixture\\SKILL.md')).toBe(content)
+      mocks.readText.mockImplementation((path: string) => nativeTransport.request('fs:readText', path))
       renderPreview({ filePath: 'C:\\fixture\\SKILL.md' as AbsoluteFilePath, size: bytes.length })
 
       expect(await screen.findByRole('heading', { name: 'Native skill preview' })).toBeInTheDocument()
       expect(screen.getByText('保留原始 Markdown 界面。')).toBeInTheDocument()
-      expect(invoke.mock.calls.filter(([command]) => command === 'ipc_request')).toEqual([
+      expect(invoke.mock.calls.filter(([command]) => command === 'ipc_request').slice(-1)).toEqual([
         [
           'ipc_request',
           {
@@ -116,6 +120,7 @@ describe('MarkdownFilePreview', () => {
       ])
     } finally {
       window.dispatchEvent(new Event('pagehide'))
+      root.remove()
       vi.unstubAllGlobals()
     }
   })

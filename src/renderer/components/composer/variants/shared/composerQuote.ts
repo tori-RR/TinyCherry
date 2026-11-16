@@ -36,7 +36,7 @@ export function useComposerQuoteInsertion<T extends QuoteInsertionActions>(actio
 
   useEffect(() => {
     if (!layerActive) return
-    return window.electron?.ipcRenderer.on(IpcChannel.App_QuoteToMain, (_, selectedText: string) => {
+    return window.desktop.listen(IpcChannel.App_QuoteToMain, (_, selectedText: string) => {
       insertQuote(selectedText)
     })
   }, [layerActive])

@@ -314,9 +314,7 @@ export function useChatWriteActions(params: Params): Result {
       // Pending replies are not a regeneration target; otherwise use the current composer selection.
       const regenerateModelId = options?.modelId ?? (targetStatus === 'pending' ? undefined : composerModelId)
       const retryModelId =
-        target?.role === 'assistant'
-          ? (regenerateModelId ?? (target.metadata?.modelId as UniqueModelId | undefined))
-          : regenerateModelId
+        target?.role === 'assistant' ? (regenerateModelId ?? target.metadata?.modelId) : regenerateModelId
       // Only a persisted explicit selection pins the model; sibling history cannot establish intent.
       const effectiveRegenerateModelId =
         target?.metadata?.modelSelection === 'explicit' ? retryModelId : regenerateModelId
@@ -333,7 +331,7 @@ export function useChatWriteActions(params: Params): Result {
           topicId: topic.id,
           parentAnchorId,
           retryMessageId: target.id,
-          mentionedModelIds: [retryModelId],
+          mentionedModelIds: [retryModelId as UniqueModelId],
           ...turnOptionsRequestFields(turnOptions)
         })
         if (ack.mode === 'blocked') throw new Error(getStreamBlockedMessage(ack))
@@ -351,7 +349,7 @@ export function useChatWriteActions(params: Params): Result {
           topicId: topic.id,
           parentAnchorId,
           appendToLiveGroupMessageId: target.id,
-          mentionedModelIds: [effectiveRegenerateModelId],
+          mentionedModelIds: [effectiveRegenerateModelId as UniqueModelId],
           ...turnOptionsRequestFields(turnOptions)
         })
         if (ack.mode === 'blocked') throw new Error(getStreamBlockedMessage(ack))
@@ -463,13 +461,13 @@ export function useChatWriteActions(params: Params): Result {
         return
       }
 
-      const modelId = target?.role === 'assistant' ? (target.metadata?.modelId as UniqueModelId | undefined) : undefined
+      const modelId = target?.role === 'assistant' ? target.metadata?.modelId : undefined
       const turnOptions = getInheritedTurnOptions(uiMessages, target)
       const ack = await ipcApi.request('ai.stream.open', {
         trigger: 'regenerate-message',
         topicId: topic.id,
         parentAnchorId,
-        ...(modelId && { mentionedModelIds: [modelId] }),
+        ...(modelId && { mentionedModelIds: [modelId as UniqueModelId] }),
         ...turnOptionsRequestFields(turnOptions)
       })
 

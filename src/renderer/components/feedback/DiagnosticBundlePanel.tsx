@@ -169,7 +169,7 @@ const DiagnosticBundlePanel: FC<DiagnosticBundlePanelProps> = ({ appVersion, onB
       body: t('settings.about.diagnostics.mail.body', {
         bundleId: savedResult.bundleId,
         fileName: savedResult.fileName,
-        platform: window.electron.process.platform,
+        platform: window.desktop.info.platform,
         range: t(diagnosticRangeLabelKey(range)),
         version: appVersion || t('settings.about.diagnostics.unknown')
       })

@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import QuickAssistantSettings from '@renderer/pages/settings/QuickAssistantSettings'
-
+import { FeatureUnavailable } from '@renderer/components/FeatureUnavailable'
 export const Route = createFileRoute('/settings/quick-assistant')({
-  component: QuickAssistantSettings
+  validateSearch: (search: Record<string, unknown>) => search,
+  component: FeatureUnavailable
 })

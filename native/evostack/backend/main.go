@@ -16,7 +16,7 @@ import (
 
 const maxFrame = 4 * 1024 * 1024
 
-var appVersion = "2.1.10"
+var appVersion = "development"
 var buildRevision = "development"
 
 func buildInfo() object {

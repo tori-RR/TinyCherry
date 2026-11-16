@@ -6,10 +6,6 @@
 !public-skills.txt
 !agent-notes/
 !agent-notes/**
-!cherry-electron-dev/
-!cherry-electron-dev/**
-!cherry-regression-test/
-!cherry-regression-test/**
 !create-skill/
 !create-skill/**
 !docs-governance/
@@ -24,8 +20,6 @@
 !gh-pr-review/**
 !gh-stack/
 !gh-stack/**
-!prepare-release/
-!prepare-release/**
 !translate-docs/
 !translate-docs/**
 !vercel-react-best-practices/

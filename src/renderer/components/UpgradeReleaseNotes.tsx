@@ -1,9 +1,9 @@
-import type { UpdateInfo } from 'builder-util-runtime'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button } from '@cherrystudio/ui'
 import { useUpgradeReleaseNotes } from '@renderer/hooks/useUpgradeReleaseNotes'
+import type { UpdateInfo } from '@shared/types/release'
 import { localizeReleaseNotes } from '@shared/utils/releaseNotes'
 
 import { ReleaseNotes } from './ReleaseNotes'

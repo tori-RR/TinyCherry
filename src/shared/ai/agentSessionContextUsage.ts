@@ -1,4 +1,4 @@
-import type { OperationResult, ThreadContextUsage } from '@cherrystudio/agent-runtime'
+import type { OperationResult, ThreadContextUsage } from '@shared/ai/agentContextContracts'
 
 /** Product model association for a harness-owned context reading. */
 export interface AgentSessionContextUsage {

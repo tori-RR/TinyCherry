@@ -42,7 +42,7 @@ export function resolveExtensionPlugin(filePath: string, registry: FilePreviewRe
 
 export const filePreviewRegistry = createFilePreviewRegistry({
   extensionPlugins: [
-    ...previewFormats.map((format) => ({ ...format, load: () => import('./ElectronFilePreview') })),
+    ...previewFormats.map((format) => ({ ...format, load: () => import('./DesktopFilePreview') })),
     htmlFilePreviewPlugin,
     markdownFilePreviewPlugin,
     mermaidFilePreviewPlugin,

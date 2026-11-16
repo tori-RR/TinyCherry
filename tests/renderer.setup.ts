@@ -135,18 +135,23 @@ vi.stubGlobal(
   }
 )
 
-vi.stubGlobal('electron', {
-  ipcRenderer: {
-    on: vi.fn(),
-    send: vi.fn(),
-    invoke: vi.fn().mockResolvedValue(undefined)
-  }
+vi.stubGlobal('desktop', {
+  info: { platform: 'win32', arch: 'x64', version: '2.2.2', revision: 'test', protocol: 1, capabilities: {} },
+  environment: { NODE_ENV: 'test' },
+  appearance: { insertCSS: vi.fn(), setZoomFactor: vi.fn(), setZoomLevel: vi.fn() },
+  listen: vi.fn(() => () => {}),
+  listenOnce: vi.fn(() => () => {}),
+  notify: vi.fn(),
+  request: vi.fn().mockResolvedValue(undefined)
 })
 vi.stubGlobal('api', {
   file: {
     read: vi.fn().mockResolvedValue('[]'),
-    writeWithId: vi.fn().mockResolvedValue(undefined)
+    writeWithId: vi.fn().mockResolvedValue(undefined),
+    createTempFile: vi.fn(),
+    get: vi.fn()
   },
+  shell: { openExternal: vi.fn().mockResolvedValue(undefined) },
   // Low-level IpcApi bridge — the typed `ipcApi` facade calls through this. Stubbed so
   // module-level `ipcApi.on(...)` side effects (e.g. the renderer notification singleton)
   // don't crash tests that transitively import them without a local `@renderer/ipc` mock.

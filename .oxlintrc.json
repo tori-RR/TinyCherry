@@ -22,12 +22,8 @@
     "tests/**",
     ".yarn/**",
     ".gitignore",
-    "scripts/cloudflare-worker.js",
-    "src/main/services/nutstore/sso/lib/**",
     "src/renderer/ui/**",
     "packages/**/dist",
-    "native/system-speech/dist",
-    "eslint.config.mjs",
     "scripts/data-classify/**"
   ],
   "options": {
@@ -74,14 +70,7 @@
       "env": {
         "node": true
       },
-      "files": [
-        "src/main/**",
-        "resources/scripts/**",
-        "scripts/**",
-        "playwright.config.ts",
-        "electron.vite.config.ts",
-        "packages/ui/scripts/**"
-      ]
+      "files": ["resources/scripts/**", "scripts/**", "native/evostack/*.mjs", "packages/ui/scripts/**"]
     },
     {
       "env": {
@@ -89,7 +78,6 @@
       },
       "files": [
         "src/renderer/**/*.{ts,tsx}",
-        "packages/aiCore/**",
         "packages/extension-table-plus/**",
         "packages/file-preview/src/**",
         "packages/ui/**"
@@ -100,19 +88,11 @@
         "node": true,
         "vitest": true
       },
-      "files": ["**/__tests__/*.test.{ts,tsx}", "tests/**"]
-    },
-    {
-      "env": {
-        "browser": true,
-        "node": true
-      },
-      "files": ["src/preload/**"]
-    },
-    {
-      "files": ["packages/ai-sdk-provider/**"],
-      "globals": {
-        "fetch": "readonly"
+      "files": ["**/__tests__/*.test.{ts,tsx}", "tests/**"],
+      "rules": {
+        // Fixtures intentionally pass invalid and partial values through mocks.
+        // Keep promise/error checks; fixture assertions are not production narrowing.
+        "typescript/no-unnecessary-type-assertion": "off"
       }
     }
   ],

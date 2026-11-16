@@ -1,8 +1,7 @@
 # UI semantic contract compiler
 
 This directory owns Cherry Studio's build-time `data-ui` protocol.
-The normative consumer contract, stability tiers, maintained anchors, and Custom CSS rules live in
-[`docs/dev/references/components/ui-semantic-contract.md`](../../docs/dev/references/components/ui-semantic-contract.md).
+The maintained anchors below are checked against the current Tauri frontend source.
 
 - `vitePlugin.ts` injects readable semantic tokens before React compilation.
 - `transform.ts` parses TypeScript/TSX with Oxc ESTree and performs source-mapped AST/HTML transformations without
@@ -30,4 +29,11 @@ Existing static `data-slot` markers remain unchanged in source and output and en
 as authored `data-ui` `part:*` tokens. Caller semantics passed through component props are merged with the intrinsic
 node's structural parts, including through JSX spreads and Radix `asChild` slots.
 
-Use `pnpm ui:contract:query chat.message` to discover matching semantic roles and their current source locations.
+The maintained desktop contract currently includes:
+
+- `app.content`
+- `chat.composer.action.send`
+- `chat.composer.action.pause`
+- `part:button`
+
+Use `pnpm exec tsx scripts/uiContract/query.ts chat.message` to discover matching semantic roles and their current source locations.

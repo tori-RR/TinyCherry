@@ -1403,6 +1403,7 @@
   "conversation_owner.delete_permanently.sessions_kept": "As suas conversas são mantidas e movidas para \"Agente desvinculado\".",
   "conversation_owner.delete_permanently.topics_deleted": "Estes tópicos e as respetivas mensagens também serão eliminados.",
   "conversation_owner.delete_permanently.topics_kept": "Os seus tópicos são mantidos e movidos para \"Assistente Desvinculado\".",
+  "desktop.feature_unavailable": "This feature is not available in this desktop version yet.",
   "deviceConnections.capabilities.agent": "Controlar sessões de agente",
   "deviceConnections.capabilities.configuration": "Importar fornecedores e modelos",
   "deviceConnections.claims.approve": "Permitir",

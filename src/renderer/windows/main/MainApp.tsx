@@ -16,13 +16,11 @@ import { FileEditSessionProvider } from '@renderer/components/FileEditSessionPro
 import { AppShell } from '@renderer/components/layout/AppShell'
 import { TabsProvider } from '@renderer/components/layout/TabsProvider'
 import { MandatoryGateProvider } from '@renderer/components/MandatoryGateProvider'
-import { McpInteractionHost } from '@renderer/components/McpInteractionHost'
 import { PopupHost } from '@renderer/components/PopupHost'
 import { ThemeProvider } from '@renderer/components/ThemeProvider'
 import ToastHost from '@renderer/components/ToastHost'
 import { WindowFatalFallback } from '@renderer/components/WindowFatalFallback'
 import { useMainWindowNavigation } from '@renderer/hooks/tab'
-import { useIsPrivacyUpdateRequired } from '@renderer/hooks/useIsPrivacyUpdateRequired'
 import { useStorageMonitorNotification } from '@renderer/hooks/useStorageMonitorNotification'
 import { useWindowRuntime } from '@renderer/hooks/useWindowRuntime'
 import { registerImageModeChooser } from '@renderer/services/imageExportModeChooser'
@@ -30,11 +28,7 @@ import { getSidebarDefaultLandingUrl } from '@renderer/utils/sidebar'
 import { WindowFileEditRecovery } from '@renderer/windows/WindowFileEditRecovery'
 import type { Tab } from '@shared/data/cache/cacheValueTypes'
 
-import { useAppUpdateHandler } from './hooks/useAppUpdateHandler'
-import { useAutoBackupEvents } from './hooks/useAutoBackupEvents'
-import { useCherryCloudSubscriptionReminder } from './hooks/useCherryCloudSubscriptionReminder'
 import { useTopicNamingErrorNotification } from './hooks/useTopicNamingErrorNotification'
-import { PrivacyPolicyUpdateGate } from './privacy/PrivacyPolicyUpdateGate'
 
 const logger = loggerService.withContext('MainApp')
 const OnboardingPage = lazy(() => import('./onboarding/OnboardingPage'))
@@ -86,11 +80,8 @@ function MainWindowRuntime(): null {
     console.timeEnd('init')
   }, [])
 
-  useAppUpdateHandler()
-  useAutoBackupEvents()
   useStorageMonitorNotification()
   useTopicNamingErrorNotification()
-  useCherryCloudSubscriptionReminder()
 
   return null
 }
@@ -100,9 +91,9 @@ export function MainWindowContent(): React.ReactElement {
   const [sidebarShortcuts] = usePreference('ui.sidebar_shortcut')
   const [defaultPaintingProvider] = usePreference('feature.paintings.default_provider')
   const sidebarShortcutRegistry = useMemo(() => new SidebarShortcutRegistry(CORE_SIDEBAR_SHORTCUT_PROVIDERS), [])
-  const privacyUpdateRequired = useIsPrivacyUpdateRequired()
+
   // Onboarding collects privacy consent itself, so the gate only owns the window afterwards.
-  const privacyGateOpen = providerSetupStatus !== 'pending' && privacyUpdateRequired
+  const privacyGateOpen = false
 
   const initialDefaultTab = useMemo<Tab>(
     () => ({
@@ -129,11 +120,10 @@ export function MainWindowContent(): React.ReactElement {
           )}
           <MainWindowRuntime />
           <ConversationNotificationRuntime />
-          <McpInteractionHost />
+
           <PopupHost />
           <ToastHost />
           <WindowFileEditRecovery />
-          {providerSetupStatus === 'pending' ? null : <PrivacyPolicyUpdateGate />}
         </MandatoryGateProvider>
       </SidebarShortcutRegistryProvider>
     </TabsProvider>

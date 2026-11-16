@@ -175,7 +175,7 @@ describe('usePreviewKnowledgeSource', () => {
 
     expect(mockIpcRequest).toHaveBeenCalledWith('knowledge.get_file_path', { itemId: 'url-1' })
     expect(previewFileMock).toHaveBeenCalledWith({
-      fileName: 'Product Docs',
+      fileName: 'https://example.com/product-docs',
       filePath: '/knowledge/base-1/raw/Product Docs.md'
     })
     expect(mockOpenPath).not.toHaveBeenCalled()

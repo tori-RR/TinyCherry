@@ -80,17 +80,6 @@ describe('UserAccountPanel', () => {
     expect(request.mock.calls.filter(([route]) => route.startsWith('cherry_cloud.'))).toEqual([])
   })
 
-  it('shows the local nickname without account, profile editing or subscription controls', () => {
-    MockUsePreferenceUtils.setPreferenceValue('app.user.name', 'Local nickname')
-    render(<UserAccountPanel />)
-
-    expect(screen.getByText('Local nickname')).toBeVisible()
-    expect(screen.queryByRole('button', { name: /Local nickname|个人信息|登录|订阅|用量/ })).not.toBeInTheDocument()
-    expect(vi.mocked(window.api.ipcApi.request).mock.calls.some(([route]) => route.startsWith('cherry_cloud.'))).toBe(
-      false
-    )
-  })
-
   it('places help below appearance and keeps settings as the last menu action', async () => {
     const close = vi.fn()
     render(

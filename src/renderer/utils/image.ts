@@ -8,7 +8,6 @@ import { ipcApi } from '@renderer/ipc'
 import { AbsoluteFilePathSchema, type FileUrlString } from '@shared/types/file'
 import { parseDataUrl } from '@shared/utils/dataUrl'
 import { createFilePathHandle, fileUrlToPath } from '@shared/utils/file'
-
 const logger = loggerService.withContext('Utils:image')
 const TRANSPARENT_IMAGE_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='
 /**
@@ -18,17 +17,14 @@ const TRANSPARENT_IMAGE_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAA
  * content in the rasterized image.
  */
 export const IMAGE_CAPTURE_ATTRIBUTE = 'data-image-capturing'
-
 /** Virtualized content registers a preparation promise and its restoration at capture time. */
 export class ImageCaptureEvent extends Event {
   static readonly type = 'prepare-image-capture'
   readonly preparations: Promise<() => void | Promise<void>>[] = []
-
   constructor() {
     super(ImageCaptureEvent.type)
   }
 }
-
 async function prepareCaptureContents(root: HTMLElement): Promise<() => Promise<void>> {
   const event = new ImageCaptureEvent()
   for (const element of [root, ...root.querySelectorAll('[data-image-capture-content]')]) {
@@ -47,12 +43,9 @@ async function prepareCaptureContents(root: HTMLElement): Promise<() => Promise<
   }
   return restore
 }
-
 /** Marks interactive HTML artifact subtrees; both export paths omit them (shared policy selector). */
 const HTML_ARTIFACT_ATTRIBUTE = 'data-html-artifact'
-
 let htmlToImagePromise: Promise<typeof HtmlToImage> | undefined
-
 const loadHtmlToImage = () => {
   htmlToImagePromise ??= import('html-to-image').catch((error) => {
     htmlToImagePromise = undefined
@@ -60,7 +53,6 @@ const loadHtmlToImage = () => {
   })
   return htmlToImagePromise
 }
-
 export function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -75,15 +67,13 @@ export function blobToDataUrl(blob: Blob): Promise<string> {
     reader.readAsDataURL(blob)
   })
 }
-
 /** Per-source cap on a remote-image fetch, and the shared budget for the whole inline stage. */
-const REMOTE_INLINE_SOURCE_TIMEOUT_MS = 10_000
-const REMOTE_INLINE_STAGE_BUDGET_MS = 20_000
+const REMOTE_INLINE_SOURCE_TIMEOUT_MS = 10000
+const REMOTE_INLINE_STAGE_BUDGET_MS = 20000
 /** In-flight remote fetches; kept under Chromium's per-host limit so this pass never bursts harder than the page load did. */
 const REMOTE_INLINE_CONCURRENCY = 4
 /** Cap on waiting for a swapped-in data URL to settle — data URLs decode locally, so this is generous. */
-const INLINE_SWAP_SETTLE_TIMEOUT_MS = 2_000
-
+const INLINE_SWAP_SETTLE_TIMEOUT_MS = 2000
 /**
  * A subtree the capture filter will omit must not cost a remote fetch; mirrors
  * filterHiddenElements on the live subtree (the clone re-derives the same result).
@@ -101,7 +91,6 @@ const isVisibleInCapture = (image: HTMLImageElement, root: HTMLElement): boolean
   }
   return true
 }
-
 /**
  * Resolves once the swapped-in src settles (load/error), so the clone rasterizes the
  * new intrinsic size — not the 0×0 of a still-loading swap. Bounded for silent decodes.
@@ -119,7 +108,6 @@ const waitForSwapSettle = (image: HTMLImageElement): Promise<void> =>
     image.addEventListener('load', done, { once: true })
     image.addEventListener('error', done, { once: true })
   })
-
 /**
  * Pre-inline every remote image with verification — the library's own inline pass
  * trusts whatever a URL serves, so a rate-limit HTML answer becomes a data:text/html
@@ -134,7 +122,6 @@ async function inlineVerifiedRemoteImages(root: HTMLElement): Promise<() => void
   ].filter(
     (image) => /^https?:/i.test(image.currentSrc || image.getAttribute('src') || '') && isVisibleInCapture(image, root)
   )
-
   const originalSources = images.map((image) => ({
     image,
     // currentSrc is the candidate the browser actually picked from srcset/sizes;
@@ -146,7 +133,6 @@ async function inlineVerifiedRemoteImages(root: HTMLElement): Promise<() => void
   const stageDeadline = Date.now() + REMOTE_INLINE_STAGE_BUDGET_MS
   const dataUrlBySource = new Map<string, string>()
   const queue = [...new Set(originalSources.map(({ source }) => source))]
-
   const drainQueue = async () => {
     for (let source = queue.shift(); source !== undefined; source = queue.shift()) {
       const budget = Math.min(REMOTE_INLINE_SOURCE_TIMEOUT_MS, stageDeadline - Date.now())
@@ -167,7 +153,6 @@ async function inlineVerifiedRemoteImages(root: HTMLElement): Promise<() => void
     }
   }
   await Promise.all(Array.from({ length: Math.min(REMOTE_INLINE_CONCURRENCY, queue.length) }, drainQueue))
-
   await Promise.all(
     originalSources.map(({ image, source }) => {
       image.removeAttribute('srcset')
@@ -175,7 +160,6 @@ async function inlineVerifiedRemoteImages(root: HTMLElement): Promise<() => void
       return waitForSwapSettle(image)
     })
   )
-
   return () => {
     for (const { image, src, srcset } of originalSources) {
       if (src === null) {
@@ -191,20 +175,17 @@ async function inlineVerifiedRemoteImages(root: HTMLElement): Promise<() => void
     }
   }
 }
-
 async function inlineLocalImageSources(root: HTMLElement): Promise<() => void> {
   const images = [
     ...(root instanceof HTMLImageElement ? [root] : []),
     ...root.querySelectorAll<HTMLImageElement>('img')
   ].filter((image) => image.src.startsWith('file://'))
-
   const originalSources = images.map((image) => ({
     image,
     src: image.getAttribute('src'),
     srcset: image.getAttribute('srcset')
   }))
   const dataUrlBySource = new Map<string, Promise<string>>()
-
   await Promise.all(
     originalSources.map(async ({ image }) => {
       const source = image.src
@@ -213,7 +194,6 @@ async function inlineLocalImageSources(root: HTMLElement): Promise<() => void> {
         dataUrlPromise = getImageBlobFromSource(source).then(blobToDataUrl)
         dataUrlBySource.set(source, dataUrlPromise)
       }
-
       try {
         image.removeAttribute('srcset')
         image.src = await dataUrlPromise
@@ -223,7 +203,6 @@ async function inlineLocalImageSources(root: HTMLElement): Promise<() => void> {
       }
     })
   )
-
   return () => {
     for (const { image, src, srcset } of originalSources) {
       if (src === null) {
@@ -239,7 +218,6 @@ async function inlineLocalImageSources(root: HTMLElement): Promise<() => void> {
     }
   }
 }
-
 /**
  * 将文件转换为 Base64 编码的字符串或 ArrayBuffer。
  * @param {File} file 要转换的文件
@@ -253,19 +231,16 @@ export const convertToBase64 = (file: File): Promise<string | ArrayBuffer | null
     reader.readAsDataURL(file)
   })
 }
-
 /** Target square dimension for a normalized entity image (mirrors main-side sharp). */
 const ENTITY_IMAGE_DIMENSION = 128
 /** Max original entity-image upload accepted in the renderer (avatar / logo). */
 export const MAX_ENTITY_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024
-
 /** Localized "too large" message if the file exceeds the cap, else null. */
 export function checkEntityImageSize(file: File): string | null {
   return file.size > MAX_ENTITY_IMAGE_UPLOAD_BYTES
     ? i18n.t('message.error.avatar_image_too_large', { limit: '10MB' })
     : null
 }
-
 /**
  * Normalize an entity image (avatar / logo) to a 128×128 cover-cropped WebP in the
  * renderer via the native canvas — the same shape main-side sharp produces (short
@@ -299,7 +274,6 @@ export async function prepareEntityImageBytes(file: File): Promise<Uint8Array<Ar
     throw new Error(i18n.t('message.error.image_process_failed'))
   }
 }
-
 /**
  * 捕获指定元素的图像数据。
  * @param elRef 元素的引用
@@ -323,7 +297,6 @@ export async function captureElement(elRef: React.RefObject<HTMLElement>) {
   }
   return Promise.resolve(undefined)
 }
-
 /**
  * 用 html-to-image 克隆管线栅格化可滚动元素，是 {@link captureScrollableImage}
  * 的内部实现：标记 capture-only CSS、内联本地图片与打包字体后克隆栅格化。
@@ -337,14 +310,12 @@ async function captureScrollableElement(el: HTMLElement | null, backdropVariable
     let restoreRemoteImages: (() => void) | undefined
     let restoreContents: (() => Promise<void>) | undefined
     const captureMarker = el.getAttribute(IMAGE_CAPTURE_ATTRIBUTE)
-
     try {
       // Mark the subtree before measuring: capture-only CSS keyed off this
       // attribute (e.g. unclipped table viewports) can change the scroll size,
       // and html-to-image freezes computed styles at clone time.
       el.setAttribute(IMAGE_CAPTURE_ATTRIBUTE, '')
       restoreContents = await prepareCaptureContents(el)
-
       // Wait for webfonts before cloning. The clone pins every element's
       // computed width/height, so text re-laid-out with fallback font metrics
       // would overflow those frozen boxes and get clipped by overflow
@@ -353,14 +324,11 @@ async function captureScrollableElement(el: HTMLElement | null, backdropVariable
         document.fonts?.ready ?? Promise.resolve(),
         new Promise((resolve) => setTimeout(resolve, 1000))
       ])
-
       restoreLocalImageSources = await inlineLocalImageSources(el)
       restoreRemoteImages = await inlineVerifiedRemoteImages(el)
-
       // calculate the size of the element
       const totalWidth = el.scrollWidth
       const totalHeight = el.scrollHeight
-
       // check if the size of the element is too large
       const MAX_ALLOWED_DIMENSION = 32767 // the maximum allowed pixel size
       if (totalHeight > MAX_ALLOWED_DIMENSION || totalWidth > MAX_ALLOWED_DIMENSION) {
@@ -368,7 +336,6 @@ async function captureScrollableElement(el: HTMLElement | null, backdropVariable
         // with the message so the calling component surfaces it.
         return Promise.reject(new Error(i18n.t('message.error.dimension_too_large')))
       }
-
       const filterHiddenElements = (node: Node) => {
         if (node instanceof HTMLElement) {
           // Interactive HTML artifacts are intentionally omitted from image exports.
@@ -384,7 +351,6 @@ async function captureScrollableElement(el: HTMLElement | null, backdropVariable
         }
         return true
       }
-
       const fontEmbedCSS = await buildFontEmbedCSS()
       const captureOptions = {
         filter: filterHiddenElements,
@@ -408,7 +374,6 @@ async function captureScrollableElement(el: HTMLElement | null, backdropVariable
           scrollbarWidth: 'none'
         }
       }
-
       // Warm up html-to-image resource caches before taking the final canvas.
       const warmupCanvas = await htmlToImage.toCanvas(el, captureOptions)
       warmupCanvas.width = 0
@@ -428,15 +393,11 @@ async function captureScrollableElement(el: HTMLElement | null, backdropVariable
       await restoreContents?.()
     }
   }
-
   return Promise.resolve(undefined)
 }
-
 export const captureScrollable = (elRef: React.RefObject<HTMLElement | null>, backdropVariable?: string) =>
   captureScrollableElement(elRef.current, backdropVariable)
-
 let fontEmbedCSSCache: string | undefined
-
 /**
  * Build a self-contained @font-face stylesheet (every font inlined as a data
  * URL) for the html-to-image clone. The library's own embedder fetches font
@@ -447,8 +408,10 @@ let fontEmbedCSSCache: string | undefined
  */
 async function buildFontEmbedCSS(): Promise<string> {
   if (fontEmbedCSSCache !== undefined) return fontEmbedCSSCache
-
-  const blocks: Array<{ cssText: string; base: string }> = []
+  const blocks: Array<{
+    cssText: string
+    base: string
+  }> = []
   for (const sheet of document.styleSheets) {
     let rules: CSSRuleList
     try {
@@ -472,10 +435,8 @@ async function buildFontEmbedCSS(): Promise<string> {
     fontEmbedCSSCache = ''
     return fontEmbedCSSCache
   }
-
   const b64ByPath = new Map<string, string>()
   const mimeByPath = new Map<string, string>()
-
   const readAsDataUrl = async (url: string, base: string): Promise<string | undefined> => {
     try {
       const abs = new URL(url, base).href
@@ -502,7 +463,6 @@ async function buildFontEmbedCSS(): Promise<string> {
       return undefined // unreadable font: keep the original url; that family falls back
     }
   }
-
   // cssText keeps sheet-relative urls, so each block's urls must resolve
   // against that block's own stylesheet href.
   const inlined = await Promise.all(
@@ -522,11 +482,9 @@ async function buildFontEmbedCSS(): Promise<string> {
       return out
     })
   )
-
   fontEmbedCSSCache = inlined.join('\n\n')
   return fontEmbedCSSCache
 }
-
 /**
  * 捕获可滚动元素的完整内容图像（PNG data URL）。
  * 统一走 html-to-image 克隆管线：栅格化与文档位置无关，对离屏导出副本和
@@ -543,12 +501,10 @@ export const captureScrollableImage = async (
 ): Promise<string | undefined> => {
   const el = elRef.current
   if (!el) return undefined
-
   await waitForCaptureAssets(el)
   const canvas = await captureScrollableElement(el, backdropVariable)
   return canvas?.toDataURL('image/png')
 }
-
 /**
  * 将可滚动元素的图像数据转换为 Data URL 格式。
  * @param elRef 可滚动元素的引用
@@ -560,7 +516,6 @@ export const captureScrollableAsDataUrl = async (
 ) => {
   return captureScrollableImage(elRef, backdropVariable)
 }
-
 /**
  * 把 base64 data URL 解码成 Blob。
  * 不能用 `fetch(dataUrl)`：渲染进程 CSP 的 `connect-src` 不含 `data:`，fetch 会
@@ -573,13 +528,11 @@ export function dataUrlToBlob(dataUrl: string): Blob {
   if (!parsed?.isBase64) {
     throw new Error('dataUrlToBlob expects a base64 data URL')
   }
-
   const binary = atob(parsed.data)
   const bytes = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
   return new Blob([bytes], { type: parsed.mediaType })
 }
-
 /**
  * 将可滚动元素的图像数据转换为 Blob 格式。
  * @param elRef 可滚动元素的引用
@@ -596,11 +549,8 @@ export const captureScrollableAsBlob = async (
     func(dataUrlToBlob(dataUrl))
   }
 }
-
 const CAPTURE_SETTLE_RECHECK_MS = 250
-
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
-
 /**
  * Wait for every image inside a freshly-mounted capture clone to reach its
  * final state (loaded or failed) before rasterizing. The topic-image capture
@@ -618,10 +568,8 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  */
 export async function waitForCaptureAssets(root: HTMLElement | null, timeoutMs = 5000): Promise<void> {
   if (!root) return
-
   const deadline = Date.now() + timeoutMs
   const waited = new Set<HTMLImageElement>()
-
   const collectPending = (): HTMLImageElement[] => {
     const pending: HTMLImageElement[] = []
     for (const img of root.querySelectorAll('img')) {
@@ -633,13 +581,11 @@ export async function waitForCaptureAssets(root: HTMLElement | null, timeoutMs =
     }
     return pending
   }
-
   const waitForImage = (img: HTMLImageElement) =>
     new Promise<void>((resolve) => {
       img.addEventListener('load', () => resolve(), { once: true })
       img.addEventListener('error', () => resolve(), { once: true })
     })
-
   let idle = false
   while (Date.now() < deadline) {
     const pending = collectPending()
@@ -655,7 +601,6 @@ export async function waitForCaptureAssets(root: HTMLElement | null, timeoutMs =
     await Promise.race([Promise.all(pending.map(waitForImage)), sleep(Math.max(0, deadline - Date.now()))])
   }
 }
-
 /**
  * 捕获 iframe 内部文档的完整内容快照
  */
@@ -664,10 +609,8 @@ export async function captureScrollableIframe(
 ): Promise<HTMLCanvasElement | undefined> {
   const iframe = iframeRef.current
   if (!iframe?.contentDocument?.defaultView) return undefined
-
   const doc = iframe.contentDocument
   const win = iframe.contentWindow!
-
   // 禁用动画以确保捕获静态状态
   const disableAnimations = () => {
     const style = doc.createElement('style')
@@ -679,13 +622,11 @@ export async function captureScrollableIframe(
     doc.head.appendChild(style)
     return style
   }
-
   // 内联字体以避免跨域问题
   const inlineFonts = async () => {
     const fontFaceRegex = /@font-face[\s\S]*?\}/g
     const fontUrlRegex = /url\((['"]?)([^)"']+)\1\)/g
     const fontExtRegex = /\.(woff2?|ttf|otf)(\?|#|$)/i
-
     const fetchAsDataUrl = async (url: string): Promise<string> => {
       try {
         const res = await fetch(url, { mode: 'cors', credentials: 'omit' })
@@ -701,15 +642,12 @@ export async function captureScrollableIframe(
         return url
       }
     }
-
     const processCss = async (cssText: string, baseUrl: string): Promise<string[]> => {
       const fontBlocks: string[] = []
       let match: RegExpExecArray | null
-
       while ((match = fontFaceRegex.exec(cssText)) !== null) {
         let block = match[0]
         const fontUrls: Array<[string, string]> = []
-
         let urlMatch: RegExpExecArray | null
         fontUrlRegex.lastIndex = 0
         while ((urlMatch = fontUrlRegex.exec(block)) !== null) {
@@ -718,12 +656,9 @@ export async function captureScrollableIframe(
             try {
               const absoluteUrl = new URL(url, baseUrl).href
               fontUrls.push([urlMatch[0], absoluteUrl])
-            } catch {
-              // ignore
-            }
+            } catch {}
           }
         }
-
         // 并行处理所有字体URL
         const dataUrls = await Promise.all(
           fontUrls.map(async ([original, url]) => {
@@ -731,19 +666,14 @@ export async function captureScrollableIframe(
             return [original, `url(${dataUrl})`] as const
           })
         )
-
         dataUrls.forEach(([original, replacement]) => {
           block = block.replace(original, replacement)
         })
-
         fontBlocks.push(block)
       }
-
       return fontBlocks
     }
-
     const allFontBlocks: string[] = []
-
     // 处理外部样式表
     const externalSheets = doc.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')
     await Promise.all(
@@ -756,12 +686,9 @@ export async function captureScrollableIframe(
             const blocks = await processCss(cssText, link.href)
             allFontBlocks.push(...blocks)
           }
-        } catch {
-          // ignore
-        }
+        } catch {}
       })
     )
-
     // 处理内联样式
     const inlineStyles = doc.querySelectorAll('style')
     await Promise.all(
@@ -771,13 +698,10 @@ export async function captureScrollableIframe(
         allFontBlocks.push(...blocks)
       })
     )
-
     return allFontBlocks.join('\n')
   }
-
   const animationStyle = disableAnimations()
   let injectedFontStyle: HTMLStyleElement | null = null
-
   const createFontStyle = (css: string): HTMLStyleElement => {
     const style = doc.createElement('style')
     style.setAttribute('data-cs-inline-fonts', 'true')
@@ -785,17 +709,13 @@ export async function captureScrollableIframe(
     doc.head.appendChild(style)
     return style
   }
-
   try {
     // 等待渲染稳定
     await new Promise((r) => win.requestAnimationFrame(() => win.requestAnimationFrame(() => r(null))))
-
     // 强制加载懒加载图片
     doc.querySelectorAll('img[loading="lazy"]').forEach((img) => img.setAttribute('loading', 'eager'))
-
     // 获取字体CSS
     const fontEmbedCSS = await inlineFonts()
-
     // 将字体 CSS 注入到 iframe 文档中，确保注册到 FontFaceSet
     if (fontEmbedCSS && fontEmbedCSS.trim().length > 0) {
       injectedFontStyle = createFontStyle(fontEmbedCSS)
@@ -804,31 +724,24 @@ export async function captureScrollableIframe(
         doc.head.appendChild(injectedFontStyle)
       }
     }
-
     // 等待字体就绪，避免序列化时回退到系统字体
     await Promise.race([
       (doc as any).fonts?.ready ?? Promise.resolve(),
       new Promise((resolve) => setTimeout(resolve, 1000))
     ])
-
     // 计算尺寸
     const { documentElement: de, body: b } = doc
     const totalWidth = Math.max(b.scrollWidth, de.scrollWidth, b.clientWidth, de.clientWidth)
     const totalHeight = Math.max(b.scrollHeight, de.scrollHeight, b.clientHeight, de.clientHeight)
-
     logger.verbose('Capturing iframe:', { totalWidth, totalHeight })
-
     // 限制最大尺寸，按比例缩放
     const MAX_SIZE = 32767
     const scale = Math.min(1, MAX_SIZE / Math.max(totalWidth, totalHeight))
     const pixelRatio = (win.devicePixelRatio || 1) * scale
-
     const styles = win.getComputedStyle(b)
     const backgroundColor = styles.backgroundColor || '#ffffff'
     const color = styles.color || '#000000'
-
     const htmlToImage = await loadHtmlToImage()
-
     return await htmlToImage.toCanvas(de, {
       fontEmbedCSS,
       backgroundColor,
@@ -855,7 +768,6 @@ export async function captureScrollableIframe(
     animationStyle.remove()
   }
 }
-
 export const captureScrollableIframeAsDataUrl = async (iframeRef: React.RefObject<HTMLIFrameElement | null>) => {
   return captureScrollableIframe(iframeRef).then((canvas) => {
     if (canvas) {
@@ -864,7 +776,6 @@ export const captureScrollableIframeAsDataUrl = async (iframeRef: React.RefObjec
     return Promise.resolve(undefined)
   })
 }
-
 export const captureScrollableIframeAsBlob = async (
   iframeRef: React.RefObject<HTMLIFrameElement | null>,
   func: BlobCallback
@@ -873,7 +784,6 @@ export const captureScrollableIframeAsBlob = async (
     canvas?.toBlob(func, 'image/png')
   })
 }
-
 /**
  * 将 SVG 元素转换为 Canvas 元素。
  * @param svgElement 要转换的 SVG 元素
@@ -889,28 +799,21 @@ export const svgToCanvas = async (svgElement: SVGElement, scale = 3): Promise<HT
   const rect = svgElement.getBoundingClientRect()
   const width = viewBox[2] || svgElement.clientWidth || rect.width || attrWidth
   const height = viewBox[3] || svgElement.clientHeight || rect.height || attrHeight
-
   // 序列化 SVG 内容
   const svgData = new XMLSerializer().serializeToString(svgElement)
-
   // 创建 Canvas
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')
-
   if (!ctx) {
     return Promise.reject(new Error('Failed to get canvas context'))
   }
-
   canvas.width = width * scale
   canvas.height = height * scale
-
   // Blob URLs containing foreignObject taint Chromium canvases; data URLs preserve HTML labels.
   const svgUrl = await blobToDataUrl(new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' }))
-
   return new Promise<HTMLCanvasElement>((resolve, reject) => {
     const img = new Image()
     img.crossOrigin = 'anonymous'
-
     img.onload = () => {
       try {
         ctx.scale(scale, scale)
@@ -920,15 +823,12 @@ export const svgToCanvas = async (svgElement: SVGElement, scale = 3): Promise<HT
         reject(new Error(`Failed to draw image on canvas: ${error}`))
       }
     }
-
     img.onerror = () => {
       reject(new Error('Failed to load SVG image'))
     }
-
     img.src = svgUrl
   })
 }
-
 /**
  * 将 SVG 元素转换为 PNG 格式的 Blob。
  * @param svgElement 要转换的 SVG 元素
@@ -950,7 +850,6 @@ export const svgToPngBlob = (svgElement: SVGElement, scale = 3): Promise<Blob> =
       .catch(reject)
   })
 }
-
 /**
  * 将 SVG 元素转换为 SVG 格式的 Blob。
  * @param svgElement 要转换的 SVG 元素
@@ -960,15 +859,12 @@ export const svgToSvgBlob = (svgElement: SVGElement): Blob => {
   const svgData = new XMLSerializer().serializeToString(svgElement)
   return new Blob([svgData], { type: 'image/svg+xml' })
 }
-
 const INTRINSIC_SVG_LENGTH = /^\s*\+?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?(?:px|pt|pc|mm|cm|in|q|em|ex)?\s*$/i
-
 const hasPositiveIntrinsicSvgLength = (value: string | null): boolean => {
   if (value === null || !INTRINSIC_SVG_LENGTH.test(value)) return false
   const length = Number.parseFloat(value)
   return Number.isFinite(length) && length > 0
 }
-
 /**
  * An SVG embedded in the conversation is responsive (`width="100%"`, usually no
  * height), but the same node becomes a replaced image in the full-screen preview.
@@ -984,7 +880,6 @@ const createStandaloneSvgPreview = (svgElement: SVGElement): SVGElement => {
   ) {
     return clone
   }
-
   const viewBox = clone
     .getAttribute('viewBox')
     ?.trim()
@@ -994,18 +889,14 @@ const createStandaloneSvgPreview = (svgElement: SVGElement): SVGElement => {
     clone.setAttribute('width', String(viewBox[2]))
     clone.setAttribute('height', String(viewBox[3]))
   }
-
   return clone
 }
-
 export type ImageInput = SVGElement | HTMLImageElement | string | Blob
-
 export interface ImagePreviewOptions {
   format?: 'svg' | 'png' | 'jpeg'
   scale?: number
   quality?: number
 }
-
 /**
  * Resolve any supported image input to a previewable URL. SVG elements and blobs
  * produce an object URL the caller must revoke (test with `url.startsWith('blob:')`).
@@ -1018,30 +909,27 @@ export const imageInputToPreviewUrl = async (input: ImageInput, options: ImagePr
         : await svgToPngBlob(input, options.scale || 3)
     return URL.createObjectURL(blob)
   }
-
   if (input instanceof HTMLImageElement) {
     return input.src
   }
-
   if (typeof input === 'string') {
     return input
   }
-
   if (input instanceof Blob) {
     return URL.createObjectURL(input)
   }
-
   throw new Error('Unsupported input type')
 }
-
 /**
  * 使用离屏容器测量 DOM 元素的渲染尺寸
  * @param element 要测量的元素
  * @returns 渲染元素的宽度和高度（以像素为单位）
  */
-function measureElementSize(element: Element): { width: number; height: number } {
+function measureElementSize(element: Element): {
+  width: number
+  height: number
+} {
   const clone = element.cloneNode(true) as Element
-
   // 检查元素类型并重置样式
   if (clone instanceof HTMLElement || clone instanceof SVGElement) {
     clone.style.width = ''
@@ -1049,24 +937,19 @@ function measureElementSize(element: Element): { width: number; height: number }
     clone.style.position = ''
     clone.style.visibility = ''
   }
-
   // 创建一个离屏容器
   const container = document.createElement('div')
   container.style.position = 'absolute'
   container.style.top = '-9999px'
   container.style.left = '-9999px'
   container.style.visibility = 'hidden'
-
   container.appendChild(clone)
   document.body.appendChild(container)
-
   // 测量并清理
   const rect = clone.getBoundingClientRect()
   document.body.removeChild(container)
-
   return { width: rect.width, height: rect.height }
 }
-
 /**
  * 让 SVG 元素在容器内可缩放，用于“预览”功能。
  * - 补充缺失的 viewBox
@@ -1079,12 +962,9 @@ export const makeSvgSizeAdaptive = (element: Element): Element => {
   if (!(element instanceof SVGElement)) {
     return element
   }
-
   const hasViewBox = element.hasAttribute('viewBox')
   const widthStr = element.getAttribute('width')
-
   let measuredWidth: number | undefined
-
   // 如果缺少 viewBox 属性，测量元素尺寸来创建
   if (!hasViewBox) {
     const renderedSize = measureElementSize(element)
@@ -1093,7 +973,6 @@ export const makeSvgSizeAdaptive = (element: Element): Element => {
       element.setAttribute('viewBox', `0 0 ${renderedSize.width} ${renderedSize.height}`)
     }
   }
-
   // 如果没有则设置 max-width
   // 优先使用测量得到的宽度值，否则回退到 width 属性值
   if (!element.style.getPropertyValue('max-width')) {
@@ -1103,17 +982,13 @@ export const makeSvgSizeAdaptive = (element: Element): Element => {
       element.style.setProperty('max-width', widthStr)
     }
   }
-
   // 调整 width 和 height
   element.setAttribute('width', '100%')
   element.removeAttribute('height')
-
   // FIXME: 移除 preserveAspectRatio 来避免某些图无法正常预览
   element.removeAttribute('preserveAspectRatio')
-
   return element
 }
-
 /**
  * Whether an SVG node is a KaTeX stretchy glyph (square roots, extensible
  * arrows). KaTeX emits these with a `400em` width, a `0 0 400000 <h>`
@@ -1135,7 +1010,6 @@ export function isKatexGeneratedSvg(node: HastElement | undefined): boolean {
     (child) => child.type === 'element' && (child.tagName === 'text' || child.tagName === 'tspan')
   )
 }
-
 /**
  * 将图片 Blob 转换为 PNG 格式的 Blob
  * @param blob 原始图片 Blob
@@ -1145,24 +1019,20 @@ export const convertImageToPng = async (blob: Blob): Promise<Blob> => {
   if (blob.type === 'image/png') {
     return blob
   }
-
   return new Promise((resolve, reject) => {
     const img = new Image()
     const url = URL.createObjectURL(blob)
-
     img.onload = () => {
       try {
         const canvas = document.createElement('canvas')
         canvas.width = img.width
         canvas.height = img.height
         const ctx = canvas.getContext('2d')
-
         if (!ctx) {
           URL.revokeObjectURL(url)
           reject(new Error('Failed to get canvas context'))
           return
         }
-
         ctx.drawImage(img, 0, 0)
         canvas.toBlob((pngBlob) => {
           URL.revokeObjectURL(url)
@@ -1177,22 +1047,22 @@ export const convertImageToPng = async (blob: Blob): Promise<Blob> => {
         reject(error)
       }
     }
-
     img.onerror = () => {
       URL.revokeObjectURL(url)
       reject(new Error('Failed to load image for conversion'))
     }
-
     img.src = url
   })
 }
-
 export const transformImageToPng = async (
   blob: Blob,
-  transform: { flipX: boolean; flipY: boolean; rotation: number }
+  transform: {
+    flipX: boolean
+    flipY: boolean
+    rotation: number
+  }
 ): Promise<Blob> => {
   const bitmap = await createImageBitmap(blob)
-
   try {
     const rotation = ((transform.rotation % 360) + 360) % 360
     const radians = (rotation * Math.PI) / 180
@@ -1208,16 +1078,13 @@ export const transformImageToPng = async (
       canvas.height = Math.ceil(bitmap.width * sine + bitmap.height * cosine)
     }
     const ctx = canvas.getContext('2d')
-
     if (!ctx) {
       throw new Error('Failed to get canvas context')
     }
-
     ctx.translate(canvas.width / 2, canvas.height / 2)
     ctx.rotate(radians)
     ctx.scale(transform.flipX ? -1 : 1, transform.flipY ? -1 : 1)
     ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2)
-
     return await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob((pngBlob) => {
         if (pngBlob) {
@@ -1231,7 +1098,6 @@ export const transformImageToPng = async (
     bitmap.close()
   }
 }
-
 /**
  * Decode the percent-encoded body of a non-base64 `data:` URL into raw bytes,
  * expanding each `%XX` escape and UTF-8 encoding any literal characters.
@@ -1239,7 +1105,6 @@ export const transformImageToPng = async (
 function decodeDataUrlBytes(data: string): Uint8Array {
   const encoder = new TextEncoder()
   const bytes: number[] = []
-
   for (let index = 0; index < data.length;) {
     const hexByte = data[index] === '%' ? data.slice(index + 1, index + 3) : ''
     if (/^[\da-fA-F]{2}$/.test(hexByte)) {
@@ -1247,7 +1112,6 @@ function decodeDataUrlBytes(data: string): Uint8Array {
       index += 3
       continue
     }
-
     const codePoint = data.codePointAt(index)
     if (codePoint == null) {
       break
@@ -1256,17 +1120,20 @@ function decodeDataUrlBytes(data: string): Uint8Array {
     bytes.push(...encoder.encode(char))
     index += char.length
   }
-
   return new Uint8Array(bytes)
 }
-
 /**
  * Resolve an image source (`data:` URL, `file://` path, or remote URL) to a Blob.
  * Kept here as a pure image util so both the `ImageViewer` component and the
  * paintings skeleton reveal pipeline can consume it without importing across the
  * renderer's downward-only layering.
  */
-export async function getImageBlobFromSource(src: string, options?: { signal?: AbortSignal }): Promise<Blob> {
+export async function getImageBlobFromSource(
+  src: string,
+  options?: {
+    signal?: AbortSignal
+  }
+): Promise<Blob> {
   if (src.startsWith('data:')) {
     const parseResult = parseDataUrl(src)
     if (!parseResult || !parseResult.mediaType) {
@@ -1277,7 +1144,6 @@ export async function getImageBlobFromSource(src: string, options?: { signal?: A
       : decodeDataUrlBytes(parseResult.data)
     return assertImageBlob(new Blob([byteArray.slice()], { type: parseResult.mediaType }), src)
   }
-
   if (src.startsWith('file://')) {
     const path = AbsoluteFilePathSchema.parse(fileUrlToPath(src as FileUrlString))
     const { content, mime } = await ipcApi.request('file.read', {
@@ -1286,7 +1152,6 @@ export async function getImageBlobFromSource(src: string, options?: { signal?: A
     })
     return assertImageBlob(new Blob([content.slice()], { type: mime }), src)
   }
-
   const response = await fetch(src, { signal: options?.signal })
   // An error page (404/500 HTML) is not an image — fail so callers can skip/report it.
   if (!response.ok) {
@@ -1295,7 +1160,6 @@ export async function getImageBlobFromSource(src: string, options?: { signal?: A
   const blob = await response.blob()
   return assertImageBlob(blob, src)
 }
-
 /** Reject explicit non-image responses such as proxy/login pages. */
 function assertImageBlob(blob: Blob, src: string): Blob {
   const type = blob.type.trim()
@@ -1305,13 +1169,11 @@ function assertImageBlob(blob: Blob, src: string): Blob {
   }
   return blob
 }
-
 export async function copyImageToClipboard(src: string): Promise<void> {
   const blob = await getImageBlobFromSource(src)
   const pngBlob = await convertImageToPng(blob)
   const item = new ClipboardItem({
     'image/png': pngBlob
   })
-
   await navigator.clipboard.write([item])
 }

@@ -1,18 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import { SettingsContentColumn } from '@renderer/components/SettingsPrimitives'
-import { useTheme } from '@renderer/hooks/useTheme'
-import NpxSearch from '@renderer/pages/settings/McpSettings/NpxSearch'
-
-const NpxSearchWrapper = () => {
-  const { theme } = useTheme()
-  return (
-    <SettingsContentColumn theme={theme} contentProps={{ className: 'pt-8' }} innerClassName="max-w-[1200px]">
-      <NpxSearch />
-    </SettingsContentColumn>
-  )
-}
-
+import { FeatureUnavailable } from '@renderer/components/FeatureUnavailable'
 export const Route = createFileRoute('/settings/mcp/npx-search')({
-  component: NpxSearchWrapper
+  validateSearch: (search: Record<string, unknown>) => search,
+  component: FeatureUnavailable
 })

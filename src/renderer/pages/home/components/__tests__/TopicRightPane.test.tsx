@@ -1,17 +1,14 @@
 import { mockUsePreference, MockUsePreferenceUtils } from '@test-mocks/renderer/usePreference'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import type { PropsWithChildren } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ResourcePaneCountButton } from '@renderer/components/chat/panes/Shell'
 import type * as CommandHooks from '@renderer/hooks/command'
-import type { EventPayload } from '@shared/ipc/types'
 
 import { TopicRightPane } from '../TopicRightPane'
 
 const defaultPreferenceImplementation = mockUsePreference.getMockImplementation()!
-let browserOpenListener: (payload: EventPayload<'browser.pane.open_requested'>) => void
 
 const useCommandHandlerMock = vi.hoisted(() => vi.fn())
 const topicBranchPanelModuleState = vi.hoisted(() => ({ importCount: 0 }))
@@ -138,29 +135,9 @@ describe('TopicRightPane', () => {
     useCommandHandlerMock.mockClear()
     mockUsePreference.mockImplementation(defaultPreferenceImplementation)
     MockUsePreferenceUtils.setPreferenceValue('app.browser.auto_open_panel', true)
-    vi.spyOn(window.api.ipcApi, 'on').mockImplementation((event, listener) => {
-      if (event === 'browser.pane.open_requested') browserOpenListener = listener
-      return vi.fn()
-    })
+    vi.spyOn(window.api.ipcApi, 'on').mockImplementation(() => vi.fn())
     MockUsePreferenceUtils.setPreferenceValue('app.developer_mode.enabled', true)
     MockUsePreferenceUtils.setPreferenceValue('app.browser.agent_control.enabled', true)
-  })
-
-  it('hides the browser entry when conversation or global browser control is disabled', () => {
-    const pane = (browserEnabled: boolean) => (
-      <TopicRightPane.Scope topicId="topic-a">
-        <TopicRightPane.Shortcuts browserEnabled={browserEnabled} />
-      </TopicRightPane.Scope>
-    )
-    const view = render(pane(true))
-    expect(screen.getByRole('button', { name: 'settings.browser.title' })).toBeVisible()
-    view.rerender(pane(false))
-    expect(screen.queryByRole('button', { name: 'settings.browser.title' })).not.toBeInTheDocument()
-    view.rerender(pane(true))
-    expect(screen.getByRole('button', { name: 'settings.browser.title' })).toBeVisible()
-    MockUsePreferenceUtils.setPreferenceValue('app.browser.agent_control.enabled', false)
-    view.rerender(pane(true))
-    expect(screen.queryByRole('button', { name: 'settings.browser.title' })).not.toBeInTheDocument()
   })
 
   const triggerRightSidebarShortcut = () => {
@@ -414,79 +391,5 @@ describe('TopicRightPane', () => {
 
     expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'true')
     expect(screen.getByTestId('resource-list')).toBeInTheDocument()
-  })
-
-  it.each([true, false])('respects tool-driven browser opening (auto-open=%s)', (autoOpen) => {
-    MockUsePreferenceUtils.mockPreferenceReturn('app.browser.auto_open_panel', autoOpen)
-    render(
-      <TopicRightPane.Scope topicId="topic-a">
-        <TopicRightPane.Viewport />
-      </TopicRightPane.Scope>
-    )
-    act(() => browserOpenListener({ sessionId: 'topic-a', scope: 'topic' }))
-    expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', String(autoOpen))
-    if (autoOpen) expect(screen.getByText('Session browser')).toBeVisible()
-  })
-
-  it.each([true, false])('ignores other sessions and non-topic requests (auto-open=%s)', (autoOpen) => {
-    MockUsePreferenceUtils.mockPreferenceReturn('app.browser.auto_open_panel', autoOpen)
-    render(
-      <TopicRightPane.Scope topicId="topic-a">
-        <TopicRightPane.Viewport />
-      </TopicRightPane.Scope>
-    )
-    for (const request of [
-      { sessionId: 'topic-b', scope: 'topic' },
-      { sessionId: 'topic-a', scope: 'agent' },
-      { sessionId: 'topic-a' }
-    ] as const) {
-      act(() => browserOpenListener(request))
-      expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'false')
-    }
-  })
-
-  it('preserves another selected pane with auto-open off and still allows the browser shortcut', async () => {
-    MockUsePreferenceUtils.mockPreferenceReturn('app.browser.auto_open_panel', false)
-    const user = userEvent.setup()
-    render(
-      <TopicRightPane.Scope topicId="topic-a">
-        <TopicRightPane.Shortcuts browserEnabled />
-        <TopicRightPane.Viewport />
-      </TopicRightPane.Scope>
-    )
-    await user.click(screen.getByRole('button', { name: 'chat.message.flow.title' }))
-    act(() => browserOpenListener({ sessionId: 'topic-a', scope: 'topic' }))
-    expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'true')
-    expect(screen.getByTestId('shell-tab-title')).toHaveTextContent('chat.message.flow.title')
-    expect(await screen.findByTestId('branch-pane')).toBeVisible()
-    await user.click(screen.getByRole('button', { name: 'settings.browser.title' }))
-    expect(screen.getByText('Session browser')).toBeVisible()
-    expect(screen.getByTestId('shell-tab-title')).toHaveTextContent('settings.browser.title')
-  })
-
-  it('uses committed preference changes through the original IPC listener', async () => {
-    const user = userEvent.setup()
-    const pane = () => (
-      <TopicRightPane.Scope topicId="topic-a">
-        <TopicRightPane.Shortcuts browserEnabled />
-        <TopicRightPane.Viewport />
-      </TopicRightPane.Scope>
-    )
-    const view = render(pane())
-    const listener = browserOpenListener
-    act(() => listener({ sessionId: 'topic-a', scope: 'topic' }))
-    expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'true')
-    MockUsePreferenceUtils.mockPreferenceReturn('app.browser.auto_open_panel', false)
-    view.rerender(pane())
-    expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'true')
-    await user.click(screen.getByRole('button', { name: 'settings.browser.title' }))
-    act(() => listener({ sessionId: 'topic-a', scope: 'topic' }))
-    expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'false')
-    MockUsePreferenceUtils.mockPreferenceReturn('app.browser.auto_open_panel', true)
-    view.rerender(pane())
-    expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'false')
-    act(() => listener({ sessionId: 'topic-a', scope: 'topic' }))
-    expect(screen.getByTestId('right-pane')).toHaveAttribute('data-open', 'true')
-    expect(screen.getByText('Session browser')).toBeVisible()
   })
 })

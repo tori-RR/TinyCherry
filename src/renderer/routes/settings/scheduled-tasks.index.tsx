@@ -1,7 +1,7 @@
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 
+import { FeatureUnavailable } from '@renderer/components/FeatureUnavailable'
 export const Route = createFileRoute('/settings/scheduled-tasks/')({
-  beforeLoad: () => {
-    throw redirect({ to: '/app/scheduled-tasks', search: {}, replace: true })
-  }
+  validateSearch: (search: Record<string, unknown>) => search,
+  component: FeatureUnavailable
 })

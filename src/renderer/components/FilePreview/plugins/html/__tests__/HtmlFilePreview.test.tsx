@@ -191,17 +191,13 @@ describe('HtmlFilePreview', () => {
     expect(screen.getByTestId('html-frame')).toBeInTheDocument()
   })
 
-  it('opens artifact HTML in the shared WebView browser and keeps ordinary file HTML in the restricted iframe', async () => {
+  it('keeps artifact HTML in the same restricted frame as ordinary file HTML', async () => {
     renderPreview({ type: 'artifact' })
 
-    const browser = await screen.findByTestId('webview-browser')
-    expect(browser.getAttribute('data-url')).toMatch(/^file:\/\/.*index\.html$/)
-    expect(browser).toHaveAttribute('data-target-label', 'index.html')
-    expect(browser).toHaveAttribute('data-security-profile', 'agent-html-artifact')
-    expect(mocks.readText).not.toHaveBeenCalled()
-    expect(screen.queryByTestId('html-frame')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'file_preview.html.mode.preview' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'file_preview.html.mode.source' })).not.toBeInTheDocument()
+    const frame = await screen.findByTestId('html-frame')
+    expect(frame).toHaveAttribute('sandbox', '')
+    expect(mocks.readText).toHaveBeenCalledWith(filePath)
+    expect(screen.queryByTestId('webview-browser')).not.toBeInTheDocument()
   })
 
   it('reloads when the path or refresh key changes', async () => {

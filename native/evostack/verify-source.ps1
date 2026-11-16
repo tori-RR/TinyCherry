@@ -1,9 +1,8 @@
 param([Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{40}$')][string]$ExpectedRevision)
 $ErrorActionPreference = 'Stop'
-$EvoRepo = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
-$EvoRevision = & git -C $EvoRepo rev-parse --verify HEAD
-if ($LASTEXITCODE -ne 0) { throw 'Could not identify source revision' }
-if ($EvoRevision -cne $ExpectedRevision) { throw 'Source revision does not match ExpectedRevision' }
-$EvoChanges = & git -C $EvoRepo status --porcelain=v1 --untracked-files=all
-if ($LASTEXITCODE -ne 0) { throw 'Could not inspect source worktree' }
-if ($EvoChanges) { throw 'Expected a clean source worktree, including untracked files' }
+$DesktopRepo = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '../..')).Path
+Push-Location $DesktopRepo
+try {
+ $DesktopIdentity = & node scripts/desktop/candidate.mjs identity | ConvertFrom-Json
+ if ($LASTEXITCODE -ne 0 -or $DesktopIdentity.revision -cne $ExpectedRevision) { throw 'Expected clean tracked source and no untracked build inputs at ExpectedRevision' }
+} finally { Pop-Location }

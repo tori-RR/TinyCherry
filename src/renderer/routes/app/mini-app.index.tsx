@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import MiniAppsPage from '@renderer/pages/miniApps/MiniAppsPage'
-
+import { FeatureUnavailable } from '@renderer/components/FeatureUnavailable'
 export const Route = createFileRoute('/app/mini-app/')({
-  component: MiniAppsPage
+  validateSearch: (search: Record<string, unknown>) => search,
+  component: FeatureUnavailable
 })

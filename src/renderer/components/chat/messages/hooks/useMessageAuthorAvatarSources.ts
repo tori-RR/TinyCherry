@@ -1,14 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import type { MessageListItem } from '@renderer/components/chat/messages/types'
-import { ipcApi } from '@renderer/ipc'
 import { type AvatarObjectUrl, loadAvatarObjectUrl } from '@renderer/services/avatarSources'
-import { isEvoStack } from '@renderer/utils/platform'
 import type { FileEntryId } from '@shared/data/types/file'
-import { toFileUrl } from '@shared/utils/file'
-
-const AVATAR_PATH_BATCH_SIZE = 500
-
 export function useMessageAuthorAvatarSources(
   messages: readonly MessageListItem[],
   listKey = messages[0]?.topicId ?? ''
@@ -37,7 +31,6 @@ export function useMessageAuthorAvatarSources(
     ],
     [messages]
   )
-
   useEffect(() => {
     session.active = true
     return () => {
@@ -51,11 +44,10 @@ export function useMessageAuthorAvatarSources(
       session.loading = false
     }
   }, [session])
-
   useEffect(() => {
     const added = ids.filter((id) => !session.requested.has(id))
     const generation = session.generation
-    if (isEvoStack) {
+    {
       added.forEach((id) => session.requested.add(id))
       session.pending.push(...added)
       if (session.loading || !session.pending.length) return
@@ -74,9 +66,7 @@ export function useMessageAuthorAvatarSources(
                 }
                 session.ownedUrls.set(id, source)
                 session.sources.set(id, source.src)
-              } catch {
-                // A removed avatar uses the message's existing emoji/default fallback.
-              }
+              } catch {}
             })
           )
           if (session.active && generation === session.generation)
@@ -87,22 +77,6 @@ export function useMessageAuthorAvatarSources(
       })
       return
     }
-    for (let offset = 0; offset < added.length; offset += AVATAR_PATH_BATCH_SIZE) {
-      const batch = added.slice(offset, offset + AVATAR_PATH_BATCH_SIZE)
-      batch.forEach((id) => session.requested.add(id))
-      void ipcApi
-        .request('file.batch_get_physical_paths', { ids: batch })
-        .then((paths) => {
-          if (!session.active || generation !== session.generation) return
-          for (const id of batch) {
-            const path = paths[id]
-            if (path) session.sources.set(id, toFileUrl(path))
-          }
-          setResolved({ session, sources: new Map(session.sources) })
-        })
-        .catch(() => {})
-    }
   }, [ids, session])
-
   return resolved.session === session ? resolved.sources : session.sources
 }

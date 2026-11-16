@@ -1,3 +1,6 @@
+import * as z from 'zod'
+
+import { TO_MARKDOWN_TOOL_NAME } from '@shared/ai/builtinTools'
 import type {
   AgentInput,
   AgentOutput,
@@ -45,10 +48,7 @@ import type {
   WebSearchOutput,
   WorkflowInput,
   WorkflowOutput
-} from '@anthropic-ai/claude-agent-sdk/sdk-tools'
-import * as z from 'zod'
-
-import { TO_MARKDOWN_TOOL_NAME } from '@shared/ai/builtinTools'
+} from '@shared/ai/recordedAgentTools'
 
 import type { ToolDisclosureItem } from './ToolDisclosure'
 

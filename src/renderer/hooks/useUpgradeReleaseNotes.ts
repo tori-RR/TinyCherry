@@ -1,4 +1,3 @@
-import type { UpdateInfo } from 'builder-util-runtime'
 import { useEffect, useMemo, useState } from 'react'
 import { gt } from 'semver'
 
@@ -6,6 +5,7 @@ import { loggerService } from '@logger'
 import { ipcApi } from '@renderer/ipc'
 import { collectUpgradeReleases } from '@renderer/utils/upgradeReleaseNotes'
 import type { OutputFor } from '@shared/ipc/types'
+import type { UpdateInfo } from '@shared/types/release'
 import { isStableReleaseVersion } from '@shared/utils/releaseNotes'
 
 const logger = loggerService.withContext('useUpgradeReleaseNotes')

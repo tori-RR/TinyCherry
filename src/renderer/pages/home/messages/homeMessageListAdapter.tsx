@@ -53,7 +53,6 @@ import { normalizeFilePreviewPath } from '@renderer/utils/filePreview'
 import { createComposerRichClipboardContentFromParts } from '@renderer/utils/message/composerClipboard'
 import { getComposerTextFromParts } from '@renderer/utils/message/composerTokens'
 import { isVisionModel } from '@renderer/utils/model'
-import { isEvoStack } from '@renderer/utils/platform'
 import { translateText } from '@renderer/utils/translate'
 import type { TranslateLangCode } from '@shared/data/preference/preferenceTypes'
 import type { CherryMessagePart, CherryUIMessage } from '@shared/data/types/message'
@@ -68,14 +67,11 @@ import {
   type TopicImageActionRequest,
   type TopicImageActionType
 } from './topicImageActionBus'
-
 const exportToObsidian: ExportMessagesToObsidian = async (title, messages) => {
   const { default: popup } = await import('@renderer/components/ObsidianExportPopup')
   return popup.show({ title, messages, processingMethod: '1' })
 }
-
 const logger = loggerService.withContext('HomeMessageListAdapter')
-
 interface HomeMessageListParams {
   topic: Topic
   assistant?: Assistant
@@ -95,7 +91,6 @@ interface HomeMessageListParams {
   onComponentUpdate?(): void
   onFirstUpdate?(): void
 }
-
 export function useHomeMessageListProviderValue({
   topic,
   assistant,
@@ -148,14 +143,12 @@ export function useHomeMessageListProviderValue({
       }
     >()
   )
-
   const messageItems = useMemo(() => {
     return messages.map((message) => {
       const cached = messageItemCacheRef.current.get(message)
       if (cached && cached.assistantId === resolvedAssistantId && cached.topicId === topicId) {
         return cached.item
       }
-
       const item = toMessageListItem(message, {
         assistantId: resolvedAssistantId,
         topicId
@@ -168,17 +161,14 @@ export function useHomeMessageListProviderValue({
       return item
     })
   }, [messages, resolvedAssistantId, topicId])
-
   const messagesRef = useRef<MessageListItem[]>(messageItems)
   const partsByMessageIdRef = useRef(partsByMessageId)
   const listRuntimeRef = useRef<MessageListRuntime | null>(null)
   const translationAbortControllersRef = useRef(new Map<string, AbortController>())
   const [translatingMessageIds, setTranslatingMessageIds] = useState<ReadonlySet<string>>(() => new Set())
-
   const setMessageTranslating = useCallback((messageId: string, isTranslating: boolean) => {
     setTranslatingMessageIds((current) => {
       if (current.has(messageId) === isTranslating) return current
-
       const next = new Set(current)
       if (isTranslating) {
         next.add(messageId)
@@ -188,32 +178,25 @@ export function useHomeMessageListProviderValue({
       return next
     })
   }, [])
-
   const isMessageTranslating = useCallback(
     (messageId: string) => translatingMessageIds.has(messageId),
     [translatingMessageIds]
   )
-
   const requestTranslationLanguages = useCallback(() => {
     setTranslationLanguagesRequested(true)
   }, [])
-
   const retryTranslationLanguages = useCallback(() => {
     void refetchTranslationLanguages()
   }, [refetchTranslationLanguages])
-
   useEffect(() => {
     messagesRef.current = messageItems
   }, [messageItems])
-
   useEffect(() => {
     partsByMessageIdRef.current = partsByMessageId
   }, [partsByMessageId])
-
   const requireChatWrite = useCallback(
     (actionName: string) => {
       if (chatWrite) return chatWrite
-
       logger.warn('Chat write action unavailable', {
         actionName,
         topicId: topic.id
@@ -222,22 +205,18 @@ export function useHomeMessageListProviderValue({
     },
     [chatWrite, t, topic.id]
   )
-
   const deleteMessage = useCallback<NonNullable<MessageListActions['deleteMessage']>>(
     (messageId, traceOptions) => requireChatWrite('deleteMessage').deleteMessage(messageId, traceOptions),
     [requireChatWrite]
   )
-
   const getDoctorSubject = useCallback((message: MessageListItem): DoctorSubjectRef | undefined => {
     const model = getMessageListItemModel(message)
     return model ? { kind: 'chat', providerId: model.provider, modelId: model.id } : undefined
   }, [])
-
   const diagnosticReport = useMemo(
     () => (normalInteractionsEnabled ? { location: 'home' } : undefined),
     [normalInteractionsEnabled]
   )
-
   const {
     errorActions,
     exportActions,
@@ -262,17 +241,14 @@ export function useHomeMessageListProviderValue({
     getDoctorSubject,
     selectAllPagination
   })
-
   useEffect(() => {
     if (!assistant) return
     onFirstUpdate?.()
   }, [assistant, messageItems, onFirstUpdate])
-
   useEffect(() => {
     const handle = requestAnimationFrame(() => onComponentUpdate?.())
     return () => cancelAnimationFrame(handle)
   }, [onComponentUpdate])
-
   useCommandHandler(
     'chat.message.copy_last',
     () => {
@@ -296,7 +272,6 @@ export function useHomeMessageListProviderValue({
     },
     { enabled: normalInteractionsEnabled }
   )
-
   useCommandHandler(
     'chat.message.edit_last_user',
     () => {
@@ -307,24 +282,20 @@ export function useHomeMessageListProviderValue({
     },
     { enabled: normalInteractionsEnabled }
   )
-
   const consumeTopicImageAction = useCallback(
     (runtime: MessageListRuntime, type: TopicImageActionType, data?: Topic) => {
       if (data && data.id !== topic.id) return
-
       const requests = consumePendingTopicImageActions(topic.id, type)
       if (requests.length === 0) {
         void runMessageImageAction(runtime, type)
         return
       }
-
       for (const request of requests) {
         settleTopicImageActionRequest(request, runMessageImageAction(runtime, type))
       }
     },
     [topic.id]
   )
-
   const flushPendingTopicImageActions = useCallback(
     (runtime: MessageListRuntime) => {
       flushPendingMessageImageActions({
@@ -336,12 +307,10 @@ export function useHomeMessageListProviderValue({
     },
     [topic.id]
   )
-
   useEffect(() => {
     const topicId = topic.id
     return () => rejectPendingTopicImageActions(topicId, new Error('Topic image export was cancelled'))
   }, [topic.id])
-
   const bindRuntime = useCallback(
     (runtime: MessageListRuntime) => {
       listRuntimeRef.current = runtime
@@ -366,9 +335,7 @@ export function useHomeMessageListProviderValue({
           }
         }
       }
-
       flushPendingTopicImageActions(runtime)
-
       const unsubscribes = [
         EventEmitter.on(EVENT_NAMES.COPY_TOPIC_IMAGE, (data?: TopicImageActionRequest['topic']) =>
           consumeTopicImageAction(runtime, 'copy', data)
@@ -377,7 +344,6 @@ export function useHomeMessageListProviderValue({
           consumeTopicImageAction(runtime, 'export', data)
         )
       ]
-
       return () => {
         unsubscribes.forEach((unsub) => unsub())
         clearBoundRuntime()
@@ -388,11 +354,9 @@ export function useHomeMessageListProviderValue({
     },
     [consumeTopicImageAction, flushPendingTopicImageActions, imageActionConsumer, onBindRuntime, topic.id]
   )
-
   const bindMessageRuntime = useCallback(
     (messageId: string, runtime: MessageRuntime) => {
       if (!normalInteractionsEnabled) return () => {}
-
       const unsubscribes = [
         EventEmitter.on(EVENT_NAMES.LOCATE_MESSAGE + ':' + messageId, runtime.locateMessage),
         EventEmitter.on(EVENT_NAMES.EDIT_MESSAGE, (targetId: string) => {
@@ -401,41 +365,33 @@ export function useHomeMessageListProviderValue({
           }
         })
       ]
-
       return () => unsubscribes.forEach((unsub) => unsub())
     },
     [normalInteractionsEnabled]
   )
-
   const bindMessageGroupRuntime = useCallback(
     (messageIds: string[], runtime: MessageGroupRuntime) => {
       if (!normalInteractionsEnabled) return () => {}
-
       const unsubscribes = messageIds.map((messageId) =>
         EventEmitter.on(EVENT_NAMES.LOCATE_MESSAGE + ':' + messageId, () => runtime.locateMessage(messageId))
       )
-
       return () => unsubscribes.forEach((unsub) => unsub())
     },
     [normalInteractionsEnabled]
   )
-
   const locateMessage = useCallback((messageId: string, highlight?: boolean) => {
     const runtime = listRuntimeRef.current
     if (!runtime) {
       void EventEmitter.emit(EVENT_NAMES.LOCATE_MESSAGE + ':' + messageId, highlight)
       return
     }
-
     runtime.locateMessage(messageId)
     window.requestAnimationFrame(() => {
       void EventEmitter.emit(EVENT_NAMES.LOCATE_MESSAGE + ':' + messageId, highlight)
     })
   }, [])
-
   const startNewContext = useCallback(() => {
     if (!canStartNewContext) return
-
     void requireChatWrite('startNewContext')
       .startNewContext()
       .then(() => {
@@ -446,15 +402,15 @@ export function useHomeMessageListProviderValue({
         toast.error(formatErrorMessageWithPrefix(error, t('message.error.unknown')))
       })
   }, [canStartNewContext, requireChatWrite, t, topic.id])
-
   const saveCodeBlock = useCallback(
     async (data: { msgBlockId: string; originalContent: string; newContent: string }) => {
       const { msgBlockId, originalContent, newContent } = data
-
       try {
         const resolved = resolvePartFromParts(partsByMessageIdRef.current, msgBlockId)
         if (resolved && resolved.part.type === 'text') {
-          const textPart = resolved.part as { text?: string }
+          const textPart = resolved.part as {
+            text?: string
+          }
           const { updateCodeBlock } = await import('@renderer/utils/markdown')
           const updatedText = updateCodeBlock(textPart.text || '', originalContent, newContent)
           if (updatedText === null) {
@@ -471,7 +427,6 @@ export function useHomeMessageListProviderValue({
           toast.success(t('code_block.edit.save.success'))
           return
         }
-
         logger.error(`Failed to save code block content to message block ${msgBlockId}: unable to resolve part`)
         toast.error(t('code_block.edit.save.failed.label'))
       } catch (error) {
@@ -481,11 +436,9 @@ export function useHomeMessageListProviderValue({
     },
     [requireChatWrite, t]
   )
-
   const openFilePreviewTab = useOptionalOpenFilePreviewTab()
   const openPath = useCallback(
     async (path: string) => {
-      if (!isEvoStack) return ipcApi.request('system.shell.open_path', path)
       const filePath = normalizeFilePreviewPath(path)
       const metadata = await ipcApi.request('file.get_metadata', { kind: 'path', path: filePath })
       if (metadata?.kind !== 'file' || metadata.mime !== 'text/markdown' || !openFilePreviewTab) {
@@ -495,7 +448,6 @@ export function useHomeMessageListProviderValue({
     },
     [openFilePreviewTab]
   )
-
   const abortTool = useCallback(
     (toolId: string) => {
       // Scope must match the registration in mcpTools.ts — provider call ids can
@@ -504,12 +456,10 @@ export function useHomeMessageListProviderValue({
     },
     [topicId]
   )
-
   const navigateToRoute = useCallback<NonNullable<MessageListActions['navigateToRoute']>>(
     ({ path, query }) => openRoute(path, query),
     []
   )
-
   const removeMessageErrorPart = useCallback<NonNullable<MessageListActions['removeMessageErrorPart']>>(
     async ({ messageId, partId }) => {
       try {
@@ -517,7 +467,6 @@ export function useHomeMessageListProviderValue({
         const persistedParts = persistedMessage.data.parts ?? []
         const resolved = resolvePartFromParts({ [messageId]: persistedParts }, partId)
         if (!resolved || resolved.messageId !== messageId || (resolved.part.type as string) !== 'data-error') return
-
         await requireChatWrite('removeMessageErrorPart').editMessage(
           messageId,
           persistedParts.filter((_, index) => index !== resolved.index)
@@ -529,7 +478,6 @@ export function useHomeMessageListProviderValue({
     },
     [requireChatWrite]
   )
-
   const createTranslationUpdater = useCallback(
     async (
       messageId: string,
@@ -543,13 +491,11 @@ export function useHomeMessageListProviderValue({
       if (!topic.id) return null
       const write = requireChatWrite('translateMessage')
       const isCurrentTranslation = () => translationAbortControllersRef.current.get(messageId) === controller
-
       const currentParts = partsByMessageIdRef.current[messageId]
       if (!currentParts) {
         logger.error(`[createTranslationUpdater] cannot find parts for message: ${messageId}`)
         return null
       }
-
       const baseParts = currentParts.filter((part) => part.type !== 'data-translation')
       const loadingPart = {
         type: 'data-translation' as const,
@@ -561,12 +507,9 @@ export function useHomeMessageListProviderValue({
       }
       await write.editMessage(messageId, [...baseParts, loadingPart])
       if (!isCurrentTranslation()) return null
-
       let pendingUpdate = Promise.resolve()
-
       const onResponse = (accumulatedText: string) => {
         if (!isCurrentTranslation()) return
-
         const translationPart = {
           type: 'data-translation' as const,
           data: {
@@ -575,7 +518,6 @@ export function useHomeMessageListProviderValue({
             ...(sourceLanguage && { sourceLanguage })
           }
         }
-
         pendingUpdate = pendingUpdate
           .then(() => {
             if (!isCurrentTranslation()) return
@@ -585,7 +527,6 @@ export function useHomeMessageListProviderValue({
             logger.error('Failed to update message translation:', error as Error, { messageId })
           })
       }
-
       return {
         onResponse,
         waitForPendingUpdates: () => pendingUpdate
@@ -593,18 +534,15 @@ export function useHomeMessageListProviderValue({
     },
     [requireChatWrite, topic.id]
   )
-
   const translateMessage = useCallback<NonNullable<MessageListActions['translateMessage']>>(
     async (messageId, language, sourceText) => {
       if (!sourceText.trim()) return
-
       const controller = new AbortController()
       let translationUpdater: Awaited<ReturnType<typeof createTranslationUpdater>> = null
       try {
         translationAbortControllersRef.current.get(messageId)?.abort()
         translationAbortControllersRef.current.set(messageId, controller)
         setMessageTranslating(messageId, true)
-
         translationUpdater = await createTranslationUpdater(messageId, language.langCode, controller)
         if (!translationUpdater) {
           if (translationAbortControllersRef.current.get(messageId) === controller) {
@@ -612,12 +550,10 @@ export function useHomeMessageListProviderValue({
           }
           return
         }
-
         await translateText(sourceText, language, translationUpdater.onResponse, controller.signal)
         await translationUpdater.waitForPendingUpdates()
       } catch (error) {
         await translationUpdater?.waitForPendingUpdates()
-
         if (!isAbortError(error)) {
           logger.error('Message translation failed', error as Error)
           toast.error(formatErrorMessageWithPrefix(error, t('translate.error.failed')))
@@ -649,14 +585,12 @@ export function useHomeMessageListProviderValue({
     },
     [createTranslationUpdater, requireChatWrite, setMessageTranslating, t]
   )
-
   const abortMessageTranslation = useCallback<NonNullable<MessageListActions['abortMessageTranslation']>>(
     (messageId) => {
       translationAbortControllersRef.current.get(messageId)?.abort()
     },
     []
   )
-
   const removeMessageTranslation = useCallback<NonNullable<MessageListActions['removeMessageTranslation']>>(
     async (messageId) => {
       const currentParts = partsByMessageIdRef.current[messageId]
@@ -667,12 +601,10 @@ export function useHomeMessageListProviderValue({
     },
     [requireChatWrite]
   )
-
   const getMessageSiblings = useCallback(
     (messageId: string) => {
       const group = siblingsContext?.siblingsMap[messageId]
       if (!group || group.length < 2) return null
-
       const activeIndex = group.findIndex((message) => message.id === messageId)
       return {
         group: group.map((message) => ({
@@ -686,17 +618,14 @@ export function useHomeMessageListProviderValue({
     },
     [siblingsContext]
   )
-
   const editMessage = useCallback<NonNullable<MessageListActions['editMessage']>>(
     (messageId, parts) => requireChatWrite('editMessage').editMessage(messageId, parts),
     [requireChatWrite]
   )
-
   const getMessageDeleteAvailability = useCallback<NonNullable<MessageListActions['getMessageDeleteAvailability']>>(
     (messageId) => requireChatWrite('getMessageDeleteAvailability').getMessageDeleteAvailability(messageId),
     [requireChatWrite]
   )
-
   const startMessageBranch = useCallback<NonNullable<MessageListActions['startMessageBranch']>>(
     (messageId) => {
       if (onStartBranchDraft) {
@@ -706,7 +635,6 @@ export function useHomeMessageListProviderValue({
     },
     [onStartBranchDraft, requireChatWrite]
   )
-
   const copyBranchToNewTopic = useCallback<NonNullable<MessageListActions['copyBranchToNewTopic']>>(
     async (messageId) => {
       await copyBranchToNewTopicTrigger({
@@ -716,17 +644,14 @@ export function useHomeMessageListProviderValue({
     },
     [copyBranchToNewTopicTrigger, topicId]
   )
-
   const setActiveBranch = useCallback<NonNullable<MessageListActions['setActiveBranch']>>(
     (messageId) => requireChatWrite('setActiveBranch').setActiveBranch(messageId),
     [requireChatWrite]
   )
-
   const deleteMessageGroup = useCallback<NonNullable<MessageListActions['deleteMessageGroup']>>(
     (messageIds) => requireChatWrite('deleteMessageGroup').deleteMessageGroup(messageIds),
     [requireChatWrite]
   )
-
   const deleteMessageGroupWithConfirm = useCallback<NonNullable<MessageListActions['deleteMessageGroupWithConfirm']>>(
     async (messageIds) => {
       const confirmed = await popup.confirm({
@@ -739,7 +664,6 @@ export function useHomeMessageListProviderValue({
         okText: t('common.delete')
       })
       if (!confirmed) return
-
       try {
         await deleteMessageGroup(messageIds)
       } catch (error) {
@@ -749,18 +673,15 @@ export function useHomeMessageListProviderValue({
     },
     [deleteMessageGroup, t]
   )
-
   const regenerateMessage = useCallback<NonNullable<MessageListActions['regenerateMessage']>>(
     (messageId) => requireChatWrite('regenerateMessage').regenerate(messageId),
     [requireChatWrite]
   )
-
   const regenerateMessageUsingModel = useCallback(
     (messageId: string, modelId: UniqueModelId) =>
       requireChatWrite('regenerateMessageUsingModel').regenerate(messageId, { modelId }),
     [requireChatWrite]
   )
-
   const renderRegenerateModelPicker = useCallback<NonNullable<MessageListActions['renderRegenerateModelPicker']>>(
     ({ message, messageParts, trigger, onOpenChange }) => {
       const messageModel = getMessageListItemModel(message)
@@ -772,14 +693,12 @@ export function useHomeMessageListProviderValue({
             group: messageModel.group
           } as SharedModel)
         : undefined
-
       const mentionModelFilter: ModelSelectorFilter = (model) => {
         if (isNonChatModel(model)) return false
         const needsVision = messageParts.some((part) => part.type === 'file' && part.mediaType?.startsWith('image/'))
         if (needsVision && !isVisionModel(model)) return false
         return true
       }
-
       const onSelectMentionModel = async (selected: SharedModel | undefined) => {
         if (!selected) return
         try {
@@ -789,7 +708,6 @@ export function useHomeMessageListProviderValue({
           toast.error(formatErrorMessageWithPrefix(error, t('message.error.unknown')))
         }
       }
-
       return (
         <ModelSelector
           multiple={false}
@@ -807,7 +725,6 @@ export function useHomeMessageListProviderValue({
     },
     [regenerateMessageUsingModel, t]
   )
-
   const state = useMemo<MessageListState>(
     () => ({
       topic,
@@ -859,7 +776,6 @@ export function useHomeMessageListProviderValue({
       translationLanguagesStatus
     ]
   )
-
   const actions = useMemo<MessageListActions>(
     () => ({
       loadOlder,
@@ -940,7 +856,6 @@ export function useHomeMessageListProviderValue({
       updateRenderConfig
     ]
   )
-
   const assistantAvatarSources = useMessageAuthorAvatarSources(messageItems, topic.id)
   const meta = useMemo<MessageListMeta>(
     () => ({
@@ -954,6 +869,5 @@ export function useHomeMessageListProviderValue({
     }),
     [assistant, assistantAvatarSources, headerCapabilities.userProfile, topic.name]
   )
-
   return useMemo(() => ({ state, actions, meta }), [actions, meta, state])
 }

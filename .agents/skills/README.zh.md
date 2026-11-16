@@ -23,7 +23,7 @@
 每个新增的公共 skill，请执行：
 
 ```bash
-pnpm skills:sync
+pnpm exec tsx scripts/skills-sync.ts
 ```
 
 `skills:sync` 会自动创建/更新 `.claude/skills/<skill-name>` 为指向 `../../.agents/skills/<skill-name>` 的符号链接。
@@ -38,7 +38,7 @@ pnpm skills:sync
    ```bash
    git config --global core.symlinks true
    ```
-4. 启用后重新克隆仓库（或执行 `pnpm skills:sync`）。
+4. 启用后重新克隆仓库（或执行 `pnpm exec tsx scripts/skills-sync.ts`）。
 
 ## 白名单跟踪规则
 
@@ -51,13 +51,13 @@ pnpm skills:sync
 更新 `public-skills.txt` 后，请执行：
 
 ```bash
-pnpm skills:sync
+pnpm exec tsx scripts/skills-sync.ts
 ```
 
 然后校验：
 
 ```bash
-pnpm skills:check
+pnpm exec tsx scripts/skills-check.ts
 ```
 
 上述脚本会自动维护并校验：

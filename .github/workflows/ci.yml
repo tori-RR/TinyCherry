@@ -1,319 +1,121 @@
-name: CI
-
+name: Desktop CI
+on:
+  push:
+    branches: [main, evostack]
+  pull_request:
+    branches: [main, evostack]
+  workflow_dispatch:
 permissions:
   contents: read
-
-on:
-  workflow_dispatch:
-  push:
-    branches: [main, "release/v*"]
-  pull_request:
-    types: [ready_for_review, synchronize, opened, reopened]
-
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
-
-env:
-  CI: true
-
+  group: desktop-ci-${{ github.workflow }}-${{ github.ref }}
+  # PR comparisons cover the entire PR. Push jobs finish so a newer docs-only
+  # commit cannot cancel the only verification of an earlier source change.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 defaults:
   run:
-    shell: bash
-
+    shell: pwsh
 jobs:
-  changes:
-    runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+  plan:
+    runs-on: windows-2025
     outputs:
       plan: ${{ steps.plan.outputs.plan }}
-      repository: ${{ steps.plan.outputs.repository }}
-      lint: ${{ steps.plan.outputs.lint }}
-      types: ${{ steps.plan.outputs.types }}
-      i18n: ${{ steps.plan.outputs.i18n }}
-      main: ${{ steps.plan.outputs.main }}
-      renderer: ${{ steps.plan.outputs.renderer }}
-      packages: ${{ steps.plan.outputs.packages }}
+      desktop: ${{ steps.plan.outputs.desktop }}
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 2
+          fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
-      - name: Plan affected validation
-        id: plan
+      - id: plan
+        name: Select current product checks
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          BEFORE_SHA: ${{ github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
-          if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            node scripts/validation/run.mjs --target tauri --committed --base HEAD^1 --github-output
-          elif [[ "$EVENT_NAME" == "push" && -n "$BEFORE_SHA" && "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]]; then
-            if git fetch --no-tags --depth=1 origin "$BEFORE_SHA"; then
-              node scripts/validation/run.mjs --target tauri --committed --base "$BEFORE_SHA" --github-output
-            else
-              node scripts/validation/run.mjs --target tauri --all --github-output
-            fi
-          else
-            node scripts/validation/run.mjs --target tauri --all --github-output
-          fi
-
-      - name: "Validation scope: ${{ steps.plan.outputs.scope }}"
-        run: ":"
-      - name: "Dependency cache: not-used"
-        run: ":"
-      - name: Lint GitHub Actions workflows
-        if: steps.plan.outputs.repository == 'true'
-        uses: docker://rhysd/actionlint:1.7.12
+          if ($env:BASE -and $env:BASE -notmatch '^0+$') { node scripts/desktop/plan.mjs --base $env:BASE }
+          else { node scripts/desktop/plan.mjs --all }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check changed documentation
+        if: steps.plan.outputs.desktop == 'false'
         env:
-          SHELLCHECK_OPTS: --severity=error
+          PLAN: ${{ steps.plan.outputs.plan }}
+        run: |
+          $files = ($env:PLAN | ConvertFrom-Json).files
+          node scripts/desktop/docs.mjs @files
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  desktop:
+    needs: plan
+    if: needs.plan.outputs.desktop == 'true'
+    runs-on: windows-2025
+    timeout-minutes: 45
+    env:
+      CI: true
+    steps:
+      - uses: actions/checkout@v7
         with:
-          args: -color
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
       - uses: pnpm/action-setup@v5
-        if: contains(fromJSON(steps.plan.outputs.plan).tasks, 'format')
-      - name: Check formatting
-        if: contains(fromJSON(steps.plan.outputs.plan).tasks, 'format')
-        run: |
-          OXFMT_VERSION=$(node -p 'require("./package.json").devDependencies.oxfmt')
-          pnpm dlx "oxfmt@$OXFMT_VERSION" --check .
-
-  basic-checks:
-    runs-on: ubuntu-latest
-    needs: changes
-    if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) }}
-    env:
-      TRANSLATION_BASE_LOCALE: ${{ vars.TRANSLATION_BASE_LOCALE || 'en-us' }}
-      VALIDATION_PLAN: ${{ needs.changes.outputs.plan }}
-    steps:
-      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
-          fetch-depth: 2
-      - name: Reject failed planning or preflight
-        if: needs.changes.result != 'success'
-        run: exit 1
-      - name: Prepare base reference
-        if: needs.changes.outputs.repository == 'true' && github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-        run: git update-ref "refs/remotes/origin/$BASE_REF" "$(git rev-parse HEAD^1)"
-
-      # provider-registry data/*.json are generated from src/creators + src/providers.
-      # The daily catalog workflow regenerates data without source changes, so exempt only
-      # its exact same-repository branch from the hand-edit guard.
-      - name: Detect provider-registry changes
-        if: needs.changes.outputs.repository == 'true' && github.event_name == 'pull_request' && !(github.head_ref == 'auto-update-catalog-daily' && github.event.pull_request.head.repo.full_name == github.repository)
-        id: catalog-filter
-        uses: dorny/paths-filter@v4
-        with:
-          filters: |
-            data:
-              - 'packages/provider-registry/data/**'
-            source:
-              - 'packages/provider-registry/src/**'
-              - 'packages/provider-registry/scripts/**'
-
-      - name: Reject hand-edited catalog
-        if: needs.changes.outputs.repository == 'true' && steps.catalog-filter.outputs.data == 'true' && steps.catalog-filter.outputs.source == 'false'
+          go-version-file: native/evostack/backend/go.mod
+          cache: false
+      - name: Prepare project-local caches and toolchains
         run: |
-          echo "::error::packages/provider-registry/data/*.json changed but no src/ or scripts/ change — that's a hand-edit. The data files are generated: edit src/creators|src/providers and run \`pnpm --filter @cherrystudio/provider-registry generate\`, then commit. Never hand-edit data/*.json."
-          exit 1
-
-      - uses: ./.github/actions/setup-validation
-        id: dependencies
-        if: "!cancelled() && needs.changes.result == 'success' && (needs.changes.outputs.repository == 'true' || needs.changes.outputs.types == 'true' || needs.changes.outputs.lint == 'true' || needs.changes.outputs.i18n == 'true')"
+          . ./native/evostack/prepare-env.ps1
+          rustup toolchain install 1.98.0 --profile minimal --component clippy --component rustfmt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          rustup default 1.98.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          'C:\mingw64\bin' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "ACTIONLINT=$env:GOPATH\bin\actionlint.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "GOPATH=$env:GOPATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "GOMODCACHE=$env:GOMODCACHE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "GOCACHE=$env:GOCACHE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CARGO_HOME=$env:CARGO_HOME" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CARGO_TARGET_DIR=$env:CARGO_TARGET_DIR" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - uses: actions/cache@v5
         with:
-          save-cache: ${{ github.event_name != 'pull_request' }}
-      - name: "Dependency cache: ${{ steps.dependencies.outputs.cache-state }}"
-        run: ":"
-
-      - name: Check provider-registry compatibility baseline policy
-        if: needs.changes.outputs.repository == 'true' && github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-        run: pnpm --filter @cherrystudio/provider-registry compat:policy -- "origin/$BASE_REF"
-
-      - name: Check changeset release policy
-        if: needs.changes.outputs.repository == 'true'
-        run: pnpm changeset:check
-
-      - name: Check changesets
-        if: needs.changes.outputs.repository == 'true' && github.event_name == 'pull_request' && github.head_ref != 'changeset-release/main'
-        env:
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-        run: pnpm changeset status --since="origin/$BASE_REF"
-
-      - name: Repository checks
-        id: repository-checks
-        if: needs.changes.outputs.repository == 'true'
-        run: pnpm check --target tauri --group repository
-
-      - name: System Provider IDs Check
-        if: needs.changes.outputs.repository == 'true' && contains(fromJSON(needs.changes.outputs.plan).tasks, 'knowledge')
+          path: |
+            .pnpm-store
+            native/evostack/.cache/go/pkg/mod
+            native/evostack/.cache/go-build
+            native/evostack/.cache/cargo/registry
+            native/evostack/.cache/cargo/git
+            native/evostack/.cache/target
+          key: desktop-windows-${{ hashFiles('pnpm-lock.yaml', 'native/evostack/backend/go.sum', 'native/evostack/src-tauri/Cargo.lock') }}
+          restore-keys: desktop-windows-
+      - name: Install pinned dependencies and workflow validator
         run: |
-          # SystemProviderId is generated from packages/provider-registry — fail on drift.
-          pnpm gen:system-provider-ids
-          if [ -n "$(git status --porcelain src/shared/utils/systemProviderId.ts)" ]; then
-            echo "::error::systemProviderId.ts is out of sync with provider-registry. Run \`pnpm gen:system-provider-ids\` and commit the result."
-            git --no-pager diff -- src/shared/utils/systemProviderId.ts
-            exit 1
-          fi
-
-      # The marker covers every repository guard above, including generation/drift checks.
-      - name: Record repository success
-        id: repository-result
-        if: needs.changes.outputs.repository == 'true' && steps.repository-checks.outcome == 'success'
-        run: ":"
-      - name: Type checks
-        id: type-checks
-        if: "!cancelled() && steps.dependencies.outcome == 'success' && needs.changes.outputs.types == 'true'"
-        run: pnpm check --target tauri --group types
-
-      - name: Lint checks
-        id: lint-checks
-        if: "!cancelled() && steps.dependencies.outcome == 'success' && needs.changes.outputs.lint == 'true'"
-        run: pnpm check --target tauri --group lint
-
-      - name: Check locale synchronization
-        id: i18n-sync
-        if: "!cancelled() && steps.dependencies.outcome == 'success' && needs.changes.outputs.i18n == 'true'"
-        run: |
-          pnpm i18n:sync
-          if [ -n "$(git status --porcelain --untracked-files=all -- src/renderer/i18n src/main/i18n packages/file-preview/src/locales)" ]; then
-            echo "::error::Translations are out of sync."
-            git --no-pager diff -- src/renderer/i18n src/main/i18n packages/file-preview/src/locales
-            exit 1
-          fi
-      - name: I18n checks
-        id: i18n-checks
-        if: "!cancelled() && steps.i18n-sync.outcome == 'success' && needs.changes.outputs.i18n == 'true'"
-        run: pnpm check --target tauri --group i18n
-
-      - name: Verify planned checks
-        if: "!cancelled()"
+          pnpm install --frozen-lockfile
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run selected verification once
         env:
-          VALIDATION_JOBS: ${{ toJSON(needs) }}
-          VALIDATION_STEPS: ${{ toJSON(steps) }}
-        run: node scripts/validation/verify.mjs basic
-
-  main-test-shard:
-    name: preload-bridge
-    runs-on: windows-2022
-    needs: changes
-    if: needs.changes.outputs.main == 'true'
-    env:
-      VALIDATION_PLAN: ${{ needs.changes.outputs.plan }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-validation
-        id: dependencies
-      - name: "Dependency cache: ${{ steps.dependencies.outputs.cache-state }}"
-        run: ":"
-      - run: pnpm check --target tauri --group main --max-workers=2
-
-  package-test:
-    runs-on: windows-2022
-    needs: changes
-    if: needs.changes.outputs.packages == 'true'
-    env:
-      VALIDATION_PLAN: ${{ needs.changes.outputs.plan }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-validation
-        id: dependencies
-      - name: "Dependency cache: ${{ steps.dependencies.outputs.cache-state }}"
-        run: ":"
-      - run: pnpm check --target tauri --group packages --max-workers=2
-      - name: Check Web Search Package
-        if: contains(fromJSON(needs.changes.outputs.plan).projects, 'web-search')
-        run: pnpm --filter @cherrystudio/web-search test:package
-      - name: Check Provider Registry Package
-        if: contains(fromJSON(needs.changes.outputs.plan).projects, 'provider-registry')
-        run: pnpm --filter @cherrystudio/provider-registry test:package
-
-  renderer-test-shard:
-    name: renderer-test (${{ matrix.shard }}/3)
-    runs-on: windows-2022
-    needs: changes
-    if: needs.changes.outputs.renderer == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3]
-    env:
-      VALIDATION_PLAN: ${{ needs.changes.outputs.plan }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-validation
-        id: dependencies
-      - name: "Dependency cache: ${{ steps.dependencies.outputs.cache-state }}"
-        run: ":"
-      - run: pnpm check --target tauri --group renderer --shard=${{ matrix.shard }}/3 --max-workers=2
-
-  general-test:
-    runs-on: ubuntu-latest
-    needs: [changes, main-test-shard, package-test]
-    if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) }}
-    steps:
-      - uses: actions/checkout@v7
-      - name: Verify planned jobs
-        env:
-          VALIDATION_JOBS: ${{ toJSON(needs) }}
-        run: node scripts/validation/verify.mjs general
-
-  render-test:
-    runs-on: ubuntu-latest
-    needs: [changes, renderer-test-shard]
-    if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.draft == false) }}
-    steps:
-      - uses: actions/checkout@v7
-      - name: Verify planned jobs
-        env:
-          VALIDATION_JOBS: ${{ toJSON(needs) }}
-        run: node scripts/validation/verify.mjs renderer
-
-  notify:
-    runs-on: ubuntu-latest
-    needs: [basic-checks, general-test, render-test]
-    if: always() && github.repository == 'CherryHQ/cherry-studio' && (needs.basic-checks.result == 'failure' || needs.general-test.result == 'failure' || needs.render-test.result == 'failure') && github.event_name == 'push' && github.ref == 'refs/heads/main'
-    steps:
-      - name: Check out Git repository
-        uses: actions/checkout@v7
-
-      - name: Install Node.js
-        uses: actions/setup-node@v7
+          PLAN: ${{ needs.plan.outputs.plan }}
+          EXPECTED_REVISION: ${{ github.sha }}
+        run: pnpm verify --plan $env:PLAN --expected-revision $env:EXPECTED_REVISION
+      - uses: actions/upload-artifact@v7
+        if: success() && hashFiles('native/evostack/dist/*.zip') != ''
         with:
-          node-version-file: ".node-version"
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v5
-
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
-
-      - name: Cache pnpm dependencies
-        uses: actions/cache@v6
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-
-
-      - name: Install Dependencies
-        run: pnpm install
-
-      - name: Send failure notification to Feishu
+          name: TinyCherry-Windows-${{ github.sha }}
+          path: native/evostack/dist/*.zip
+          if-no-files-found: error
+  result:
+    if: always()
+    needs: [plan, desktop]
+    runs-on: windows-2025
+    steps:
+      - name: Require every selected job
         env:
-          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
-          FEISHU_WEBHOOK_SECRET: ${{ secrets.FEISHU_WEBHOOK_SECRET }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          COMMIT_SHA: ${{ github.sha }}
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          PLAN_RESULT: ${{ needs.plan.result }}
+          DESKTOP_RESULT: ${{ needs.desktop.result }}
+          DESKTOP_EXPECTED: ${{ needs.plan.outputs.desktop }}
         run: |
-          DESCRIPTION=$(printf "**分支:** main\n\n**提交:** %.7s\n\n**信息:** %s\n\n**工作流:** [查看详情](%s)" "$COMMIT_SHA" "$COMMIT_MSG" "$RUN_URL")
-          pnpm tsx scripts/feishu-notify.ts send \
-            -t "Main 分支 CI 失败" \
-            -d "$DESCRIPTION" \
-            -c "red"
+          if ($env:PLAN_RESULT -ne 'success') { throw 'Validation planning or documentation failed' }
+          $expected = if ($env:DESKTOP_EXPECTED -eq 'true') { 'success' } else { 'skipped' }
+          if ($env:DESKTOP_RESULT -ne $expected) { throw "Desktop validation expected $expected, received $env:DESKTOP_RESULT" }

@@ -177,21 +177,6 @@ describe('CodeBlockView', () => {
     expect(mocks.writeText).toHaveBeenCalledWith('const value = 1')
   })
 
-  it('runs Python and displays the execution result', async () => {
-    const user = userEvent.setup()
-    MockUsePreferenceUtils.setMultiplePreferenceValues({
-      'chat.code.execution.enabled': true,
-      'chat.code.wrappable': false
-    })
-    mocks.runScript.mockResolvedValue({ text: 'completed' })
-    render(<CodeBlockView language="python">print(42)</CodeBlockView>)
-
-    await user.click(screen.getByRole('button', { name: 'code_block.run' }))
-
-    expect(mocks.runScript).toHaveBeenCalledWith('print(42)', {}, 60_000)
-    expect(await screen.findByText('completed')).toBeInTheDocument()
-  })
-
   it('hides the wrap toggle when wrap is forced even if chat wrap is on', () => {
     MockUsePreferenceUtils.setMultiplePreferenceValues({
       'chat.code.wrappable': true,

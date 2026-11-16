@@ -173,11 +173,8 @@ describe('SettingsPage', () => {
     expect(screen.queryByRole('button', { name: '文档处理' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'OCR' })).not.toBeInTheDocument()
 
-    const dependenciesItem = screen.getByRole('button', { name: '环境依赖' })
+    expect(screen.queryByRole('button', { name: '环境依赖' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '系统' })).not.toBeInTheDocument()
-    expect(screen.getByText('系统').nextElementSibling).toBe(dependenciesItem)
-    fireEvent.click(dependenciesItem)
-    expect(navigateMock).toHaveBeenCalledWith({ to: '/settings/dependencies' })
   })
 
   it('opens skills and built-in prompt management', () => {
@@ -194,19 +191,17 @@ describe('SettingsPage', () => {
   })
 
   it('shows the four retained built-in settings destinations in a secondary menu and preserves their routes', () => {
-    locationMock.pathname = '/settings/browser'
+    locationMock.pathname = '/settings/prompts'
     render(<SettingsPage />)
 
-    expect(screen.getByText('效率')).toBeInTheDocument()
+    expect(screen.queryByText('效率')).not.toBeInTheDocument()
     expect(screen.queryByText('快捷入口')).not.toBeInTheDocument()
 
     expect(screen.queryByRole('button', { name: '定时任务' })).not.toBeInTheDocument()
     const menu = within(screen.getByRole('navigation', { name: '内置工具' }))
     const destinations = [
       ['提示词', '/settings/prompts'],
-      ['电脑操作', '/settings/computer-use'],
-      ['浏览器', '/settings/browser'],
-      ['网络搜索', '/settings/websearch']
+      ['电脑操作', '/settings/computer-use']
     ]
     expect(menu.getAllByRole('button').map((button) => button.textContent)).toEqual(
       destinations.map(([label]) => label)
@@ -220,15 +215,15 @@ describe('SettingsPage', () => {
   })
 
   it('updates the secondary selection on direct navigation and removes it on other settings pages', () => {
-    locationMock.pathname = '/settings/browser'
+    locationMock.pathname = '/settings/prompts'
     const { rerender } = render(<SettingsPage />)
     const selectedItem = () => within(screen.getByRole('navigation', { name: '内置工具' }))
-    expect(selectedItem().getByRole('button', { name: '浏览器' })).toHaveAttribute('data-active', 'true')
+    expect(selectedItem().getByRole('button', { name: '提示词' })).toHaveAttribute('data-active', 'true')
     expect(screen.getByRole('button', { name: '内置工具' })).toHaveAttribute('data-active', 'true')
 
     locationMock.pathname = '/settings/computer-use'
     rerender(<SettingsPage />)
-    expect(selectedItem().getByRole('button', { name: '浏览器' })).not.toHaveAttribute('data-active')
+    expect(selectedItem().getByRole('button', { name: '提示词' })).not.toHaveAttribute('data-active')
     expect(selectedItem().getByRole('button', { name: '电脑操作' })).toHaveAttribute('data-active', 'true')
 
     locationMock.pathname = '/settings/data'

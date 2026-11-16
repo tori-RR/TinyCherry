@@ -1,0 +1,23 @@
+# Generic build/profile exclusions. The working .gitignore remains local.
+.gitignore
+README_LOG.MD
+README_LOG.md
+AGENTS.md
+AGENTS-og.md
+*.local.md
+.env
+.env.*
+.code_review/
+.cache/
+.pnpm-store/
+.tsbuildinfo/
+node_modules/
+**/node_modules/
+**/.cache/
+**/.vite/
+**/dist/
+**/evostack-data/
+coverage/
+*.tsbuildinfo
+*.log
+native/evostack/backend/generated/*.json

@@ -7,19 +7,15 @@ import { useTabs } from '@renderer/hooks/tab'
 import { ipcApi, useIpcOn } from '@renderer/ipc'
 import { toast } from '@renderer/services/toast'
 import { findConversationTab } from '@renderer/utils/conversationNavigation'
-import { isEvoStack } from '@renderer/utils/platform'
 import { getSidebarApp, resolveSidebarActiveItem } from '@renderer/utils/sidebar'
 
 import { notificationCategoryIcons, notificationPreview } from './notificationPresentation'
 import { NotificationTitle } from './NotificationTitle'
-
 const logger = loggerService.withContext('ConversationNotificationRuntime')
-
 /** Foreground-only presentation of main-prepared conversation notifications. */
 export function ConversationNotificationRuntime(): null {
   const { activeTab } = useTabs()
   const { t } = useTranslation()
-
   useEffect(() => {
     if (activeTab?.type !== 'route') return
     const appId = resolveSidebarActiveItem(activeTab.url)
@@ -42,7 +38,6 @@ export function ConversationNotificationRuntime(): null {
       document.removeEventListener('visibilitychange', markRead)
     }
   }, [activeTab?.type, activeTab?.url])
-
   useIpcOn('notification.present', (notification) => {
     if (
       notification.category === 'system' &&
@@ -50,7 +45,7 @@ export function ConversationNotificationRuntime(): null {
       activeTab &&
       findConversationTab([activeTab], notification.target)
     ) {
-      if (isEvoStack && document.hasFocus() && document.visibilityState === 'visible') {
+      if (document.hasFocus() && document.visibilityState === 'visible') {
         void dataApiService
           .post('/notifications/read-conversation', {
             body: {
@@ -62,7 +57,6 @@ export function ConversationNotificationRuntime(): null {
       }
       return
     }
-
     const showToast =
       notification.target?.result?.status === 'failed' || notification.target?.result?.status === 'interrupted'
         ? toast.error
@@ -89,10 +83,8 @@ export function ConversationNotificationRuntime(): null {
       }
     })
   })
-
   useIpcOn('notification.conversation', (notification) => {
     if (activeTab && findConversationTab([activeTab], notification.meta)) return
-
     toast.warning({
       key: notification.id,
       title: notificationPreview(notification.title, true),
@@ -109,6 +101,5 @@ export function ConversationNotificationRuntime(): null {
       }
     })
   })
-
   return null
 }

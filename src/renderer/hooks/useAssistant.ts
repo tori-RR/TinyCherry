@@ -15,7 +15,6 @@
  *  - {@link import('./useMcpServer').useMcpServer} for MCP servers
  *  - {@link import('./useKnowledgeBase').useKnowledgeBases} for KBs
  */
-
 import { useCallback, useRef } from 'react'
 
 import { useInvalidateCache, useMutation, useQuery } from '@data/hooks/useDataApi'
@@ -28,19 +27,12 @@ import type { Assistant, AssistantSettings } from '@renderer/types/assistant'
 import { reconcileReasoningEffortForModel, reconcileWebSearchForModel } from '@renderer/utils/model'
 import type { CreateAssistantDto, DeleteAssistantResult, UpdateAssistantDto } from '@shared/data/api/schemas/assistants'
 import type { ConcreteApiPaths } from '@shared/data/api/types'
-import type { Model } from '@shared/data/types/model'
-import { type UniqueModelId } from '@shared/data/types/model'
-
+import type { Model, UniqueModelId } from '@shared/data/types/model'
 const logger = loggerService.withContext('useAssistant')
-
 // ─── Tier 1: raw DataApi queries/mutations ────────────────────────────────
-
 const ASSISTANTS_LIST_LIMIT = 500
-
 const EMPTY_ASSISTANTS: readonly Assistant[] = Object.freeze([])
-
 const ASSISTANTS_REFRESH_KEYS: ConcreteApiPaths[] = ['/assistants', '/assistants/*']
-
 /**
  * List all assistants from SQLite via DataApi.
  *
@@ -48,12 +40,15 @@ const ASSISTANTS_REFRESH_KEYS: ConcreteApiPaths[] = ['/assistants', '/assistants
  * (matches the schema's hard cap). Paginated UI would need a different
  * consumer.
  */
-export function useAssistantsApi(options: { enabled?: boolean } = {}) {
+export function useAssistantsApi(
+  options: {
+    enabled?: boolean
+  } = {}
+) {
   const { data, isLoading, isRefreshing, error, refetch, mutate } = useQuery('/assistants', {
     enabled: options.enabled ?? true,
     query: { limit: ASSISTANTS_LIST_LIMIT }
   })
-
   return {
     assistants: data?.items ?? EMPTY_ASSISTANTS,
     total: data?.total ?? 0,
@@ -65,7 +60,6 @@ export function useAssistantsApi(options: { enabled?: boolean } = {}) {
     mutate
   }
 }
-
 /**
  * Fetch a single assistant by id from SQLite via DataApi.
  */
@@ -75,7 +69,6 @@ export function useAssistantApiById(id: string | undefined) {
     enabled: !!id,
     swrOptions: { keepPreviousData: false }
   })
-
   return {
     assistant: data,
     isLoading,
@@ -84,7 +77,6 @@ export function useAssistantApiById(id: string | undefined) {
     mutate
   }
 }
-
 /**
  * Assistant mutations backed by DataApi, with archive commands routed through IpcApi.
  */
@@ -105,13 +97,11 @@ export function useAssistantMutations() {
   createTriggerRef.current = createTrigger
   updateTriggerRef.current = updateTrigger
   restoreTriggerRef.current = restoreTrigger
-
   const createAssistant = useCallback(async (dto: CreateAssistantDto): Promise<Assistant> => {
     const created = await createTriggerRef.current({ body: dto })
     logger.info('Created assistant', { id: created.id })
     return created
   }, [])
-
   const updateAssistant = useCallback(async (id: string, dto: UpdateAssistantDto): Promise<Assistant> => {
     if (!id) {
       throw new Error('updateAssistant called with empty id; refusing to issue PATCH /assistants/')
@@ -120,11 +110,13 @@ export function useAssistantMutations() {
     logger.info('Updated assistant', { id })
     return updated
   }, [])
-
   const deleteAssistant = useCallback(
     async (
       id: string,
-      options: { deleteTopics?: boolean; permanent?: boolean } = {}
+      options: {
+        deleteTopics?: boolean
+        permanent?: boolean
+      } = {}
     ): Promise<DeleteAssistantResult> => {
       const deleteTopics = options.deleteTopics === true
       // Deleting the assistant drops its pin; kept children move to the unassociated
@@ -140,7 +132,6 @@ export function useAssistantMutations() {
             { assistantId: id }
           )
         })
-
       let result: DeleteAssistantResult
       try {
         result = await ipcApi.request(
@@ -151,20 +142,17 @@ export function useAssistantMutations() {
         await refreshAfterDelete('failed')
         throw error
       }
-
       await refreshAfterDelete('completed')
       logger.info('Deleted assistant', { id, deleteTopics, deleted: result.deleted })
       return result
     },
     [invalidate]
   )
-
   const restoreAssistant = useCallback(async (id: string): Promise<Assistant> => {
     const restored = await restoreTriggerRef.current({ params: { id } })
     logger.info('Restored assistant', { id })
     return restored
   }, [])
-
   return {
     createAssistant,
     updateAssistant,
@@ -175,13 +163,10 @@ export function useAssistantMutations() {
     isDeleting: false
   }
 }
-
 // ─── Tier 2: composed hooks ───────────────────────────────────────────────
-
 export function useAssistants() {
   const { assistants, hasLoaded, isLoading, isRefreshing, error, refetch } = useAssistantsApi()
   const { createAssistant, deleteAssistant, updateAssistant } = useAssistantMutations()
-
   return {
     assistants,
     hasLoaded,
@@ -194,7 +179,6 @@ export function useAssistants() {
     updateAssistant: (id: string, patch: UpdateAssistantDto) => updateAssistant(id, patch)
   }
 }
-
 /**
  * Hook for a single persisted assistant. Returns `assistant: undefined` when
  * `id` is empty / null — callers should fall back to UI defaults (e.g.
@@ -215,7 +199,12 @@ export function useAssistants() {
  * `keepPreviousData` behavior at the query boundary, so this hook only exposes
  * the source data for the current id.
  */
-export function useAssistant(id: string | null | undefined, options: { loadDefaultModel?: boolean } = {}) {
+export function useAssistant(
+  id: string | null | undefined,
+  options: {
+    loadDefaultModel?: boolean
+  } = {}
+) {
   const { assistant, isLoading, error } = useAssistantApiById(id ?? undefined)
   const { updateAssistant: patchAssistant } = useAssistantMutations()
   const [defaultModelId] = usePreference('chat.default_model_id')
@@ -229,20 +218,16 @@ export function useAssistant(id: string | null | undefined, options: { loadDefau
   assistantRef.current = assistant
   patchAssistantRef.current = patchAssistant
   providersRef.current = providers
-
-  const modelId =
-    assistant?.modelId ?? (!id && shouldLoadDefaultModel ? (defaultModelId as UniqueModelId | null) : undefined)
-  const { model, isLoading: isModelLoading } = useModelById(modelId)
+  const modelId = assistant?.modelId ?? (!id && shouldLoadDefaultModel ? defaultModelId : undefined)
+  const { model, isLoading: isModelLoading } = useModelById(modelId as UniqueModelId | null | undefined)
   const isModelPending = (!!id && isLoading) || (!!modelId && isModelLoading)
   const isModelMissing = !isModelPending && !model
-
   const updateAssistantSettings = useCallback((settings: Partial<AssistantSettings>) => {
     const currentId = idRef.current
     const currentAssistant = assistantRef.current
     if (!currentId || !currentAssistant) return Promise.resolve(undefined)
     return patchAssistantRef.current(currentId, { settings })
   }, [])
-
   const setModel = useCallback((next: Model, extraSettings?: Partial<AssistantSettings>) => {
     const currentId = idRef.current
     const currentAssistant = assistantRef.current
@@ -260,13 +245,11 @@ export function useAssistant(id: string | null | undefined, options: { loadDefau
       settingsPatch ? { modelId: next.id, settings: settingsPatch } : { modelId: next.id }
     )
   }, [])
-
   const updateAssistant = useCallback((patch: UpdateAssistantDto) => {
     const currentId = idRef.current
     if (!currentId) return Promise.resolve(undefined)
     return patchAssistantRef.current(currentId, patch)
   }, [])
-
   return {
     assistant,
     isLoading,

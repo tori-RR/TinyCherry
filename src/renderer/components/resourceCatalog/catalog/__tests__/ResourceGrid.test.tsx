@@ -680,58 +680,12 @@ describe('ResourceGrid skill add actions', () => {
     expect(onCreate).toHaveBeenCalledWith('skill')
   })
 
-  it('renders skill actions inline and dispatches online, system, or local actions', async () => {
-    const user = userEvent.setup()
-    const onCreate = vi.fn()
-    const onOpenSkillMarketplace = vi.fn()
-    const onOpenSystemSkills = vi.fn()
-
-    renderResourceGrid({
-      activeResourceType: 'skill',
-      onCreate,
-      onOpenSkillMarketplace,
-      onOpenSystemSkills
-    })
-
-    expect(screen.getByRole('button', { name: '添加技能' })).toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: '添加技能' }))
-
-    expect(screen.getByRole('menuitem', { name: '在线搜索' })).toBeInTheDocument()
-    expect(screen.getByRole('menuitem', { name: '本地导入' })).toBeInTheDocument()
-    expect(screen.getByRole('menuitem', { name: '系统搜索' })).toBeInTheDocument()
-
-    await user.click(screen.getByRole('menuitem', { name: '在线搜索' }))
-
-    expect(onOpenSkillMarketplace).toHaveBeenCalledTimes(1)
-    expect(onCreate).not.toHaveBeenCalled()
-
-    await user.click(screen.getByRole('menuitem', { name: '本地导入' }))
-
-    expect(onCreate).toHaveBeenCalledWith('skill')
-
-    await user.click(screen.getByRole('menuitem', { name: '系统搜索' }))
-
-    expect(onOpenSystemSkills).toHaveBeenCalledTimes(1)
-  })
-
   it('hides system search when no current agent is available', () => {
     renderResourceGrid({ activeResourceType: 'skill' })
 
     fireEvent.click(screen.getByRole('button', { name: '添加技能' }))
 
     expect(screen.queryByRole('menuitem', { name: '系统搜索' })).not.toBeInTheDocument()
-  })
-
-  it('offers Agent creation when the builtin creator is available', async () => {
-    const user = userEvent.setup()
-    const onCreateSkillWithAgent = vi.fn()
-
-    renderResourceGrid({ activeResourceType: 'skill', onCreateSkillWithAgent })
-    await user.click(screen.getByRole('button', { name: '添加技能' }))
-    await user.click(screen.getByRole('menuitem', { name: '通过 Agent 创建' }))
-
-    expect(onCreateSkillWithAgent).toHaveBeenCalledOnce()
   })
 })
 
@@ -898,22 +852,6 @@ describe('ResourceGrid card actions', () => {
     rerender(<ResourceCard resource={createSkillResource()} {...getResourceCardProps()} />)
 
     expect(screen.queryByText('1.2.3')).not.toBeInTheDocument()
-  })
-
-  it('keeps Try Now and More visible on every settings Skill card', async () => {
-    const user = userEvent.setup()
-    const skill = createSkillResource()
-    const onLaunchSkill = vi.fn()
-    const onDelete = vi.fn()
-
-    render(<ResourceCard resource={skill} variant="settings" {...getResourceCardProps({ onDelete, onLaunchSkill })} />)
-
-    expect(screen.getByText('本地')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '立即试用' }))
-    expect(onLaunchSkill).toHaveBeenCalledExactlyOnceWith(skill)
-
-    expect(screen.getByRole('button', { name: /common.more/ })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument()
   })
 
   it.each([createAssistantResource, createAgentResource])(

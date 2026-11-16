@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import WebSearchSettings from '@renderer/pages/settings/WebSearchSettings/WebSearchSettings'
-
+import { FeatureUnavailable } from '@renderer/components/FeatureUnavailable'
 export const Route = createFileRoute('/settings/websearch')({
-  component: WebSearchSettings
+  validateSearch: (search: Record<string, unknown>) => search,
+  component: FeatureUnavailable
 })

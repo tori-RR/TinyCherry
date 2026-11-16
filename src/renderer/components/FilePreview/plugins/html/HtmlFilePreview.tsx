@@ -11,28 +11,33 @@ import HtmlPreviewFrame, {
   HTML_PREVIEW_RESTRICTED_CSP,
   HTML_PREVIEW_RESTRICTED_SANDBOX
 } from '@renderer/components/CodeBlockView/HtmlPreviewFrame'
-import { WebviewBrowser } from '@renderer/components/WebviewBrowser'
 import { getFilePreviewExtension } from '@renderer/utils/filePreview'
 import { FILE_EDIT_MAX_SIZE_BYTES } from '@shared/types/file'
-import { WEBVIEW_ANNOTATION_LIMITS } from '@shared/types/webviewAnnotation'
 import { toSafeFileUrl } from '@shared/utils/file'
-import { WebviewSecurityProfile } from '@shared/utils/webviewSecurity'
 
 import type { FilePreviewPluginProps } from '../../types'
 import { type HtmlFilePreviewMode, HtmlFilePreviewToolbar } from './HtmlFilePreviewToolbar'
-
 const logger = loggerService.withContext('HtmlFilePreview')
 const HTML_PREVIEW_MAX_SIZE_MIB = FILE_EDIT_MAX_SIZE_BYTES / (1024 * 1024)
 const FileEditor = lazy(() => import('@renderer/components/FileEditor'))
 type HtmlFileLoadState =
-  | { status: 'error'; error: Error }
-  | { status: 'loading' }
-  | { status: 'ready'; content: string; refreshKey: number }
-  | { status: 'too_large' }
-
+  | {
+      status: 'error'
+      error: Error
+    }
+  | {
+      status: 'loading'
+    }
+  | {
+      status: 'ready'
+      content: string
+      refreshKey: number
+    }
+  | {
+      status: 'too_large'
+    }
 function HtmlPreviewLoading() {
   const { t } = useTranslation()
-
   return (
     <div role="status" className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
       <LoaderCircle className="size-4 animate-spin" aria-hidden />
@@ -40,10 +45,8 @@ function HtmlPreviewLoading() {
     </div>
   )
 }
-
 function HtmlPreviewError() {
   const { t } = useTranslation()
-
   return (
     <div role="alert" className="h-full">
       <EmptyState
@@ -55,10 +58,8 @@ function HtmlPreviewError() {
     </div>
   )
 }
-
 function HtmlPreviewTooLarge() {
   const { t } = useTranslation()
-
   return (
     <div role="alert" className="h-full">
       <EmptyState
@@ -70,10 +71,8 @@ function HtmlPreviewTooLarge() {
     </div>
   )
 }
-
 function HtmlPreviewEmpty() {
   const { t } = useTranslation()
-
   return (
     <EmptyState
       icon={FileCode}
@@ -83,19 +82,16 @@ function HtmlPreviewEmpty() {
     />
   )
 }
-
 interface HtmlPreviewContentProps {
   loadState: HtmlFileLoadState
   fileName: string
   baseUrl: string
   mode: HtmlFilePreviewMode
 }
-
 function HtmlPreviewContent({ loadState, fileName, baseUrl, mode }: HtmlPreviewContentProps): ReactNode {
   if (loadState.status === 'loading') return <HtmlPreviewLoading />
   if (loadState.status === 'error') return <HtmlPreviewError />
   if (loadState.status === 'too_large') return <HtmlPreviewTooLarge />
-
   if (mode === 'source') {
     return (
       <div className="flex min-h-full w-full">
@@ -112,9 +108,7 @@ function HtmlPreviewContent({ loadState, fileName, baseUrl, mode }: HtmlPreviewC
       </div>
     )
   }
-
   if (loadState.content.trim().length === 0) return <HtmlPreviewEmpty />
-
   return (
     <div className="h-full bg-white [&_iframe]:bg-white [&>div]:bg-white">
       <HtmlPreviewFrame
@@ -128,7 +122,6 @@ function HtmlPreviewContent({ loadState, fileName, baseUrl, mode }: HtmlPreviewC
     </div>
   )
 }
-
 export default function HtmlFilePreview({
   filePath,
   fileName,
@@ -142,22 +135,11 @@ export default function HtmlFilePreview({
   const sourceMetadata = metadataRequest ?? metadata.size
   const baseUrl = useMemo(() => toSafeFileUrl(filePath, getFilePreviewExtension(filePath)), [filePath])
   const effectiveMode = type === 'artifact' ? 'preview' : mode
-  const artifactTarget = useMemo(() => {
-    const prefix = 'artifact-file:'
-    const pathSuffix = filePath.slice(-(WEBVIEW_ANNOTATION_LIMITS.targetId - prefix.length))
-    return {
-      id: `${prefix}${pathSuffix}`,
-      label: fileName.slice(0, WEBVIEW_ANNOTATION_LIMITS.targetLabel)
-    }
-  }, [fileName, filePath])
-
   // Layout cleanup invalidates reads before promise callbacks can beat passive cleanup.
   // Read metadata after ancestor layout setup, including Activity reconnections.
   useLayoutEffect(() => {
-    if (type === 'artifact') return
     let cancelled = false
     setLoadState((current) => (current.status === 'ready' ? current : { status: 'loading' }))
-
     void (async () => {
       try {
         const loadedMetadata =
@@ -169,7 +151,6 @@ export default function HtmlFilePreview({
           setLoadState({ status: 'too_large' })
           return
         }
-
         const content = await window.api.fs.readText(filePath)
         // Reload the restricted document even when only its referenced resources changed.
         if (!cancelled) setLoadState({ status: 'ready', content, refreshKey })
@@ -180,28 +161,10 @@ export default function HtmlFilePreview({
         setLoadState({ status: 'error', error: normalized })
       }
     })()
-
     return () => {
       cancelled = true
     }
   }, [filePath, sourceMetadata, refreshKey, type])
-
-  if (type === 'artifact') {
-    return (
-      <FilePreviewLayout.Frame>
-        <div className="min-h-0 flex-1">
-          <WebviewBrowser
-            initialUrl={baseUrl}
-            securityProfile={WebviewSecurityProfile.AgentHtmlArtifact}
-            reloadKey={refreshKey}
-            isHostActive
-            target={artifactTarget}
-          />
-        </div>
-      </FilePreviewLayout.Frame>
-    )
-  }
-
   return (
     <FilePreviewLayout.Frame>
       {type === 'file' ? (

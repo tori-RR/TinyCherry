@@ -37,7 +37,6 @@ import { useGroupMutations, useGroups } from '@renderer/hooks/useGroups'
 import { usePromptProcessor } from '@renderer/hooks/usePromptProcessor'
 import { openSettingsTab } from '@renderer/services/mainWindowNavigation'
 import { toast } from '@renderer/services/toast'
-import { isEvoStack } from '@renderer/utils/platform'
 import { MCP_MODE_OPTIONS, RESOURCE_PROMPT_POLISH_SYSTEM_PROMPT } from '@renderer/utils/resourceCatalog'
 import {
   type AssistantFormState,
@@ -77,13 +76,10 @@ import { GroupSelector } from '../components/GroupSelector'
 import { McpServerCatalogGrid } from '../components/McpServerCatalogGrid'
 import { PromptBindingTab } from '../components/PromptBindingTab'
 import { PromptPolishActions } from '../components/PromptPolishActions'
-
 export type AssistantEditDialogResource = Parameters<typeof initialAssistantFormState>[0]
-
 export type AssistantEditDialogProps = EditDialogBaseProps & {
   resource: AssistantEditDialogResource | null
 }
-
 type AssistantEditFormValues = {
   name: string
   description: string
@@ -111,18 +107,14 @@ type AssistantEditFormValues = {
   knowledgeBaseIds: string[]
   mcpServerIds: string[]
 }
-
 type CustomParameter = AssistantFormState['customParameters'][number]
 type CustomParameterType = CustomParameter['type']
 type AssistantToolTab = 'tools.builtin' | 'tools.mcp' | 'tools.knowledge'
-
 const logger = loggerService.withContext('AssistantEditDialog')
 const UI_DEFAULT_MAX_TOKENS = 4096
-
 function isAssistantToolTab(value: string): value is AssistantToolTab {
   return value === 'tools.builtin' || value === 'tools.mcp' || value === 'tools.knowledge'
 }
-
 function defaultValuesForAssistant(resource: AssistantEditDialogResource): AssistantEditFormValues {
   const form = initialAssistantFormState(resource)
   return {
@@ -153,7 +145,6 @@ function defaultValuesForAssistant(resource: AssistantEditDialogResource): Assis
     mcpServerIds: [...form.mcpServerIds]
   }
 }
-
 function modelLabelsForAssistant(resource: AssistantEditDialogResource): ModelLabels {
   return {
     modelId: resource.modelName ?? null,
@@ -162,7 +153,6 @@ function modelLabelsForAssistant(resource: AssistantEditDialogResource): ModelLa
     contextCompressModelId: null
   }
 }
-
 function buildAssistantFormState(baseline: AssistantFormState, values: AssistantEditFormValues): AssistantFormState {
   return {
     ...baseline,
@@ -193,7 +183,6 @@ function buildAssistantFormState(baseline: AssistantFormState, values: Assistant
     mcpServerIds: values.mcpServerIds
   }
 }
-
 export function AssistantEditDialog({
   resource,
   open,
@@ -203,7 +192,6 @@ export function AssistantEditDialog({
   initialTab
 }: AssistantEditDialogProps) {
   if (!resource) return null
-
   return (
     <AssistantEditDialogContent
       resource={resource}
@@ -215,7 +203,6 @@ export function AssistantEditDialog({
     />
   )
 }
-
 function AssistantEditDialogContent({
   resource,
   open,
@@ -223,7 +210,9 @@ function AssistantEditDialogContent({
   modelFilter,
   isModelDisabled,
   initialTab
-}: EditDialogBaseProps & { resource: AssistantEditDialogResource }) {
+}: EditDialogBaseProps & {
+  resource: AssistantEditDialogResource
+}) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState(initialTab ?? 'basic')
   const [createGroupDialogOpen, setCreateGroupDialogOpen] = useState(false)
@@ -258,11 +247,9 @@ function AssistantEditDialogContent({
     ],
     [t]
   )
-
   // Tracks the exact form snapshot that failed so it cannot be retried until
   // the user changes the form, while a later close can explicitly discard it.
   const failedSaveKeyRef = useRef<string | null>(null)
-
   const wasOpenRef = useRef(false)
   useEffect(() => {
     const justOpened = open && !wasOpenRef.current
@@ -272,7 +259,6 @@ function AssistantEditDialogContent({
       return
     }
     if (!justOpened) return
-
     form.reset(defaultValues)
     formBaselineRef.current = initialAssistantFormState(resource)
     setFormBaseline(formBaselineRef.current)
@@ -286,19 +272,16 @@ function AssistantEditDialogContent({
     // coincidentally-identical edit as if it were a repeated close.
     failedSaveKeyRef.current = null
   }, [defaultValues, form, initialTab, open, resource])
-
   const rootError = form.formState.errors.root?.message
   const canPersist = Boolean(saveIntent) && values.name.trim().length > 0
   const changeKey = canPersist ? JSON.stringify(values) : null
   const saveFailedMessage = t('library.config.dialogs.edit.save_failed')
-
   const getCurrentSaveIntent = () =>
     diffAssistantSaveIntent(
       buildAssistantFormState(formBaselineRef.current, form.getValues()),
       formBaselineRef.current,
       resource
     )
-
   const persist = async () => {
     const submittedValues = structuredClone(form.getValues())
     if (!submittedValues.name.trim()) return
@@ -306,14 +289,11 @@ function AssistantEditDialogContent({
     const pending = diffAssistantSaveIntent(submittedFormState, formBaselineRef.current, resource)
     if (!pending) return
     const attemptedKey = JSON.stringify(submittedValues)
-
     // A close-triggered flush does not cancel the already scheduled debounce.
     // Keep both paths from resending an unchanged payload that already failed.
     if (failedSaveKeyRef.current === attemptedKey) return
-
     form.clearErrors('root')
     failedSaveKeyRef.current = null
-
     try {
       await updateAssistant(pending.payload)
     } catch (error) {
@@ -323,17 +303,14 @@ function AssistantEditDialogContent({
       toast.error(saveFailedMessage)
       return
     }
-
     formBaselineRef.current = submittedFormState
     setFormBaseline(submittedFormState)
   }
-
   const { flush, getPendingSave } = useDebouncedAutoSave({
     enabled: open,
     changeKey,
     onSave: persist
   })
-
   // Keep failed saves visible and gate settings navigation on successful closure.
   const handleOpenChange = async (next: boolean, allowDiscard = true): Promise<boolean> => {
     if (next) {
@@ -344,7 +321,6 @@ function AssistantEditDialogContent({
     const pendingSave = getPendingSave()
     if (pendingSave) await pendingSave
     if (JSON.stringify(form.getValues()) !== valuesBeforeSave) return false
-
     const currentValues = form.getValues()
     const pending = getCurrentSaveIntent()
     if (!pending || (!currentValues.name.trim() && allowDiscard)) {
@@ -369,7 +345,6 @@ function AssistantEditDialogContent({
     return true
   }
   const closeBeforeAction = useCloseBeforeAction((next) => handleOpenChange(next, false))
-
   const handleCreateGroup = async (name: string) => {
     try {
       const group = await createGroup(name)
@@ -386,7 +361,6 @@ function AssistantEditDialogContent({
       throw error
     }
   }
-
   return (
     <EditDialogShell
       activeTab={activeTab}
@@ -484,7 +458,6 @@ function AssistantEditDialogContent({
     </EditDialogShell>
   )
 }
-
 function AssistantBasicFields({
   resource,
   open,
@@ -525,7 +498,6 @@ function AssistantBasicFields({
     }
     setFormValues(form, patch)
   }
-
   return (
     <div className="divide-y divide-border-subtle border-border-subtle border-b [&>*:first-child]:pt-0">
       <div className={editDialogFormRowClassName}>
@@ -593,7 +565,6 @@ function AssistantBasicFields({
     </div>
   )
 }
-
 function AssistantPromptField({
   form,
   resource,
@@ -614,16 +585,13 @@ function AssistantPromptField({
     prompt,
     modelName: modelName ?? resource.modelName ?? undefined
   })
-
   const handlePromptChange = (nextPrompt: string) => {
     form.setValue('prompt', nextPrompt, { shouldDirty: true, shouldTouch: true })
   }
-
   const handlePromptActionChange = (nextPrompt: string) => {
     handlePromptChange(nextPrompt)
     setResetPreviewKey((key) => key + 1)
   }
-
   const promptActions = (
     <PromptPolishActions
       value={prompt}
@@ -634,7 +602,6 @@ function AssistantPromptField({
       onRunningChange={setPolishing}
     />
   )
-
   return (
     <FormField
       control={form.control}
@@ -663,7 +630,6 @@ function AssistantPromptField({
     />
   )
 }
-
 function AssistantToolsFields({
   form,
   portalContainer
@@ -675,7 +641,6 @@ function AssistantToolsFields({
   const mcpMode = form.watch('mcpMode')
   const mcpServerIds = form.watch('mcpServerIds')
   const mcpModeLabel = t('library.config.basic.mcp_mode')
-
   const enabledIds = useMemo(() => new Set(mcpServerIds), [mcpServerIds])
   const toggleMcpServer = (id: string, enabled: boolean) =>
     form.setValue(
@@ -683,7 +648,6 @@ function AssistantToolsFields({
       enabled ? Array.from(new Set([...mcpServerIds, id])) : mcpServerIds.filter((serverId) => serverId !== id),
       { shouldDirty: true }
     )
-
   return (
     <div className="grid gap-4">
       <FormField
@@ -733,7 +697,6 @@ function AssistantToolsFields({
     </div>
   )
 }
-
 function AssistantAdvancedFields({
   form,
   modelFilter,
@@ -769,7 +732,6 @@ function AssistantAdvancedFields({
     { value: 0.5, label: '0.5' },
     { value: 1, label: '1' }
   ]
-
   return (
     <div className="divide-y divide-border-subtle [&>*:first-child]:pt-0 [&>*:last-child]:pb-0 [&>*]:py-4">
       <ToggleFieldGroup
@@ -943,7 +905,6 @@ function AssistantAdvancedFields({
     </div>
   )
 }
-
 function ContextManagementFields({
   form,
   modelFilter,
@@ -974,7 +935,6 @@ function ContextManagementFields({
   // override is customized — an ON→OFF→ON round trip on a stored override must
   // preserve the saved values.
   const hadStoredOverride = useRef(values.contextOverrideEnabled)
-
   const onOverrideToggle = (checked: boolean) => {
     if (checked && !hadStoredOverride.current) {
       form.setValue('contextCompressEnabled', globalDefaults.compressEnabled, { shouldDirty: true })
@@ -983,7 +943,6 @@ function ContextManagementFields({
     }
     form.setValue('contextOverrideEnabled', checked, { shouldDirty: true })
   }
-
   return (
     <>
       <FormField
@@ -1015,37 +974,20 @@ function ContextManagementFields({
         )}
       />
 
-      {isEvoStack && (
+      {
         <p className="text-muted-foreground text-xs leading-5">
           {t('settings.models.context_management.native_unavailable')}
         </p>
-      )}
-      <fieldset className="contents" disabled={isEvoStack} aria-label={t('library.config.basic.context_management')}>
+      }
+      <fieldset className="contents" disabled={true} aria-label={t('library.config.basic.context_management')}>
         <ToggleFieldGroup
           label={t('library.config.basic.context_management')}
           description={t('library.config.basic.field.context_management.hint')}
           enabled={values.contextOverrideEnabled}
           onEnabledChange={onOverrideToggle}
         />
-        {!isEvoStack && !globalDefaults.enabled ? (
-          // Stored but inert while the global master switch is off — say so
-          // rather than showing live-looking controls.
-          <div className="-mt-2 text-muted-foreground text-xs leading-5">
-            {t('library.config.basic.context_globally_disabled')}
-          </div>
-        ) : null}
-        {!isEvoStack && !values.contextOverrideEnabled && globalDefaults.enabled ? (
-          // Name what is being inherited: the values only become visible once the
-          // override is on, so without this the user overrides a blank.
-          <div className="-mt-2 text-muted-foreground text-xs leading-5">
-            {t('library.config.basic.context_inherited', {
-              compress: globalDefaults.compressEnabled
-                ? t('library.config.basic.context_inherited_compress_on')
-                : t('library.config.basic.context_inherited_compress_off'),
-              threshold: globalDefaults.truncateThreshold
-            })}
-          </div>
-        ) : null}
+        {null}
+        {null}
         {values.contextOverrideEnabled ? (
           // Indent alone carries the subordination — a rule here spanned the
           // parent row's padding and read as a stray edge.
@@ -1088,7 +1030,7 @@ function ContextManagementFields({
                     />
                     <InputGroup className="h-8 rounded-lg">
                       {/* Inside the group, not around it: `FormControl` is a `Slot` and
-                        hands the label's `htmlFor` target to its immediate child. */}
+                hands the label's `htmlFor` target to its immediate child. */}
                       <FormControl>
                         <InputGroupInputNumber
                           min={MIN_COMPRESS_THRESHOLD_PERCENT}
@@ -1164,7 +1106,6 @@ function ContextManagementFields({
     </>
   )
 }
-
 function ToggleFieldGroup({
   label,
   valueLabel,
@@ -1199,7 +1140,6 @@ function ToggleFieldGroup({
     </div>
   )
 }
-
 function CustomParametersField({
   value,
   onChange,
@@ -1225,7 +1165,6 @@ function CustomParametersField({
     }
     onChange(next)
   }
-
   return (
     <FormItem>
       <div className="flex items-start justify-between gap-3">
@@ -1260,7 +1199,6 @@ function CustomParametersField({
     </FormItem>
   )
 }
-
 function defaultValueForType(type: CustomParameterType): CustomParameter['value'] {
   switch (type) {
     case 'number':
@@ -1273,7 +1211,6 @@ function defaultValueForType(type: CustomParameterType): CustomParameter['value'
       return ''
   }
 }
-
 function CustomParameterRow({
   param,
   portalContainer,
@@ -1309,7 +1246,6 @@ function CustomParameterRow({
       return true
     }
   })()
-
   return (
     <div className="rounded-xs border border-border-subtle bg-accent/15 p-2">
       <div className="flex items-stretch gap-2">

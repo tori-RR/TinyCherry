@@ -1403,6 +1403,7 @@
   "conversation_owner.delete_permanently.sessions_kept": "Ses conversations sont conservées et déplacées vers « Agent non lié ».",
   "conversation_owner.delete_permanently.topics_deleted": "Ces sujets et leurs messages seront également supprimés.",
   "conversation_owner.delete_permanently.topics_kept": "Ses sujets sont conservés et déplacés vers « Assistant non lié ».",
+  "desktop.feature_unavailable": "This feature is not available in this desktop version yet.",
   "deviceConnections.capabilities.agent": "Contrôler les sessions d’agent",
   "deviceConnections.capabilities.configuration": "Importer les fournisseurs et modèles",
   "deviceConnections.claims.approve": "Autoriser",

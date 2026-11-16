@@ -16,7 +16,6 @@ import {
   resolveKnowledgeFileMetadataEntryData,
   selectKnowledgeFileBatchOutcome
 } from '@renderer/utils/knowledgeFileEntry'
-import { isEvoStack } from '@renderer/utils/platform'
 import type { KnowledgeAddItemConflict, KnowledgeAddItemInput, KnowledgeItemType } from '@shared/data/types/knowledge'
 import { knowledgeSupportedFileExts } from '@shared/utils/file'
 
@@ -27,37 +26,25 @@ import AddKnowledgeItemDialogSourceTabs from './addKnowledgeItemDialog/AddKnowle
 import { DEFAULT_SOURCE_TYPE } from './addKnowledgeItemDialog/constants'
 import KnowledgeAddConflictDialog from './addKnowledgeItemDialog/KnowledgeAddConflictDialog'
 import type { NoteDraft, NoteItem, NoteSourceMode } from './addKnowledgeItemDialog/types'
-
 type ConflictResolution = 'rename' | 'replace'
 const logger = loggerService.withContext('AddKnowledgeItemDialog')
-
 interface PendingConflictState {
   items: KnowledgeAddItemInput[]
   conflicts: KnowledgeAddItemConflict[]
 }
-
 interface AddKnowledgeItemDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
 }
-
 // `file` and `directory` skip the in-dialog panel entirely: clicking the menu item opens the OS
 // picker directly and submits the selection. Only `note` / `url` still render the dialog panel.
 const isDirectPickSource = (source: KnowledgeItemType) => source === 'file' || source === 'directory'
-
 const nativeTextExtensions = ['.txt', '.md', '.csv', '.json', '.html']
-const knowledgeSupportedFileExtSet = new Set<string>(knowledgeSupportedFileExts)
 // Electron's open-dialog `filters` want bare extensions (no leading dot); the set above keeps the
 // dots for the post-pick safety filter.
 const knowledgeFilePickerExtensions = knowledgeSupportedFileExts.map((ext) => ext.replace(/^\./, ''))
-
-const isSupportedKnowledgeFile = (fileName: string) =>
-  isEvoStack
-    ? nativeTextExtensions.includes(getFileExtension(fileName))
-    : knowledgeSupportedFileExtSet.has(getFileExtension(fileName))
-
+const isSupportedKnowledgeFile = (fileName: string) => nativeTextExtensions.includes(getFileExtension(fileName))
 const describeFileMetadata = (file: { origin_name?: string; name?: string }) => file.origin_name || file.name
-
 function pickNativeTextFiles(): Promise<File[] | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input')
@@ -75,7 +62,6 @@ function pickNativeTextFiles(): Promise<File[] | null> {
     input.click()
   })
 }
-
 const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogProps) => {
   const { t } = useTranslation()
   const { selectedBaseId, pendingAddSource, pendingAddFiles, pendingAddDirectoryPaths } = useKnowledgePage()
@@ -83,8 +69,7 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
   // source is fixed for this lifetime — derive it instead of mirroring it into state.
   const activeSource = pendingAddSource ?? DEFAULT_SOURCE_TYPE
   const directPick = isDirectPickSource(activeSource)
-
-  const [noteMode, setNoteMode] = useState<NoteSourceMode>(isEvoStack ? 'create' : 'import')
+  const [noteMode, setNoteMode] = useState<NoteSourceMode>('create')
   const [selectedNotes, setSelectedNotes] = useState<NoteItem[]>([])
   const [noteDraft, setNoteDraft] = useState<NoteDraft>({ title: '', content: '' })
   const [urlValue, setUrlValue] = useState('')
@@ -94,14 +79,12 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
   const [pendingResolution, setPendingResolution] = useState<ConflictResolution | null>(null)
   const { submit: submitKnowledgeItems, isSubmitting: isSubmittingItems } = useAddKnowledgeItems(selectedBaseId)
   const invalidateCache = useInvalidateCache()
-
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
       onOpenChange(nextOpen)
     },
     [onOpenChange]
   )
-
   const handleNoteToggle = useCallback((note: NoteItem) => {
     setSubmitErrorMessage('')
     setSelectedNotes((currentNotes) =>
@@ -110,34 +93,28 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
         : [...currentNotes, note]
     )
   }, [])
-
   const handleNoteSelectionChange = useCallback((notes: NoteItem[]) => {
     setSubmitErrorMessage('')
     setSelectedNotes(notes)
   }, [])
-
   const handleNoteModeChange = useCallback((mode: NoteSourceMode) => {
     setSubmitErrorMessage('')
     setNoteMode(mode)
   }, [])
-
   // Title and content update independently so neither handler closes over the draft;
   // see the note on NoteCreateContent's props.
   const handleNoteDraftTitleChange = useCallback((title: string) => {
     setSubmitErrorMessage('')
     setNoteDraft((current) => ({ ...current, title }))
   }, [])
-
   const handleNoteDraftContentChange = useCallback((content: string) => {
     setSubmitErrorMessage('')
     setNoteDraft((current) => ({ ...current, content }))
   }, [])
-
   const canSubmit = useMemo(() => {
     if (!selectedBaseId) {
       return false
     }
-
     switch (activeSource) {
       case 'url':
         return urlValue.trim().length > 0
@@ -151,18 +128,15 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
         return false
     }
   }, [activeSource, noteDraft.content, noteDraft.title, noteMode, selectedBaseId, selectedNotes.length, urlValue])
-
   const buildPanelSubmitItems = useCallback(async (): Promise<KnowledgeAddItemInput[]> => {
     if (activeSource === 'url') {
       const url = urlValue.trim()
       return [{ type: 'url' as const, data: { source: url, url } }]
     }
-
     if (activeSource === 'note') {
       if (noteMode === 'create') {
         return [{ type: 'note' as const, data: { source: noteDraft.title.trim(), content: noteDraft.content } }]
       }
-
       return Promise.all(
         selectedNotes.map(async (note) => {
           // Name the note in the failure so a read error (e.g. it was moved or
@@ -174,10 +148,8 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
         })
       )
     }
-
     return []
   }, [activeSource, noteDraft.content, noteDraft.title, noteMode, selectedNotes, urlValue])
-
   // 'detect' (first pass) surfaces the conflict dialog when same-name collisions
   // exist; 'rename'/'replace' apply the user's choice. Closes the whole dialog
   // once the batch is actually added.
@@ -192,15 +164,12 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
     },
     [handleOpenChange, submitKnowledgeItems]
   )
-
   const handleSubmit = useCallback(() => {
     if (!canSubmit || isResolvingSubmit) {
       return
     }
-
     setSubmitErrorMessage('')
     setIsResolvingSubmit(true)
-
     void buildPanelSubmitItems()
       .then((items) => submitWithStrategy(items, 'detect'))
       .catch((error) => {
@@ -210,7 +179,6 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
         setIsResolvingSubmit(false)
       })
   }, [buildPanelSubmitItems, canSubmit, isResolvingSubmit, submitWithStrategy, t])
-
   const collectResolvedFileInputs = useCallback(
     async <T,>(
       files: T[],
@@ -229,7 +197,6 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
     },
     [t]
   )
-
   // Collect file inputs from the OS picker (or page-level pending files, if any) and submit.
   // Returns null when the user cancels the picker so the caller can close the flow.
   const collectFileInputs = useCallback(async (): Promise<KnowledgeAddItemInput[] | null> => {
@@ -241,16 +208,13 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
       }
       return collectResolvedFileInputs(supportedFiles, resolveFileEntryDataFromFile, (file) => file.name)
     }
-
     const selected = await window.api.file.select({
       properties: ['openFile', 'multiSelections'],
       filters: [{ name: 'Knowledge', extensions: knowledgeFilePickerExtensions }]
     })
-
     if (!selected) {
       return null
     }
-
     const supportedFiles = selected.filter((file) => isSupportedKnowledgeFile(file.origin_name || file.name))
     const skippedCount = selected.length - supportedFiles.length
     if (skippedCount > 0) {
@@ -258,17 +222,13 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
     }
     return collectResolvedFileInputs(supportedFiles, resolveKnowledgeFileMetadataEntryData, describeFileMetadata)
   }, [collectResolvedFileInputs, pendingAddFiles, t])
-
   const collectDirectoryInputs = useCallback(async (): Promise<KnowledgeAddItemInput[] | null> => {
     const directoryPath = await window.api.file.selectFolder()
-
     if (!directoryPath) {
       return null
     }
-
     return [{ type: 'directory' as const, data: { source: directoryPath } }]
   }, [])
-
   // For file/directory sources the menu click should feel like "open the OS picker": fire it once
   // on mount, then submit. A ref guards against the effect running twice (StrictMode / re-renders).
   const directPickStartedRef = useRef(false)
@@ -277,12 +237,11 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
       return
     }
     directPickStartedRef.current = true
-
     const run = async () => {
       setIsResolvingSubmit(true)
       let nativeImportStarted = false
       try {
-        if (isEvoStack && (activeSource === 'file' || activeSource === 'directory')) {
+        if (activeSource === 'file' || activeSource === 'directory') {
           if (activeSource === 'directory' || pendingAddDirectoryPaths?.length) {
             throw new Error(t('knowledge.evostack.text_sources_only'))
           }
@@ -290,7 +249,7 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
           if (files?.length) {
             if (!selectedBaseId) throw new Error(t('knowledge.name_required'))
             for (const file of files) {
-              if (!isSupportedKnowledgeFile(file.name) || file.size > 1_000_000) {
+              if (!isSupportedKnowledgeFile(file.name) || file.size > 1000000) {
                 throw new Error(`${file.name}: ${t('knowledge.evostack.text_sources_only')}`)
               }
             }
@@ -341,7 +300,6 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
         setIsResolvingSubmit(false)
       }
     }
-
     void run()
   }, [
     activeSource,
@@ -357,13 +315,11 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
     submitWithStrategy,
     t
   ])
-
   const handleConflictResolve = useCallback(
     (resolution: ConflictResolution) => {
       if (!pendingConflict) {
         return
       }
-
       setPendingResolution(resolution)
       void submitWithStrategy(pendingConflict.items, resolution)
         .catch((error) => {
@@ -383,7 +339,6 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
     },
     [directPick, handleOpenChange, pendingConflict, submitWithStrategy, t]
   )
-
   const handleConflictCancel = useCallback(() => {
     setPendingConflict(null)
     // No panel exists behind a direct-pick conflict, so cancelling ends the whole flow.
@@ -391,9 +346,7 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
       handleOpenChange(false)
     }
   }, [directPick, handleOpenChange])
-
   const isSubmitting = isResolvingSubmit || isSubmittingItems
-
   return (
     <>
       {directPick ? null : (
@@ -444,5 +397,4 @@ const AddKnowledgeItemDialog = ({ open, onOpenChange }: AddKnowledgeItemDialogPr
     </>
   )
 }
-
 export default AddKnowledgeItemDialog

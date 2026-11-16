@@ -7,14 +7,12 @@ import { AssistantAvatarImage } from '@renderer/components/Avatar/AssistantAvata
 import { useSkillMutationsById } from '@renderer/hooks/resourceCatalog'
 import { toast } from '@renderer/services/toast'
 import type { ResourceItem } from '@renderer/types/resourceCatalog'
-import { isEvoStack } from '@renderer/utils/platform'
 import { RESOURCE_TYPE_META } from '@renderer/utils/resourceCatalog'
 import { cn } from '@renderer/utils/style'
 import type { Group } from '@shared/data/types/group'
 
 import { ResourceCardMenu } from './ResourceCardMenu'
 import { SkillSourceBadge } from './SkillSourceBadge'
-
 // Cards expose their primary action on the outer element, so keyboard users need
 // Enter/Space to mirror the pointer click. Guard on the event target: a key press on
 // a nested action button (More / Delete / Add / Go-to-chat) bubbles up to the card,
@@ -26,7 +24,6 @@ function activateCardOnKeyDown(event: KeyboardEvent<HTMLDivElement>, activate: (
     activate()
   }
 }
-
 interface ResourceCardProps {
   resource: ResourceItem
   variant?: 'library' | 'settings'
@@ -38,16 +35,22 @@ interface ResourceCardProps {
   onExport: (resource: ResourceItem) => void
   onLaunchSkill?: (resource: ResourceItem) => void
 }
-
 function hasOverflowActions(resource: ResourceItem) {
   return resource.type === 'assistant' || resource.type === 'agent' || resource.type === 'skill'
 }
-
-function SkillGlobalToggle({ resource }: { resource: Extract<ResourceItem, { type: 'skill' }> }) {
+function SkillGlobalToggle({
+  resource
+}: {
+  resource: Extract<
+    ResourceItem,
+    {
+      type: 'skill'
+    }
+  >
+}) {
   const { t } = useTranslation()
   const toggleId = useId()
   const { updateGlobalEnabled, isUpdating } = useSkillMutationsById(resource.id)
-
   const handleCheckedChange = async (checked: boolean) => {
     try {
       await updateGlobalEnabled(checked)
@@ -55,7 +58,6 @@ function SkillGlobalToggle({ resource }: { resource: Extract<ResourceItem, { typ
       toast.error(t('settings.skills.toggleFailed', { name: resource.name }))
     }
   }
-
   return (
     <div className="flex items-center gap-2 px-1">
       <Label htmlFor={toggleId} className="whitespace-nowrap text-xs text-muted-foreground">
@@ -72,7 +74,6 @@ function SkillGlobalToggle({ resource }: { resource: Extract<ResourceItem, { typ
     </div>
   )
 }
-
 export function ResourceCard({
   resource: r,
   variant = 'library',
@@ -93,7 +94,6 @@ export function ResourceCard({
   const showOverflowMenu = hasOverflowActions(r)
   const visibleGroup = r.type === 'assistant' ? r.groupName : undefined
   const skillVersion = r.type === 'skill' ? r.raw.version?.trim() : undefined
-
   return (
     <div
       className={cn(
@@ -174,8 +174,8 @@ export function ResourceCard({
                     variant="ghost"
                     size="sm"
                     onClick={() => onLaunchSkill(r)}
-                    disabled={isEvoStack}
-                    title={isEvoStack ? t('settings.skills.evostack.execution_unavailable') : undefined}
+                    disabled={true}
+                    title={t('settings.skills.evostack.execution_unavailable')}
                     className={cn('gap-1.5', isSkillGrid && 'mr-auto -ml-2.5 pl-1.5')}>
                     <Play size={12} aria-hidden />
                     {t('settings.skills.tryNow')}

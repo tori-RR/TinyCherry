@@ -1,7 +1,6 @@
-export const platform = window.electron?.process?.platform
+export const platform = window.desktop?.info.platform
 export const isMac = platform === 'darwin'
-export const isWin = platform === 'win32' || platform === 'win64'
+export const isWin = platform === 'win32'
 export const isLinux = platform === 'linux'
-export const isDev = window.electron?.process?.env?.NODE_ENV === 'development'
-export const isProd = window.electron?.process?.env?.NODE_ENV === 'production'
-export const isEvoStack = Boolean(window.electron?.process?.versions?.tauri)
+export const isDev = window.desktop?.environment?.NODE_ENV === 'development'
+export const isProd = window.desktop?.environment?.NODE_ENV === 'production'

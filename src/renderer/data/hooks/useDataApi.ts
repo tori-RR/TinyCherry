@@ -34,7 +34,6 @@
  *
  * @see {@link https://swr.vercel.app SWR Documentation}
  */
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Cache, KeyedMutator, ScopedMutator, SWRConfiguration } from 'swr'
 import useSWR, { preload, unstable_serialize, useSWRConfig } from 'swr'
@@ -62,12 +61,9 @@ import {
   type OffsetPaginationResponse,
   type PaginationResponse
 } from '@shared/data/api/types'
-
 export { useDataChange } from './useDataChange'
 export { resolveTemplate } from '@renderer/data/utils/dataApiPath'
-
 const logger = loggerService.withContext('useDataApi')
-
 /**
  * Default SWR options. DataApi runs over IPC (not HTTP) and DataApiService
  * already retries via `DataApiError.isRetryable` with exponential backoff, so
@@ -89,18 +85,14 @@ const DEFAULT_SWR_OPTIONS = {
   shouldRetryOnError: false,
   keepPreviousData: true
 } as const
-
 /** Stable empty-array constant so `items` identity doesn't churn while data is undefined. */
 const EMPTY_ITEMS: readonly never[] = Object.freeze([])
-
 // ============================================================================
 // Hook Result Types
 // ============================================================================
-
 /** Infer item type from paginated response path */
 type InferPaginatedItem<TPath extends ApiPath> =
   ResponseForPath<TPath, 'GET'> extends PaginationResponse<infer T> ? T : unknown
-
 /**
  * Path constrained to endpoints whose GET response is a cursor-paginated shape.
  * Passing an offset-paginated path collapses to `never` and is rejected at the
@@ -121,14 +113,12 @@ type InferPaginatedItem<TPath extends ApiPath> =
  */
 export type CursorPaginatedPath<TPath extends ApiPath> =
   InferPaginationMode<ResponseForPath<TPath, 'GET'>> extends 'cursor' ? TPath : never
-
 /**
  * Path constrained to endpoints whose GET response is an offset-paginated shape.
  * Same `any`-fallback caveat as {@link CursorPaginatedPath}.
  */
 type OffsetPaginatedPath<TPath extends ApiPath> =
   InferPaginationMode<ResponseForPath<TPath, 'GET'>> extends 'offset' ? TPath : never
-
 /**
  * Map a path to the shape of its `params` option.
  *
@@ -143,10 +133,15 @@ type OffsetPaginatedPath<TPath extends ApiPath> =
  */
 export type ParamsOption<TPath extends string, TMethod extends string> = TPath extends TemplateApiPaths
   ? [ParamsForPath<TPath, TMethod>] extends [never]
-    ? { params?: never }
-    : { params: ParamsForPath<TPath, TMethod> }
-  : { params?: never }
-
+    ? {
+        params?: never
+      }
+    : {
+        params: ParamsForPath<TPath, TMethod>
+      }
+  : {
+      params?: never
+    }
 /**
  * useQuery result type
  * @property data - The fetched data, undefined while loading or on error
@@ -164,7 +159,6 @@ export interface UseQueryResult<TPath extends ApiPath> {
   refetch: () => Promise<unknown>
   mutate: KeyedMutator<ResponseForPath<TPath, 'GET'>>
 }
-
 /**
  * Arguments accepted by the mutation `trigger` function.
  *
@@ -179,7 +173,6 @@ export type TriggerArgs<TPath extends ApiPath, TMethod extends 'POST' | 'PUT' | 
   body?: BodyForPath<TPath, TMethod>
   query?: QueryParamsForPath<TPath, TMethod>
 }
-
 /**
  * Context passed to a function-form `refresh` callback.
  */
@@ -189,7 +182,6 @@ export interface RefreshContext<TPath extends ApiPath, TMethod extends 'POST' | 
   /** The server response from this mutation */
   result: ResponseForPath<TPath, TMethod>
 }
-
 /**
  * `refresh` option shape: either a static array of paths (supporting `/*`
  * prefix matching) or a function computing paths from the trigger args and
@@ -198,7 +190,6 @@ export interface RefreshContext<TPath extends ApiPath, TMethod extends 'POST' | 
 export type RefreshOption<TPath extends ApiPath, TMethod extends 'POST' | 'PUT' | 'DELETE' | 'PATCH'> =
   | ConcreteApiPaths[]
   | ((ctx: RefreshContext<TPath, TMethod>) => ConcreteApiPaths[])
-
 /**
  * useMutation result type
  * @property trigger - Execute the mutation with optional params, body, query.
@@ -212,7 +203,6 @@ export interface UseMutationResult<TPath extends ApiPath, TMethod extends 'POST'
   isLoading: boolean
   error: Error | undefined
 }
-
 /**
  * useInfiniteQuery result type (cursor-based pagination).
  *
@@ -245,22 +235,18 @@ export interface UseInfiniteQueryResult<TResponse> {
   reset: () => void
   mutate: SWRInfiniteKeyedMutator<TResponse[]>
 }
-
 export type InfiniteQueryOptions<TPath extends ApiPath> = ParamsOption<TPath, 'GET'> & {
   query?: Omit<QueryParamsForPath<TPath, 'GET'>, 'cursor' | 'limit'>
   limit?: number
   enabled?: boolean
   swrOptions?: Omit<SWRInfiniteConfiguration, 'parallel'>
 }
-
 type InfiniteCacheValue<TResponse> = Parameters<SWRInfiniteKeyedMutator<TResponse[]>>[0]
-
 type InfiniteQueryKey = [string, Record<string, unknown>]
 type InfiniteQueryKeyGetter = (
   pageIndex: number,
   previousPageData: CursorPaginationResponse<unknown> | null
 ) => InfiniteQueryKey | null
-
 function createInfiniteQueryKeyGetter(
   resolvedPath: string,
   query: unknown,
@@ -269,7 +255,6 @@ function createInfiniteQueryKeyGetter(
 ): InfiniteQueryKeyGetter {
   return (_pageIndex, previousPageData) => {
     if (!enabled || (previousPageData && !previousPageData.nextCursor)) return null
-
     return [
       resolvedPath,
       {
@@ -280,7 +265,6 @@ function createInfiniteQueryKeyGetter(
     ]
   }
 }
-
 /**
  * usePaginatedQuery result type (offset-based pagination)
  * @property items - Items on the current page (read-only — copy before sorting/mutating)
@@ -311,7 +295,6 @@ export interface UsePaginatedQueryResult<T> {
   refresh: () => Promise<unknown>
   reset: () => void
 }
-
 /**
  * Data fetching hook with SWR caching and revalidation.
  *
@@ -363,14 +346,11 @@ export function useQuery<TPath extends ApiPath>(
   const resolvedPath = isEnabled ? resolveTemplate(path, options?.params) : null
   const key =
     isEnabled && resolvedPath ? buildSWRKey(resolvedPath, options?.query as Record<string, any> | undefined) : null
-
   const { data, error, isLoading, isValidating, mutate } = useSWR(key, getFetcher, {
     ...DEFAULT_SWR_OPTIONS,
     ...options?.swrOptions
   })
-
   const refetch = useCallback(() => mutate(), [mutate])
-
   return {
     data,
     isLoading,
@@ -380,7 +360,6 @@ export function useQuery<TPath extends ApiPath>(
     mutate
   }
 }
-
 /**
  * Mutation hook for POST, PUT, DELETE, PATCH operations.
  *
@@ -475,19 +454,15 @@ export function useMutation<TPath extends ApiPath, TMethod extends 'POST' | 'PUT
   }
 ): UseMutationResult<TPath, TMethod> {
   const { mutate: globalMutate, cache } = useSWRConfig()
-
   // Use ref to avoid stale closure issues with callbacks
   const optionsRef = useRef(options)
   useEffect(() => {
     optionsRef.current = options
   }, [options])
-
   // Track the params from the most recent in-flight trigger, for dev-mode
   // concurrency detection on template paths.
   const inFlightParamsRef = useRef<Record<string, unknown> | null>(null)
-
   const apiFetcher = useMemo(() => createApiFetcher<ConcreteApiPaths, TMethod>(method), [method])
-
   // SWR discards errors from older overlapping mutations on the same key, so
   // keep the concrete request owned by each trigger as its source of truth.
   const fetcher = async (
@@ -502,7 +477,6 @@ export function useMutation<TPath extends ApiPath, TMethod extends 'POST' | 'PUT
   ): Promise<ResponseForPath<TPath, TMethod>> => {
     return arg.request
   }
-
   // SWR mutation state is cached by path; for template paths this means a
   // single hook instance shares `isMutating`/`error` across all params. See the
   // "Template paths and concurrent trigger" caveat in the renderer docs.
@@ -518,7 +492,6 @@ export function useMutation<TPath extends ApiPath, TMethod extends 'POST' | 'PUT
     revalidate: false,
     ...options?.swrOptions
   })
-
   // Memoized so the returned `trigger` keeps a stable identity across renders
   // (an official contract of this layer — see the hook's @remarks). Latest
   // options are read via `optionsRef` at call time, so a stable identity does
@@ -532,7 +505,6 @@ export function useMutation<TPath extends ApiPath, TMethod extends 'POST' | 'PUT
       const paramsRecord = capturedArgs?.params as Record<string, string | number> | undefined
       const resolvedPath = resolveTemplate(path, paramsRecord)
       const hasOptimisticData = opts?.optimisticData !== undefined
-
       // Dev-mode: warn when a single template-hook instance is trigger'd with
       // different params while a previous call is still in-flight. We check the
       // ref rather than SWR's `isMutating` because React state updates lag a
@@ -551,12 +523,10 @@ export function useMutation<TPath extends ApiPath, TMethod extends 'POST' | 'PUT
         }
       }
       inFlightParamsRef.current = paramsRecord ?? null
-
       // Apply optimistic update if optimisticData is provided
       if (hasOptimisticData) {
         await globalMutate([resolvedPath], opts.optimisticData, false)
       }
-
       try {
         const request = apiFetcher(resolvedPath as ConcreteApiPaths, {
           body: capturedArgs?.body as BodyForPath<ConcreteApiPaths, TMethod>,
@@ -565,7 +535,6 @@ export function useMutation<TPath extends ApiPath, TMethod extends 'POST' | 'PUT
         const [requestOutcome] = await Promise.allSettled([request, swrTrigger({ request })])
         if (requestOutcome.status === 'rejected') throw requestOutcome.reason
         const result = requestOutcome.value
-
         // Run refresh after the mutation resolves. We do this in `trigger`
         // itself (not SWR's onSuccess) so args/result are closure-captured
         // and tied to this specific call.
@@ -589,7 +558,6 @@ export function useMutation<TPath extends ApiPath, TMethod extends 'POST' | 'PUT
             })
           }
         }
-
         try {
           opts?.onSuccess?.(result)
         } catch (callbackErr) {
@@ -597,12 +565,10 @@ export function useMutation<TPath extends ApiPath, TMethod extends 'POST' | 'PUT
             error: callbackErr
           })
         }
-
         // Revalidate after optimistic update completes
         if (hasOptimisticData) {
           await globalMutate([resolvedPath])
         }
-
         return result
       } catch (err) {
         // Rollback optimistic update on error
@@ -625,14 +591,12 @@ export function useMutation<TPath extends ApiPath, TMethod extends 'POST' | 'PUT
     },
     [apiFetcher, cache, globalMutate, method, path, swrTrigger]
   )
-
   return {
     trigger,
     isLoading: isMutating,
     error
   }
 }
-
 /**
  * Hook to invalidate SWR cache entries and trigger revalidation.
  *
@@ -664,7 +628,6 @@ export function useMutation<TPath extends ApiPath, TMethod extends 'POST' | 'PUT
  */
 export function useInvalidateCache() {
   const { mutate, cache } = useSWRConfig()
-
   const invalidate = useCallback(
     async (keys?: string | string[] | boolean): Promise<void> => {
       if (keys === true || keys === undefined) {
@@ -677,10 +640,8 @@ export function useInvalidateCache() {
     },
     [cache, mutate]
   )
-
   return invalidate
 }
-
 /**
  * Prefetch data to warm up the cache before user interactions.
  *
@@ -716,7 +677,6 @@ export function prefetch<TPath extends ApiPath>(
   const key = buildSWRKey(resolvedPath, options?.query as Record<string, any> | undefined)
   return preload(key, getFetcher)
 }
-
 /**
  * Hook: snapshot-read a cached GET response WITHOUT subscribing.
  *
@@ -747,12 +707,13 @@ export function prefetch<TPath extends ApiPath>(
  */
 export function useReadCache() {
   const { cache } = useSWRConfig()
-
   return useCallback(
     <TResponse = unknown>(
       path: ConcreteApiPaths | TemplateApiPaths,
       query?: Record<string, unknown>,
-      infinite?: { limit: number }
+      infinite?: {
+        limit: number
+      }
     ): TResponse | undefined => {
       const hasQuery = query !== undefined && Object.keys(query).length > 0
       const serialized = infinite
@@ -766,7 +727,6 @@ export function useReadCache() {
     [cache]
   )
 }
-
 /**
  * Hook: write a value into the cache under a GET key WITHOUT triggering a
  * revalidation.
@@ -798,7 +758,6 @@ export function useReadCache() {
  */
 export function useWriteCache() {
   const { mutate } = useSWRConfig()
-
   return useCallback(
     async <TResponse = unknown>(
       path: ConcreteApiPaths | TemplateApiPaths,
@@ -815,11 +774,9 @@ export function useWriteCache() {
     [mutate]
   )
 }
-
 // ============================================================================
 // Infinite Query Hook
 // ============================================================================
-
 /**
  * Infinite scrolling hook with cursor-based pagination.
  *
@@ -880,11 +837,9 @@ export function useInfiniteQuery<TPath extends ApiPath>(
     }),
     [options?.swrOptions]
   )
-
   // Resolve template once per render; key dependencies include the resolved
   // value so identity changes propagate to SWR cache keys.
   const resolvedPath = resolveTemplate(path, options?.params)
-
   const getKey = useMemo(
     () => createInfiniteQueryKeyGetter(resolvedPath, options?.query, limit, enabled),
     [resolvedPath, options?.query, limit, enabled]
@@ -894,11 +849,8 @@ export function useInfiniteQuery<TPath extends ApiPath>(
       ResponseForPath<TPath, 'GET'>
     >
   }
-
   const swrResult = useSWRInfinite(getKey, infiniteFetcher, swrOptions)
-
   const { error, isLoading, isValidating, mutate, setSize } = swrResult
-
   // Stabilize `pages` reference: when SWR's `data` is unchanged across rerenders
   // the consumer gets `===` equality, which is required for `useInfiniteFlatItems`
   // and other downstream `useMemo`s to skip recomputation.
@@ -906,21 +858,17 @@ export function useInfiniteQuery<TPath extends ApiPath>(
     () => (swrResult.data as ResponseForPath<TPath, 'GET'>[] | undefined) ?? [],
     [swrResult.data]
   )
-
   const hasNext = useMemo(() => {
     if (!pages.length) return false
     const last = pages[pages.length - 1] as CursorPaginationResponse<unknown>
     return !!last.nextCursor
   }, [pages])
-
   // Rapid double-clicks are deduped by SWR's `dedupingInterval` — no callback-level guard needed.
   const loadNext = useCallback(() => {
     if (hasNext) void setSize((s) => s + 1)
   }, [hasNext, setSize])
-
   const refresh = useCallback(() => mutate(), [mutate])
   const reset = useCallback(() => setSize(1), [setSize])
-
   return {
     pages,
     isLoading,
@@ -933,7 +881,6 @@ export function useInfiniteQuery<TPath extends ApiPath>(
     mutate: mutate as SWRInfiniteKeyedMutator<ResponseForPath<TPath, 'GET'>[]>
   }
 }
-
 /**
  * Returns a cache-only writer scoped to one infinite query key.
  *
@@ -956,15 +903,16 @@ export function useWriteInfiniteCache<TPath extends ApiPath>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [nextInfiniteCacheKey]
   )
-
   return useCallback(
     async (value: InfiniteCacheValue<ResponseForPath<TPath, 'GET'>>) => {
       type Page = ResponseForPath<TPath, 'GET'>
-
       const collectPageEntries = (cachedPages: Page[] | undefined) => {
-        const entries: Array<{ key: InfiniteQueryKey; page: Page; serializedKey: string }> = []
+        const entries: Array<{
+          key: InfiniteQueryKey
+          page: Page
+          serializedKey: string
+        }> = []
         if (!cachedPages) return entries
-
         let previousPage: CursorPaginationResponse<unknown> | null = null
         for (let index = 0; index < cachedPages.length; index++) {
           const page = cachedPages[index]
@@ -975,7 +923,6 @@ export function useWriteInfiniteCache<TPath extends ApiPath>(
         }
         return entries
       }
-
       let didCommit = false
       let didChange = false
       let committedPages: Page[] | undefined
@@ -1002,7 +949,6 @@ export function useWriteInfiniteCache<TPath extends ApiPath>(
       // SWR returns superseded async values without committing them; only mirror the committed aggregate.
       const ownsAggregateCommit = () => cache.get(infiniteCacheKey)?.data === committedPages
       if (!ownsAggregateCommit()) return pages
-
       const previousPageEntries = collectPageEntries(previousPages)
       const nextPageEntries = collectPageEntries(Array.isArray(pages) ? pages : undefined)
       const nextPageKeys = new Set(nextPageEntries.map((entry) => entry.serializedKey))
@@ -1028,7 +974,11 @@ export function useWriteInfiniteCache<TPath extends ApiPath>(
       if (!ownsAggregateCommit()) return pages
       if (!Array.isArray(pages)) {
         const aggregateState = { ...cache.get(infiniteCacheKey) }
-        delete (aggregateState as { _l?: number })._l
+        delete (
+          aggregateState as {
+            _l?: number
+          }
+        )._l
         cache.set(infiniteCacheKey, aggregateState)
       }
       return pages
@@ -1036,7 +986,6 @@ export function useWriteInfiniteCache<TPath extends ApiPath>(
     [cache, getKey, infiniteCacheKey, mutate]
   )
 }
-
 /**
  * Derive a flat list of items from {@link useInfiniteQuery}'s `pages`.
  *
@@ -1088,11 +1037,9 @@ export function useInfiniteFlatItems<P extends CursorPaginationResponse<any>>(
     return orderedPages.flatMap(flattenPage)
   }, [pages, reversePages, reverseItems]) as P extends CursorPaginationResponse<infer T> ? T[] : never
 }
-
 // ============================================================================
 // Paginated Query Hook
 // ============================================================================
-
 /**
  * Paginated data fetching hook with offset-based navigation.
  *
@@ -1149,7 +1096,6 @@ export function usePaginatedQuery<TPath extends ApiPath>(
 ): UsePaginatedQueryResult<InferPaginatedItem<TPath>> {
   const [currentPage, setCurrentPage] = useState(1)
   const limit = options?.limit || 10
-
   // Reset page to 1 when query content changes. Uses SWR's stableHash (via
   // unstable_serialize) so key reorders like `{a,b}` vs `{b,a}` don't trigger
   // false resets, and so the dep aligns with how SWR computes cache keys.
@@ -1157,14 +1103,12 @@ export function usePaginatedQuery<TPath extends ApiPath>(
   useEffect(() => {
     setCurrentPage(1)
   }, [queryKey])
-
   // Build query with pagination params
   const queryWithPagination = {
     ...options?.query,
     page: currentPage,
     limit
   }
-
   // Pass params through to useQuery so the template resolves to the same
   // concrete path (and therefore the same cache key) as a direct useQuery call.
   // Cast via `unknown` because the discriminated union between
@@ -1180,7 +1124,6 @@ export function usePaginatedQuery<TPath extends ApiPath>(
     enabled?: boolean
     swrOptions?: SWRConfiguration
   })
-
   // The `OffsetPaginatedPath` guard ensures `ResponseForPath<TPath, 'GET'>` is
   // an `OffsetPaginationResponse<…>` shape; we still cast through the assigned
   // alias to recover item-type precision (TS won't unwrap generic constraints
@@ -1189,10 +1132,8 @@ export function usePaginatedQuery<TPath extends ApiPath>(
   const items = paginatedData?.items ?? EMPTY_ITEMS
   const total = paginatedData?.total || 0
   const totalPages = Math.ceil(total / limit)
-
   const hasNext = currentPage < totalPages
   const hasPrev = currentPage > 1
-
   // Memoized on the gating booleans (not `[]`): the guards must stay fresh or
   // navigation would run past the page bounds. Identity changes only when
   // page availability actually flips.
@@ -1201,21 +1142,17 @@ export function usePaginatedQuery<TPath extends ApiPath>(
       setCurrentPage((prev) => prev + 1)
     }
   }, [hasNext])
-
   const prevPage = useCallback(() => {
     if (hasPrev) {
       setCurrentPage((prev) => prev - 1)
     }
   }, [hasPrev])
-
   const reset = useCallback(() => {
     setCurrentPage(1)
   }, [])
-
   const goToPage = useCallback((page: number) => {
     if (Number.isInteger(page) && page > 0) setCurrentPage(page)
   }, [])
-
   return {
     items,
     total,
@@ -1232,11 +1169,9 @@ export function usePaginatedQuery<TPath extends ApiPath>(
     goToPage
   }
 }
-
 // ============================================================================
 // Internal Utilities
 // ============================================================================
-
 /**
  * Create a type-safe API fetcher for the specified HTTP method.
  *
@@ -1289,7 +1224,6 @@ function createApiFetcher<TPath extends ConcreteApiPaths, TMethod extends 'GET' 
     }
   }
 }
-
 /**
  * Build SWR cache key from resolved path and optional query parameters.
  *
@@ -1306,10 +1240,8 @@ function buildSWRKey<TQuery extends Record<string, any>>(path: string, query?: T
   if (query && Object.keys(query).length > 0) {
     return [path, query]
   }
-
   return [path]
 }
-
 /**
  * SWR fetcher function for GET requests.
  *
@@ -1323,7 +1255,6 @@ function getFetcher<TPath extends ConcreteApiPaths>([path, query]: [TPath, Query
   const apiFetcher = createApiFetcher<TPath, 'GET'>('GET')
   return apiFetcher(path, { query })
 }
-
 /**
  * Validate a refresh pattern in dev mode.
  *
@@ -1347,7 +1278,6 @@ function assertValidPattern(pattern: string): void {
     throw new Error(msg)
   }
 }
-
 /**
  * Create a filter function that matches SWR cache keys by path.
  *
@@ -1370,7 +1300,6 @@ function createKeyMatcher(pattern: string): (key: unknown) => boolean {
   }
   return (key) => Array.isArray(key) && key[0] === pattern
 }
-
 /**
  * Create a filter function that matches multiple paths.
  *
@@ -1391,7 +1320,6 @@ function createMultiKeyMatcher(patterns: string[]): (key: unknown) => boolean {
     return exact.includes(k) || prefixes.some((prefix) => k.startsWith(prefix))
   }
 }
-
 // Mirror of SWR's internal INFINITE_PREFIX. Inlined rather than imported from
 // `swr/_internal` (non-stable subpath). Verified in:
 //   node_modules/swr/dist/_internal/constants.js
@@ -1401,7 +1329,6 @@ function createMultiKeyMatcher(patterns: string[]): (key: unknown) => boolean {
 // a string is `JSON.stringify(s)`. So an infinite cache key whose first-page
 // key is `[path, query]` looks like `'$inf$@"<path>",<rest>,'`.
 const INFINITE_PREFIX = '$inf$'
-
 /**
  * Extract the API path from an SWR infinite cache key string.
  *
@@ -1440,7 +1367,6 @@ function extractInfinitePath(key: string): string | undefined {
   }
   return undefined
 }
-
 /**
  * Find every `$inf$`-prefixed cache key whose embedded path matches one of
  * the patterns. SWR's `mutate(filterFn)` skips infinite keys at the source
@@ -1463,7 +1389,6 @@ function findMatchingInfiniteKeys(cache: Cache, patterns: string[]): string[] {
   }
   return matched
 }
-
 /**
  * Invalidate cache entries whose path matches any pattern, covering both
  * normal SWR keys and `useSWRInfinite` keys. SWR's filter API skips the
@@ -1480,7 +1405,6 @@ async function invalidatePathPatterns(cache: Cache, globalMutate: ScopedMutator,
     await Promise.all(infiniteKeys.map((k) => globalMutate(k)))
   }
 }
-
 /**
  * Internal utilities exposed for unit testing only.
  *

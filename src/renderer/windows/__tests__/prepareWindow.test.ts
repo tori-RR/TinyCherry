@@ -41,16 +41,6 @@ describe('prepareWindow', () => {
     return pending
   })
 
-  it('arms renderer error capture before anything that can throw runs', () => {
-    const pending = prepareWindow({ preference: 'all' })
-
-    expect(initSentryMock).toHaveBeenCalledTimes(1)
-    expect(initSentryMock.mock.invocationCallOrder[0]).toBeLessThan(
-      vi.mocked(preferenceService.preloadAll).mock.invocationCallOrder[0]
-    )
-    return pending
-  })
-
   it('resolves only after both i18n and the preference warm-up complete', async () => {
     let resolveI18n!: () => void
     let resolvePreload!: () => void

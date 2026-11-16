@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { usePreference } from '@data/hooks/usePreference'
+import { loggerService } from '@logger'
 import { ChatLayoutModeProvider } from '@renderer/components/chat/layout/ChatLayoutModeContext'
 import {
   ResourcePaneCountButton,
@@ -25,7 +26,6 @@ import { useIsActiveTab } from '@renderer/hooks/tab'
 import { useAssistant } from '@renderer/hooks/useAssistant'
 import { useProviders } from '@renderer/hooks/useProvider'
 import { useTopicMutations } from '@renderer/hooks/useTopic'
-import { topicBrowserRuntimeService } from '@renderer/services/AgentBrowserRuntimeService'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import { popup } from '@renderer/services/popup'
 import { toast } from '@renderer/services/toast'
@@ -39,6 +39,7 @@ import ChatNavbar from './components/ChatNavbar'
 import { TopicRightPane, useTopicBranchLiveStateSetter } from './components/TopicRightPane'
 import type { AddNewTopicPayload } from './types'
 
+const logger = loggerService.withContext('Chat')
 const CitationsPanel = React.lazy(() => import('@renderer/components/chat/citations/CitationsPanel'))
 
 const EMPTY_MODELS: ChatConversationControlsSnapshot['mentionedModels'] = []
@@ -190,8 +191,7 @@ const Chat: FC<Props> = (props) => {
   const openCitationInBrowser = useCallback(
     (url: string) => {
       if (!activeTopicId) return
-      topicBrowserRuntimeService.ensure(activeTopicId, url)
-      rightPanelActions.tryOpen('browser', { userInitiated: true })
+      void window.api.shell.openExternal(url).catch((error) => logger.error('Failed to open citation', error))
       setCitationPanelState(null)
     },
     [activeTopicId, rightPanelActions]

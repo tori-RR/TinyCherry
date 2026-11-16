@@ -1,22 +1,17 @@
 import { useCallback } from 'react'
 
 import { defineTool, type ToolRenderContext } from '@renderer/components/composer/tools/types'
-import { isSupportedToolUse } from '@renderer/utils/assistant'
-import { isEvoStack } from '@renderer/utils/platform'
 import type { KnowledgeBase } from '@shared/data/types/knowledge'
 
 import { composerKnowledgeBaseTokenId, getComposerTokenIds } from '../../variants/shared/composerTokens'
 import { KnowledgeBaseToolRuntime } from '../components/KnowledgeBaseButton'
 import { KNOWLEDGE_BASE_TOOLBAR_MANIFEST } from '../toolbarManifests'
-
 type KnowledgeBaseToolContext = ToolRenderContext<
   readonly ['selectedKnowledgeBases', 'files', 'selectableKnowledgeBases'],
   readonly ['setSelectedKnowledgeBases']
 >
-
 const useKnowledgeBaseSelect = (context: KnowledgeBaseToolContext) => {
   const { actions } = context
-
   return useCallback(
     (bases: KnowledgeBase[]) => {
       actions.setSelectedKnowledgeBases?.(bases)
@@ -24,16 +19,13 @@ const useKnowledgeBaseSelect = (context: KnowledgeBaseToolContext) => {
     [actions]
   )
 }
-
 const KnowledgeBaseComposerRuntime = ({ context }: { context: KnowledgeBaseToolContext }) => {
   const { state, launcher } = context
   const handleSelect = useKnowledgeBaseSelect(context)
   // Sessions skip the model tool-use probe: an Agent session reaches its knowledge bases through the
   // runtime's own kb_* MCP tools, not through the model's function-calling support, so the composer
   // model here (which may be a sub-model) says nothing about whether the picker is usable.
-  const isToolUseAvailable =
-    isEvoStack || (context.session ? true : !!context.assistant && isSupportedToolUse(context.model))
-
+  const isToolUseAvailable = true
   return (
     <KnowledgeBaseToolRuntime
       launcher={launcher}
@@ -45,7 +37,6 @@ const KnowledgeBaseComposerRuntime = ({ context }: { context: KnowledgeBaseToolC
     />
   )
 }
-
 /**
  * Knowledge Base Tool
  *
@@ -56,12 +47,10 @@ const knowledgeBaseTool = defineTool({
   key: 'knowledge_base',
   label: KNOWLEDGE_BASE_TOOLBAR_MANIFEST.label,
   visibleInScopes: KNOWLEDGE_BASE_TOOLBAR_MANIFEST.visibleInScopes,
-
   dependencies: {
     state: ['selectedKnowledgeBases', 'files', 'selectableKnowledgeBases'] as const,
     actions: ['setSelectedKnowledgeBases'] as const
   },
-
   composer: {
     runtime: ({ context }) => <KnowledgeBaseComposerRuntime context={context} />,
     // Editor→state: prune deselected knowledge bases and re-add ones whose marker was pasted,
@@ -73,7 +62,6 @@ const knowledgeBaseTool = defineTool({
           const next = prev.filter((base) => knowledgeTokenIds.has(composerKnowledgeBaseTokenId(base)))
           const nextIds = new Set(next.map(composerKnowledgeBaseTokenId))
           let changed = next.length !== prev.length
-
           for (const base of state.selectableKnowledgeBases) {
             const tokenId = composerKnowledgeBaseTokenId(base)
             if (!knowledgeTokenIds.has(tokenId) || nextIds.has(tokenId)) continue
@@ -81,12 +69,10 @@ const knowledgeBaseTool = defineTool({
             nextIds.add(tokenId)
             changed = true
           }
-
           return changed ? next : prev
         })
       }
     }
   }
 })
-
 export default knowledgeBaseTool

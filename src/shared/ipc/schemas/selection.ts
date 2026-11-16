@@ -1,4 +1,20 @@
-import type { TextSelectionData } from 'selection-hook'
+interface SelectionPoint {
+  x: number
+  y: number
+}
+interface TextSelectionData {
+  text: string
+  programName: string
+  startTop: SelectionPoint
+  startBottom: SelectionPoint
+  endTop: SelectionPoint
+  endBottom: SelectionPoint
+  mousePosStart: SelectionPoint
+  mousePosEnd: SelectionPoint
+  method: number
+  posLevel: number
+  isFullscreen?: boolean
+}
 import * as z from 'zod'
 
 import {

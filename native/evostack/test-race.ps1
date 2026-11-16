@@ -1,3 +1,4 @@
+param([ValidateRange(1,10)][int]$Count = 1)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'prepare-env.ps1')
 $EvoCompiler = Get-Command gcc -ErrorAction SilentlyContinue
@@ -13,7 +14,7 @@ try {
 } finally { Pop-Location }
 Push-Location (Join-Path $PSScriptRoot 'backend')
 try {
-  go test -race -count=10 -timeout 300s ./...
+  go test -race "-count=$Count" -timeout 300s ./...
   if ($LASTEXITCODE -ne 0) { throw 'Go race checks failed' }
 } finally {
   $env:CGO_ENABLED = '0'

@@ -83,17 +83,13 @@ import {
   useGlobalSearchPanelData
 } from './useGlobalSearchPanelData'
 import { GLOBAL_SEARCH_QUERY_DEBOUNCE_MS, useImeAwareDebouncedValue } from './useImeAwareDebouncedValue'
-
 type GlobalSearchPanelProps = {
   onClose: () => void
 }
-
 type GlobalSearchScope = 'all' | 'messages'
-
 // Only one of the two virtual lists is mounted at a time, so they can share one
 // listbox id that the search input references via `aria-controls`.
 const GLOBAL_SEARCH_LISTBOX_ID = 'global-search-listbox'
-
 const SEARCH_FILTERS: Exclude<GlobalSearchFilter, 'all'>[] = ['topic', 'session', 'assistant', 'agent']
 const MESSAGE_SOURCE_FILTER_BUTTONS: Exclude<GlobalMessageSearchSourceFilter, 'all'>[] = ['topic', 'session']
 const SEARCH_SCOPE_CONTROL_CLASS_NAME =
@@ -121,39 +117,30 @@ const TIME_FILTER_LABEL_KEYS: Record<GlobalSearchTimeFilter, string> = {
   month: 'globalSearch.timeFilters.month',
   quarter: 'globalSearch.timeFilters.quarter'
 }
-
 function getFilterLabelKey(filter: GlobalSearchFilter) {
   return FILTER_LABEL_KEYS[filter]
 }
-
 function getTimeFilterLabelKey(filter: GlobalSearchTimeFilter) {
   return TIME_FILTER_LABEL_KEYS[filter]
 }
-
 function getTimeFilterAriaLabelKey(mode: GlobalSearchPanelMode) {
   return mode === 'message-search' ? 'globalSearch.timeFilters.messageLabel' : 'globalSearch.timeFilters.label'
 }
-
 function getMessageSourceFilterLabelKey(filter: GlobalMessageSearchSourceFilter) {
   return MESSAGE_SOURCE_FILTER_LABEL_KEYS[filter]
 }
-
 function getAssistantTargetId(target: EntitySearchItem['target']) {
   return 'assistantId' in target && typeof target.assistantId === 'string' ? target.assistantId : undefined
 }
-
 function getAgentTargetId(target: EntitySearchItem['target']) {
   return 'agentId' in target && typeof target.agentId === 'string' ? target.agentId : undefined
 }
-
 function getTopicTargetId(target: EntitySearchItem['target']) {
   return 'topicId' in target && typeof target.topicId === 'string' ? target.topicId : undefined
 }
-
 function getSessionTargetId(target: EntitySearchItem['target']) {
   return 'sessionId' in target && typeof target.sessionId === 'string' ? target.sessionId : undefined
 }
-
 type GlobalSearchMessageJumpTarget =
   | {
       sourceType: 'topic'
@@ -165,7 +152,6 @@ type GlobalSearchMessageJumpTarget =
       sessionId: string
       messageId: string
     }
-
 function getMessageSearchResultJumpTarget(result: GlobalMessageSearchResult): GlobalSearchMessageJumpTarget {
   if (result.sourceType === 'topic') {
     return {
@@ -174,14 +160,12 @@ function getMessageSearchResultJumpTarget(result: GlobalMessageSearchResult): Gl
       messageId: result.messageId
     }
   }
-
   return {
     sourceType: 'session',
     sessionId: result.sessionId,
     messageId: result.messageId
   }
 }
-
 function getPreviewMessageJumpTarget(
   target: GlobalSearchMessagePreviewTarget,
   messageId: string
@@ -193,14 +177,12 @@ function getPreviewMessageJumpTarget(
       messageId
     }
   }
-
   return {
     sourceType: 'session',
     sessionId: target.sessionId,
     messageId
   }
 }
-
 function getOpenItemLogContext(item: GlobalSearchKeyboardItem) {
   switch (item.kind) {
     case 'footer':
@@ -217,21 +199,17 @@ function getOpenItemLogContext(item: GlobalSearchKeyboardItem) {
       return { itemKind: item.kind, resultType: item.result.type }
   }
 }
-
 function logOpenFailure(error: unknown, context: Record<string, unknown>) {
   logger.error('Failed to open global search result', error as Error, context)
 }
-
 function emitGlobalSearchSelection(eventName: string, payload: unknown, context: Record<string, unknown>) {
   void Promise.resolve(EventEmitter.emit(eventName, payload)).catch((error) => {
     logger.error('Failed to emit global search selection event', error as Error, context)
   })
 }
-
 function logMissingSelectionTarget(context: Record<string, unknown>) {
   logger.warn('Skipped global search selection event without target tab', context)
 }
-
 function getGroupedVirtualListRowIndex<TGroup, TItem, TFooter>(
   groups: readonly GroupedVirtualListGroup<TGroup, TItem, TGroup, TFooter>[],
   itemId: string,
@@ -239,26 +217,21 @@ function getGroupedVirtualListRowIndex<TGroup, TItem, TFooter>(
   getFooterId?: (group: TGroup, footer: TFooter) => string
 ) {
   let rowIndex = 0
-
   for (const entry of groups) {
     if (entry.header !== undefined) {
       rowIndex += 1
     }
-
     for (const item of entry.items) {
       if (getItemId(item) === itemId) return rowIndex
       rowIndex += 1
     }
-
     if (entry.footer !== undefined) {
       if (getFooterId?.(entry.group, entry.footer) === itemId) return rowIndex
       rowIndex += 1
     }
   }
-
   return undefined
 }
-
 function TimeFilterDropdown({
   timeFilter,
   panelMode,
@@ -269,7 +242,6 @@ function TimeFilterDropdown({
   onSelect: (filter: GlobalSearchTimeFilter) => void
 }) {
   const { t } = useTranslation()
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -298,7 +270,6 @@ function TimeFilterDropdown({
     </DropdownMenu>
   )
 }
-
 export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
   const { t, i18n } = useTranslation()
   const { openTab } = useTabs()
@@ -375,23 +346,18 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
     if (!hasMoreMessageResults || messageVirtualGroups.length === 0) {
       return messageVirtualGroups
     }
-
     const lastGroupIndex = messageVirtualGroups.length - 1
-
     return messageVirtualGroups.map((entry, index) =>
       index === lastGroupIndex ? { ...entry, footer: true as const } : entry
     )
   }, [hasMoreMessageResults, messageVirtualGroups])
-
   useEffect(() => {
     inputRef.current?.focus({ preventScroll: true })
   }, [])
-
   useEffect(() => {
     if (!recentItems || sanitizedRecentItems === recentItems) return
     setRecentItems(sanitizedRecentItems)
   }, [recentItems, sanitizedRecentItems, setRecentItems])
-
   // On open: best-effort refresh of up to GLOBAL_SEARCH_DISPLAY_RECENT_LIMIT
   // recent topic/session titles. Persisted snapshots may carry stale titles
   // when the entity was renamed after the last visit; a single parallel
@@ -401,19 +367,21 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
   // latest snapshot when the fetch resolves, so the effect doesn't re-run.
   useEffect(() => {
     const display = getDisplayGlobalSearchRecentEntries(sanitizedRecentItems)
-    type Refreshable = Extract<GlobalSearchRecentEntry, { kind: 'topic' | 'session' }>
+    type Refreshable = Extract<
+      GlobalSearchRecentEntry,
+      {
+        kind: 'topic' | 'session'
+      }
+    >
     const refreshable: Refreshable[] = display.flatMap((entry): Refreshable[] => {
       if (entry.kind === 'route') return []
       return [entry]
     })
-
     const due = refreshable.filter((entry) => {
       if (entry.title.trim() === '') return true
       return !cacheService.hasCasual(recentRefreshCacheKey(getGlobalSearchRecentEntryId(entry)))
     })
-
     if (due.length === 0) return
-
     let cancelled = false
     void Promise.all(
       due.map(async (entry) => {
@@ -425,7 +393,11 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
           const fetched = await dataApiService.get(
             entry.kind === 'topic' ? `/topics/${entry.topicId}` : `/agent-sessions/${entry.sessionId}`
           )
-          const name = (fetched as { name?: string })?.name?.trim()
+          const name = (
+            fetched as {
+              name?: string
+            }
+          )?.name?.trim()
           if (name) {
             cacheService.setCasual(recentRefreshCacheKey(refreshKey), true, RECENT_ITEMS_REFRESH_THROTTLE_MS)
             return { id: refreshKey, name }
@@ -461,26 +433,19 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
         return next.every((entry, index) => areGlobalSearchRecentEntriesEqual(entry, current[index])) ? current : next
       })
     })
-
     return () => {
       cancelled = true
     }
-    // Mount-only: sanitizedRecentItems is read once (closure-captured at mount)
-    // and updates flow through the functional setRecentItems updater.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
   useEffect(() => {
     setExpandedSearchGroupIds(new Set())
     setExpandedMessageParentIds(new Set())
     setMessagePreviewTarget(null)
   }, [deferredQuery, filter, updatedAtFrom])
-
   const handleSearchScopeChange = useCallback((nextScope: GlobalSearchScope) => {
     setPanelMode(nextScope === 'messages' ? 'message-search' : 'search')
     setMessagePreviewTarget(null)
   }, [])
-
   const openTopic = useCallback(
     async (topicId: string) => {
       const apiTopic = await dataApiService.get(`/topics/${topicId}`)
@@ -510,7 +475,6 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
     },
     [onClose, chatNav]
   )
-
   const openSession = useCallback(
     (sessionId: string) => {
       const targetTabId = agentNav.openConversationTab(sessionId)
@@ -538,7 +502,6 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
     },
     [onClose, agentNav]
   )
-
   const openTopicMessageById = useCallback(
     async (topicId: string, messageId: string) => {
       const messagePathEndpoint = `/topics/${topicId}/path` as const
@@ -553,7 +516,6 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
         ...mapApiTopicToRendererTopic(apiTopic),
         activeNodeId
       }
-
       await dataApiService.put(`/topics/${topicId}/active-node`, { body: { nodeId: activeNodeId } })
       await invalidateCache([`/topics/${topicId}/messages`, `/topics/${topicId}/tree`])
       const targetTabId = chatNav.openConversationTab(topic.id)
@@ -579,7 +541,6 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
     },
     [invalidateCache, onClose, chatNav]
   )
-
   const openSessionMessageById = useCallback(
     async (sessionId: string, messageId: string) => {
       await invalidateCache([
@@ -614,7 +575,6 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
     },
     [invalidateCache, onClose, agentNav]
   )
-
   const jumpToMessage = useCallback(
     (target: GlobalSearchMessageJumpTarget) => {
       if (target.sourceType === 'topic') {
@@ -624,7 +584,6 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
         })
         return
       }
-
       void openSessionMessageById(target.sessionId, target.messageId).catch((error) => {
         logOpenFailure(error, target)
         toast.error(t('globalSearch.open_failed'))
@@ -632,7 +591,6 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
     },
     [openSessionMessageById, openTopicMessageById, t]
   )
-
   const openMessagePanelItem = useCallback((item: GlobalMessageSearchPanelItem) => {
     if (item.kind === 'more') {
       setExpandedMessageParentIds((current) => {
@@ -642,7 +600,6 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
       })
       return
     }
-
     if (item.result.sourceType === 'topic') {
       setMessagePreviewTarget({
         sourceType: 'topic',
@@ -655,7 +612,6 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
       })
       return
     }
-
     setMessagePreviewTarget({
       sourceType: 'session',
       sessionId: item.result.sessionId,
@@ -665,28 +621,23 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
       createdAt: item.result.createdAt
     })
   }, [])
-
   const jumpMessagePanelItem = useCallback(
     (item: GlobalMessageSearchPanelItem) => {
       if (item.kind === 'more') {
         openMessagePanelItem(item)
         return
       }
-
       jumpToMessage(getMessageSearchResultJumpTarget(item.result))
     },
     [jumpToMessage, openMessagePanelItem]
   )
-
   const openMessagePreviewMessage = useCallback(
     (messageId: string) => {
       if (!messagePreviewTarget) return
-
       jumpToMessage(getPreviewMessageJumpTarget(messagePreviewTarget, messageId))
     },
     [jumpToMessage, messagePreviewTarget]
   )
-
   const openGlobalSearchFooter = useCallback((footer: GlobalSearchPanelGroupFooter) => {
     if (footer.kind === 'expand-results') {
       setExpandedSearchGroupIds((current) => {
@@ -696,17 +647,14 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
       })
       return
     }
-
     setMessageSourceFilter('all')
     setMessagePreviewTarget(null)
     setPanelMode('message-search')
   }, [])
-
   const handleLoadMoreMessageResults = useCallback(() => {
     if (isLoadingMoreMessageResults) return
     loadMoreMessageResults()
   }, [isLoadingMoreMessageResults, loadMoreMessageResults])
-
   const openPanelItem = useCallback(
     async (item: GlobalSearchKeyboardItem) => {
       try {
@@ -714,14 +662,12 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
           openGlobalSearchFooter(item.footer)
           return
         }
-
         if (item.kind === 'message') {
           setMessageSourceFilter('all')
           setPanelMode('message-search')
           openMessagePanelItem(item)
           return
         }
-
         if (item.kind === 'recent') {
           switch (item.recent.kind) {
             case 'route':
@@ -736,9 +682,7 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
               return
           }
         }
-
         const result = item.result
-
         switch (result.type) {
           case 'assistant': {
             const assistantId = getAssistantTargetId(result.target)
@@ -774,31 +718,26 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
     },
     [onClose, openGlobalSearchFooter, openMessagePanelItem, openSession, openTab, openTopic, t]
   )
-
   const handleInputKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>) => {
       // IME candidate confirmation still emits keydown; do not let panel shortcuts intercept it.
       // oxlint-disable-next-line no-deprecated
       if (event.nativeEvent.isComposing || event.keyCode === 229) return
-
       if (event.key === 'Escape') {
         event.preventDefault()
         onClose()
         return
       }
-
       if (event.key === 'ArrowDown') {
         event.preventDefault()
         moveActiveItem(1)
         return
       }
-
       if (event.key === 'ArrowUp') {
         event.preventDefault()
         moveActiveItem(-1)
         return
       }
-
       if (event.key === 'Enter') {
         // Swallow Enter while the rendered results still belong to a previous
         // query: while the queries misalign (DOM value, debounce, deferred lane),
@@ -843,22 +782,18 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
       openPanelItem
     ]
   )
-
   const handleFilterSelect = useCallback((nextFilter: Exclude<GlobalSearchFilter, 'all'>) => {
     setFilter((current) => (current === nextFilter ? 'all' : nextFilter))
   }, [])
-
   const handleTimeFilterSelect = useCallback((nextFilter: GlobalSearchTimeFilter) => {
     setTimeFilter(nextFilter)
     setMessagePreviewTarget(null)
   }, [])
-
   const handleMessageSourceFilterSelect = useCallback((nextFilter: Exclude<GlobalMessageSearchSourceFilter, 'all'>) => {
     setMessageSourceFilter((current) => (current === nextFilter ? 'all' : nextFilter))
     setExpandedMessageParentIds(new Set())
     setMessagePreviewTarget(null)
   }, [])
-
   const showEmptyState = !isLoading && !error && selectableItems.length === 0
   const showMessageEmptyState =
     !isMessageLoading && !messageError && (hasQuery ? messageSelectableItems.length === 0 : true)
@@ -873,7 +808,6 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
   const isListboxVisible = isSearchListboxVisible || isMessageListboxVisible
   const activeMessageRowIndex = useMemo(() => {
     if (!isMessageListboxVisible || !activeItemId) return undefined
-
     return getGroupedVirtualListRowIndex(
       messageVirtualGroupsWithLoadMore,
       activeItemId,
@@ -883,7 +817,6 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
   }, [activeItemId, isMessageListboxVisible, messageVirtualGroupsWithLoadMore])
   const activeSearchRowIndex = useMemo(() => {
     if (!isSearchListboxVisible || !activeItemId) return undefined
-
     return getGroupedVirtualListRowIndex(
       virtualGroups,
       activeItemId,
@@ -891,19 +824,14 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
       (group, footer) => getGlobalSearchFooterItemId(group.id, footer)
     )
   }, [activeItemId, isSearchListboxVisible, virtualGroups])
-
   useEffect(() => {
     if (activeMessageRowIndex === undefined) return
-
     messageListRef.current?.scrollToIndex(activeMessageRowIndex, { align: 'auto' })
   }, [activeMessageRowIndex])
-
   useEffect(() => {
     if (activeSearchRowIndex === undefined) return
-
     searchListRef.current?.scrollToIndex(activeSearchRowIndex, { align: 'auto' })
   }, [activeSearchRowIndex])
-
   const messageResultsContent =
     isMessageLoading && hasQuery ? (
       <GlobalSearchState label={t('common.loading')} />
@@ -929,7 +857,6 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
             renderGroupHeader={(group) => <GlobalMessageSearchGroupHeader group={group} />}
             renderGroupFooter={() => {
               const active = activeItemId === GLOBAL_MESSAGE_SEARCH_LOAD_MORE_ITEM_ID
-
               return (
                 <div className="h-12 px-5 pt-2">
                   <Button
@@ -969,7 +896,6 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
         </div>
       </div>
     )
-
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
       <div className="shrink-0 px-5 pt-4 pb-2">
@@ -1028,9 +954,7 @@ export function GlobalSearchPanel({ onClose }: GlobalSearchPanelProps) {
                     key={filterOption}
                     type="button"
                     variant="ghost"
-                    aria-label={`${t('globalSearch.messageSearch.sourceLabel')}: ${t(
-                      getMessageSourceFilterLabelKey(filterOption)
-                    )}`}
+                    aria-label={`${t('globalSearch.messageSearch.sourceLabel')}: ${t(getMessageSourceFilterLabelKey(filterOption))}`}
                     aria-pressed={messageSourceFilter === filterOption}
                     onClick={() => handleMessageSourceFilterSelect(filterOption)}
                     className={cn(

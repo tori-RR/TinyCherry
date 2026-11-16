@@ -1403,6 +1403,7 @@
   "conversation_owner.delete_permanently.sessions_kept": "Các cuộc trò chuyện được giữ lại và chuyển vào \"Agent không liên kết\".",
   "conversation_owner.delete_permanently.topics_deleted": "Các chủ đề này và tin nhắn của chúng cũng sẽ bị xóa.",
   "conversation_owner.delete_permanently.topics_kept": "Các chủ đề được giữ lại và chuyển vào \"Trợ lý Không liên kết\".",
+  "desktop.feature_unavailable": "This feature is not available in this desktop version yet.",
   "deviceConnections.capabilities.agent": "Điều khiển phiên agent",
   "deviceConnections.capabilities.configuration": "Nhập nhà cung cấp và mô hình",
   "deviceConnections.claims.approve": "Cho phép",

@@ -22,7 +22,7 @@ import {
   readRegisteredHandler
 } from '@renderer/hooks/command'
 import { platform } from '@renderer/utils/platform'
-import type { ContextReader, SupportedPlatform } from '@shared/types/command'
+import type { ContextReader } from '@shared/types/command'
 import { type CommandId, REGISTERED_KEYBINDINGS, resolveCommandByKeybinding } from '@shared/utils/command'
 import { getShortcutBindingFromKeyboardEvent } from '@shared/utils/shortcut'
 
@@ -82,10 +82,10 @@ export function CommandProvider({ children }: { children: ReactNode }) {
         { entry: NonNullable<ReturnType<typeof findScopeHandler>>; handler: CommandHandler }
       >()
       const command = resolveCommandByKeybinding({
-        binding: getShortcutBindingFromKeyboardEvent(event, platform as SupportedPlatform),
+        binding: getShortcutBindingFromKeyboardEvent(event, platform),
         preferences: stateRef.current.shortcutPreferences,
         context,
-        platform: platform as SupportedPlatform,
+        platform: platform,
         scope: 'renderer',
         canExecuteCommand: (id) => {
           const entry = findScopeHandler(scope, id)

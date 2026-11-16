@@ -80,7 +80,7 @@ describe('MainWindowContent', () => {
       expect(screen.getByTestId('tabs-provider')).toBeInTheDocument()
       expect(screen.getByTestId('app-shell')).toBeInTheDocument()
       expect(screen.queryByTestId('onboarding-page')).not.toBeInTheDocument()
-      expect(screen.getByTestId('privacy-policy-gate')).toBeInTheDocument()
+      expect(screen.queryByTestId('privacy-policy-gate')).not.toBeInTheDocument()
       expect(onboardingModule.evaluations).toBe(0)
       view.unmount()
     }
@@ -106,7 +106,7 @@ describe('MainWindowContent', () => {
 
     render(<MainWindowContent />)
 
-    expect(tabsProviderMock.lastInitialDefaultTab).toMatchObject({ url: '/app/agents' })
+    expect(tabsProviderMock.lastInitialDefaultTab).toMatchObject({ url: '/app/launchpad' })
   })
 })
 

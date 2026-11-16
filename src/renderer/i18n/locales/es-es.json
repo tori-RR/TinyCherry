@@ -1403,6 +1403,7 @@
   "conversation_owner.delete_permanently.sessions_kept": "Sus conversaciones se conservan y se mueven a «Agente no vinculado».",
   "conversation_owner.delete_permanently.topics_deleted": "Estos temas y sus mensajes también se eliminarán.",
   "conversation_owner.delete_permanently.topics_kept": "Sus temas se conservan y se mueven a «Asistente No Vinculado».",
+  "desktop.feature_unavailable": "This feature is not available in this desktop version yet.",
   "deviceConnections.capabilities.agent": "Controlar sesiones de agente",
   "deviceConnections.capabilities.configuration": "Importar proveedores y modelos",
   "deviceConnections.claims.approve": "Permitir",

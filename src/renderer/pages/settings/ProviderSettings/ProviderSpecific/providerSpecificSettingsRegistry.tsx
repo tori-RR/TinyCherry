@@ -97,7 +97,7 @@ export const PROVIDER_SPECIFIC_SETTINGS_REGISTRY: Record<ProviderSpecificPlaceme
     {
       key: 'copilot-settings',
       when: ({ provider }) => matchesPreset(provider, 'copilot'),
-      render: (providerId) => <GithubCopilotSettings providerId={providerId} />
+      render: () => <GithubCopilotSettings />
     },
     {
       key: 'aws-bedrock-settings',

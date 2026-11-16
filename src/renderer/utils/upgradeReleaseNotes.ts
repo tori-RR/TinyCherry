@@ -1,6 +1,6 @@
-import type { UpdateInfo } from 'builder-util-runtime'
 import { gt, lte, rcompare, valid } from 'semver'
 
+import type { UpdateInfo } from '@shared/types/release'
 import type { ReleaseNotesEntry } from '@shared/utils/releaseNotes'
 
 export function collectUpgradeReleases(

@@ -1,14 +1,5 @@
-import attachmentTool from './definitions/attachmentTool'
-import generateImageTool from './definitions/generateImageTool'
 import knowledgeBaseTool from './definitions/knowledgeBaseTool'
-import mcpPromptTool from './definitions/mcpPromptTool'
-import mcpResourceTool from './definitions/mcpResourceTool'
-import mcpStatusTool from './definitions/mcpStatusTool'
-import noteReferenceTool from './definitions/noteReferenceTool'
-import permissionModeTool from './definitions/permissionModeTool'
 import quickPhrasesTool from './definitions/quickPhrasesTool'
-import slashCommandsTool from './definitions/slashCommandsTool'
-import webSearchTool from './definitions/webSearchTool'
 import type { ComposerToolScope, ToolContext, ToolDefinition } from './types'
 
 /**
@@ -17,19 +8,7 @@ import type { ComposerToolScope, ToolContext, ToolDefinition } from './types'
  * tool set deterministic and tree-shake-safe: a tool exists iff it appears in this
  * array. Order is the display order surfaced by `getAllTools`.
  */
-export const BUILTIN_COMPOSER_TOOLS: ToolDefinition<any, any>[] = [
-  attachmentTool,
-  quickPhrasesTool,
-  webSearchTool,
-  knowledgeBaseTool,
-  generateImageTool,
-  slashCommandsTool,
-  permissionModeTool,
-  mcpStatusTool,
-  mcpPromptTool,
-  mcpResourceTool,
-  noteReferenceTool
-]
+export const BUILTIN_COMPOSER_TOOLS: ToolDefinition<any, any>[] = [quickPhrasesTool, knowledgeBaseTool]
 
 export const getAllTools = (): ToolDefinition<any, any>[] => BUILTIN_COMPOSER_TOOLS
 

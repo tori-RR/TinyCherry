@@ -15,7 +15,6 @@ import { toast } from '@renderer/services/toast'
 import type { KnowledgeBase } from '@shared/data/types/knowledge'
 import { type Model, MODEL_CAPABILITY } from '@shared/data/types/model'
 import type { Provider } from '@shared/data/types/provider'
-import { IpcChannel } from '@shared/IpcChannel'
 
 import type { ComposerSurfaceProps } from '../../ComposerSurface'
 import type { ComposerSuggestionItem } from '../../quickPanel'
@@ -1267,36 +1266,6 @@ describe('ChatComposer', () => {
       }
     ])
     expect(mocks.files?.[0].blob).toBeInstanceOf(Blob)
-  })
-
-  it('inserts quoted selected text as a quote token from the main-window quote IPC', async () => {
-    vi.mocked(cacheService.get).mockReturnValue({
-      text: 'Existing draft',
-      tokens: [],
-      files: [],
-      knowledgeBaseIds: []
-    })
-
-    render(<ChatComposer topic={topic} onSend={vi.fn()} />)
-
-    await waitFor(() => {
-      expect(mocks.ipcOn).toHaveBeenCalledWith(IpcChannel.App_QuoteToMain, expect.any(Function))
-    })
-
-    act(() => {
-      mocks.ipcListeners.get(IpcChannel.App_QuoteToMain)?.({}, 'Selected message text')
-    })
-
-    expect(mocks.insertToken).toHaveBeenCalledWith(
-      expect.objectContaining({
-        kind: 'quote',
-        label: 'selection.action.builtin.quote',
-        description: 'Selected message text',
-        promptText: '<blockquote>\n\nSelected message text\n</blockquote>'
-      })
-    )
-    expect(mocks.toggleExpanded).not.toHaveBeenCalled()
-    expect(mocks.surfaceProps?.text).toBe('Existing draft')
   })
 
   it('updates the topic assistant from the composer toolbar', () => {

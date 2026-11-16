@@ -1,5 +1,5 @@
 import { MockUsePreferenceUtils } from '@test-mocks/renderer/usePreference'
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps, ReactNode, Ref } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -168,8 +168,6 @@ vi.mock('@cherrystudio/ui', async (importOriginal) => ({
   Switch: (await importOriginal<typeof CherryUiModule>()).Switch
 }))
 
-import { toast } from '@renderer/services/toast'
-
 import { SkillDetails } from '../SkillDetails'
 
 function createSkill(overrides: Partial<InstalledSkill> = {}): InstalledSkill {
@@ -259,80 +257,6 @@ describe('SkillDetails', () => {
     expect(screen.getByRole('switch', { name: 'settings.skills.globalToggle' })).toBeInTheDocument()
     expect(screen.queryByText('writing')).not.toBeInTheDocument()
     expect(screen.getByTestId('skill-file-browser')).toHaveAttribute('data-root-path', '/managed/skills/writer')
-  })
-
-  it('launches, toggles, opens, and removes the current Skill from explicit actions', async () => {
-    const user = userEvent.setup()
-    const skill = createSkill()
-    mocks.query = { data: skill, error: undefined, isLoading: false }
-    mocks.ipcRequest.mockResolvedValue(undefined)
-    render(<SkillDetails skillId="skill-1" />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'settings.skills.tryNow' }))
-    expect(mocks.launchSkill).toHaveBeenCalledExactlyOnceWith(skill)
-
-    await user.click(screen.getByRole('button', { name: 'common.more' }))
-    await user.click(screen.getByRole('menuitem', { name: 'library.skill_detail.open_folder' }))
-    await waitFor(() =>
-      expect(mocks.ipcRequest).toHaveBeenCalledExactlyOnceWith('skill.folder.open', { skillId: 'skill-1' })
-    )
-
-    fireEvent.click(screen.getByRole('switch', { name: 'settings.skills.globalToggle' }))
-    expect(mocks.updateGlobalEnabled).toHaveBeenCalledExactlyOnceWith(false)
-
-    await user.click(screen.getByRole('button', { name: 'common.more' }))
-    await user.click(screen.getByRole('menuitem', { name: /library.action.uninstall/ }))
-    const dialog = screen.getByRole('dialog')
-    expect(dialog).toBeInTheDocument()
-    fireEvent.click(within(dialog).getByRole('button', { name: 'library.action.uninstall' }))
-    await waitFor(() => expect(mocks.uninstallSkill).toHaveBeenCalledOnce())
-    expect(mocks.navigate).toHaveBeenCalledWith({ to: '/settings/skills', search: { scope: undefined } })
-  })
-
-  it('keeps export changes pending until saved, then displays the refreshed preference', async () => {
-    MockUsePreferenceUtils.setPreferenceValue('agent.skills.external_export.enabled', true)
-    const user = userEvent.setup()
-    let complete!: (skill: InstalledSkill) => void
-    mocks.setMirrorEnabled.mockReturnValueOnce(
-      new Promise<InstalledSkill>((resolve) => {
-        complete = resolve
-      })
-    )
-    const view = render(<SkillDetails skillId="skill-1" />)
-    expect(screen.getByRole('switch', { name: 'settings.skills.globalToggle' })).toBeChecked()
-    expect(screen.queryByRole('menuitemcheckbox')).not.toBeInTheDocument()
-    expect(screen.queryByText('Available to external agents')).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'common.more' }))
-    const toggle = screen.getByRole('menuitemcheckbox', { name: 'Available to external agents' })
-    expect(toggle).toHaveAccessibleDescription('Export this skill to ~/.agents/skills for use by external agents.')
-    await user.click(toggle)
-    expect(toggle).toHaveAttribute('aria-disabled', 'true')
-    expect(toggle).toHaveAttribute('aria-checked', 'true')
-
-    await act(async () => {
-      mocks.query.data = createSkill({ mirrorEnabled: false })
-      complete(mocks.query.data)
-    })
-    view.rerender(<SkillDetails skillId="skill-1" />)
-    expect(toggle).toHaveAttribute('aria-checked', 'false')
-    expect(toggle).not.toHaveAttribute('aria-disabled', 'true')
-    expect(mocks.refetch).toHaveBeenCalled()
-  })
-
-  it('preserves the export preference after failure and allows retry', async () => {
-    MockUsePreferenceUtils.setPreferenceValue('agent.skills.external_export.enabled', true)
-    const user = userEvent.setup()
-    mocks.setMirrorEnabled.mockRejectedValueOnce(new Error('export conflict'))
-    render(<SkillDetails skillId="skill-1" />)
-    await user.click(screen.getByRole('button', { name: 'common.more' }))
-    const toggle = screen.getByRole('menuitemcheckbox', { name: 'Available to external agents' })
-    await user.click(toggle)
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('settings.skills.mirrorToggleFailed'))
-    expect(toggle).toHaveAttribute('aria-checked', 'true')
-    expect(toggle).not.toHaveAttribute('aria-disabled', 'true')
-    await user.click(toggle)
-    await waitFor(() => expect(mocks.refetch).toHaveBeenCalled())
-    expect(toggle).not.toHaveAttribute('aria-disabled', 'true')
   })
 
   it('returns to the list from the header', () => {

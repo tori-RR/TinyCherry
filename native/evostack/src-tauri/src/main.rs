@@ -2,6 +2,7 @@
 
 mod computer_use;
 mod host;
+mod platform;
 mod rpc_writer;
 
 use host::{
@@ -56,7 +57,9 @@ impl Backend {
     fn start(data_dir: PathBuf) -> Result<Self, Box<dyn std::error::Error>> {
         let diagnostics = Arc::new(Diagnostics::open(&data_dir)?);
         diagnostics.record("host: starting sidecar");
-        let executable = std::env::current_exe()?.with_file_name("tinycherry-evostack-backend.exe");
+        let executable =
+            platform::sibling("tinycherry-evostack-backend.exe").map_err(std::io::Error::other)?;
+        platform::sibling("open-computer-use.exe").map_err(std::io::Error::other)?;
         let mut command = Command::new(executable);
         command
             .arg("--data-dir")
@@ -86,7 +89,7 @@ impl Backend {
         let input = PipeWriter::start(child.stdin.take().ok_or("backend stdin missing")?);
         let reverse_input = input.clone();
         let controls = Arc::new(computer_use::Controller::new(
-            std::env::current_exe()?.with_file_name("open-computer-use.exe"),
+            platform::sibling_path("open-computer-use.exe").map_err(std::io::Error::other)?,
         ));
         let reader_controls = controls.clone();
         let reverse_workers = Arc::new(AtomicUsize::new(0));
@@ -416,6 +419,12 @@ fn trusted(window: &WebviewWindow) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn desktop_info(window: WebviewWindow) -> Result<Value, String> {
+    trusted(&window)?;
+    Ok(platform::info())
+}
+
+#[tauri::command]
 fn subscribe(
     window: WebviewWindow,
     backend: State<'_, Arc<Backend>>,
@@ -535,12 +544,19 @@ fn desktop_request(
         }
         "system.get_device_type" => Ok(json!("desktop")),
         "system.toggle_dev_tools" => {
-            if window.is_devtools_open() {
-                window.close_devtools();
-            } else {
-                window.open_devtools();
+            #[cfg(any(debug_assertions, feature = "inspection"))]
+            {
+                if window.is_devtools_open() {
+                    window.close_devtools();
+                } else {
+                    window.open_devtools();
+                }
+                Ok(Value::Null)
             }
-            Ok(Value::Null)
+            #[cfg(not(any(debug_assertions, feature = "inspection")))]
+            {
+                Err("DESKTOP_UNAVAILABLE: developer tools".into())
+            }
         }
         "system.shell.open_external_website" | "system.shell.open_website" => {
             let raw = input
@@ -563,7 +579,7 @@ fn desktop_request(
             }
         }
         "app.get_info" => Ok(json!({
-            "version":build_info()["version"], "platform":"win32", "arch":"x64", "isPackaged":true,
+            "version":build_info()["version"], "platform":platform::name(), "arch":platform::info()["arch"], "isPackaged":!cfg!(debug_assertions),
             "appPath":std::env::current_exe().ok().and_then(|p|p.parent().map(|p|p.to_path_buf())),
             "resourcesPath": backend.data_dir, "userDataPath": backend.data_dir, "logsPath": backend.data_dir,
             "homePath": backend.data_dir, "notesPath": backend.data_dir, "configPath": backend.data_dir,
@@ -577,6 +593,7 @@ fn desktop_request(
 
 fn desktop_response(result: Reply) -> Value {
     match result {
+        Ok(value) if value.is_null() => json!({"ok":true}),
         Ok(value) => json!({"ok":true,"data":value}),
         Err(message) => json!({"ok":false,"error":{"code":"INTERNAL","message":message}}),
     }
@@ -684,6 +701,20 @@ async fn ipc_request(
     .map_err(|e| e.to_string())?
 }
 
+fn frontend_url() -> WebviewUrl {
+    #[cfg(debug_assertions)]
+    {
+        WebviewUrl::External(
+            url::Url::parse("http://127.0.0.1:17420/windows/evostack/index.html")
+                .expect("fixed dev origin"),
+        )
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        WebviewUrl::App("windows/evostack/index.html".into())
+    }
+}
+
 fn main() {
     if std::env::args_os().any(|argument| argument == "--evostack-build-info") {
         println!("{}", build_info());
@@ -691,6 +722,7 @@ fn main() {
     }
     let app = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            desktop_info,
             ipc_request,
             subscribe,
             start_dragging
@@ -716,7 +748,7 @@ fn main() {
             let window = WebviewWindowBuilder::new(
                 app,
                 "main",
-                WebviewUrl::App("windows/evostack/index.html".into()),
+                frontend_url(),
             )
             .title("TinyCherry EvoStack")
             .inner_size(1280.0, 850.0)
@@ -737,6 +769,7 @@ fn main() {
                     }
                 }
             });
+            #[cfg(any(debug_assertions, feature = "inspection"))]
             if std::env::var_os("TINYCHERRY_EVOSTACK_DEVTOOLS").is_some() {
                 window.open_devtools();
             }
@@ -754,6 +787,16 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_void_results_preserve_the_business_envelope() {
+        assert_eq!(desktop_response(Ok(Value::Null)), json!({"ok":true}));
+        assert_eq!(
+            desktop_response(Ok(json!(true))),
+            json!({"ok":true,"data":true})
+        );
+        assert_eq!(desktop_response(Err("fixture".into()))["ok"], false);
+    }
 
     #[cfg(windows)]
     fn unread_sidecar() -> Backend {
