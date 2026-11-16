@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 
+import { openChatPage } from './verify-chat-page.mjs'
+
 /** A real React composer -> Tauri -> Go -> loopback provider round trip. */
 export async function verifyChat({ evaluate, command, until, localeCatalogs }) {
   let streams = 0,
@@ -84,10 +86,8 @@ export async function verifyChat({ evaluate, command, until, localeCatalogs }) {
     await command('Page.reload', {})
     await until('Boolean(window.api?.ipcApi?.request && document.querySelector(\'[data-ui~="app.content"]\'))')
     const labels = localeCatalogs.map((locale) => locale['title.chat']).filter(Boolean)
-    await evaluate(
-      `(()=>{const labels=${JSON.stringify(labels)};const item=[...document.querySelectorAll('button')].find(node=>node.getBoundingClientRect().width>0&&labels.includes(node.textContent.trim()));if(!item)throw Error('Chat navigation missing');item.click()})()`
-    )
     const addLabels = localeCatalogs.map((locale) => locale['chat.add.assistant.title']).filter(Boolean)
+    await openChatPage({ evaluate, until, labels, assistantLabels: addLabels })
     await until(
       `Boolean([...document.querySelectorAll('button')].find(node=>node.getBoundingClientRect().width>0&&${JSON.stringify(addLabels)}.includes(node.textContent.trim())))`
     )
