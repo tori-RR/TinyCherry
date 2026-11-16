@@ -59,7 +59,8 @@
       "@cherrystudio/web-search/tools/url-filter": ["./packages/web-search/src/tools/urlFilter.ts"],
       "@cherrystudio/web-search/tools/content": ["./packages/web-search/src/tools/content.ts"],
       "@platform/*": ["./src/platform/*"],
-      "@cherrystudio/remote-protocol": ["./packages/remote-protocol/src/index.ts"]
+      "@cherrystudio/remote-protocol": ["./packages/remote-protocol/src/index.ts"],
+      "@cherrystudio/remote-protocol/*": ["./packages/remote-protocol/src/*"]
     },
     "tsBuildInfoFile": ".tsbuildinfo/tsconfig.web.tsbuildinfo"
   },
