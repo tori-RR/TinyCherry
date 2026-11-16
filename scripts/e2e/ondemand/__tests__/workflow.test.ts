@@ -1,5 +1,7 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 
 import { parse } from 'yaml'
 
@@ -8,6 +10,7 @@ it('dispatches one validated platform and retains the machine-readable verdict a
   const source = readFileSync(resolve(__dirname, '../../../../.github/workflows/qa-ondemand.yml'), 'utf8')
   const workflow = parse(source)
   expect(workflow.env.TZ).toBe('Asia/Shanghai')
+  expect(workflow.on.workflow_dispatch.inputs.platform).toMatchObject({ options: ['windows'], default: 'windows' })
   expect(workflow.on.workflow_dispatch.inputs.profile).toMatchObject({
     options: ['clean', 'authenticated'],
     default: 'clean'
@@ -33,6 +36,46 @@ it('dispatches one validated platform and retains the machine-readable verdict a
   expect(steps[prepare].if).toBe("needs.resolve.outputs.mode == 'branch'")
   expect(steps[prepare].run).toContain('exec dotenv -v CHERRY_EDITION=global -- electron-vite build')
 })
+
+it.each(['windows', 'macos', 'linux', 'unknown', ''])(
+  'validates raw hosted platform %j before resolving or allocating a desktop runner',
+  (platform) => {
+    const workflow = parse(readFileSync(resolve(__dirname, '../../../../.github/workflows/qa-ondemand.yml'), 'utf8'))
+    const preflight = workflow.jobs.resolve.steps.find((step: { id?: string }) => step.id === 'ref')
+    const directory = mkdtempSync(join(tmpdir(), 'qa-platform-guard-'))
+    const call = join(directory, 'resolve-call')
+    const output = join(directory, 'github-output')
+    try {
+      const result = spawnSync(
+        'bash',
+        [
+          '--noprofile',
+          '--norc',
+          '-e',
+          '-o',
+          'pipefail',
+          '-c',
+          `pnpm() { printf '%s' "$*" > "$RESOLVE_CALL"; }\n${preflight.run}`
+        ],
+        {
+          cwd: directory,
+          encoding: 'utf8',
+          env: { ...process.env, QA_PLATFORM: platform, RESOLVE_CALL: call, GITHUB_OUTPUT: output }
+        }
+      )
+      expect(result.status, result.stderr).toBe(platform === 'windows' ? 0 : 2)
+      expect(existsSync(call)).toBe(platform === 'windows')
+      if (platform === 'windows')
+        expect(readFileSync(call, 'utf8')).toBe('exec tsx scripts/e2e/ondemand/run.ts resolve')
+      else {
+        expect(result.stdout).toContain('Hosted QA supports Windows only')
+        expect(existsSync(output)).toBe(false)
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  }
+)
 
 it('keeps unrelated workflow diagnostics blocking the CI gate', () => {
   const ci = parse(readFileSync(resolve(__dirname, '../../../../.github/workflows/ci.yml'), 'utf8'))

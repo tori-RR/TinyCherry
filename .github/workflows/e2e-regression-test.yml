@@ -1,8 +1,6 @@
-name: E2E Regression Test
+name: Electron E2E Regression (Manual)
 
 on:
-  schedule:
-    - cron: "45 19 * * *" # 03:45 BJ Time — daily full regression on main
   workflow_dispatch:
     inputs:
       ref:
@@ -39,7 +37,7 @@ concurrency:
 
 jobs:
   resolve:
-    if: (github.event_name == 'workflow_dispatch' && github.ref_type == 'branch') || github.event_name == 'schedule'
+    if: github.event_name == 'workflow_dispatch' && github.ref_type == 'branch'
     runs-on: ubuntu-latest
     outputs:
       mode: ${{ steps.ref.outputs.mode }}
@@ -91,11 +89,9 @@ jobs:
     needs: resolve
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 1
       matrix:
         include:
-          - runner: macos-latest
-            platform: macos
           - runner: windows-2022
             platform: windows
     runs-on: ${{ matrix.runner }}
@@ -719,7 +715,7 @@ jobs:
           TEST_RESULT: ${{ needs.test.result }}
         run: |
           mkdir -p platform-reports
-          for platform in macos windows; do
+          for platform in windows; do
             source="downloaded-reports/test-evidence-$platform"
             if [[ ! -d "$source" && "$TEST_RESULT" == "success" ]]; then
               source="downloaded-reports/test-report/evidence/$platform"
@@ -736,6 +732,7 @@ jobs:
           --output combined-report
           --mode "${{ needs.resolve.outputs.mode }}"
           --provider-mode "${{ inputs.provider_mode || 'real' }}"
+          --platforms windows
 
       - name: Summarize standalone smoke results
         if: needs.resolve.outputs.mode == 'branch' && needs.resolve.outputs.smoke != 'none'
@@ -743,7 +740,7 @@ jobs:
           node <<'NODE'
           const fs = require('node:fs')
           const rows = ['\n## Standalone smoke suite\n', '| Platform | Passed | Failed | Flaky | Skipped |', '| --- | ---: | ---: | ---: | ---: |']
-          for (const platform of ['macos', 'windows']) {
+          for (const platform of ['windows']) {
             const path = `platform-reports/${platform}/report/smoke-results.json`
             const stats = fs.existsSync(path) ? JSON.parse(fs.readFileSync(path, 'utf8')).stats : null
             rows.push(stats ? `| ${platform} | ${stats.expected} | ${stats.unexpected} | ${stats.flaky} | ${stats.skipped} |` : `| ${platform} | Missing report | — | — | — |`)
@@ -755,24 +752,39 @@ jobs:
           NODE
 
       - name: Merge detailed Playwright reports
+        id: merge-reports
         env:
           CHERRY_TEST_RUN_DIR: ${{ github.workspace }}/combined-report
           PLAYWRIGHT_HTML_OUTPUT_DIR: ${{ github.workspace }}/merged-html
           PLAYWRIGHT_HTML_OPEN: never
+          TEST_RESULT: ${{ needs.test.result }}
         run: |
           mkdir -p merged-blobs
           find platform-reports -path '*/blob-*/*.zip' -exec cp {} merged-blobs/ \;
+          if ! find merged-blobs -name '*.zip' -print -quit | grep -q .; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            if [[ "$TEST_RESULT" == "success" ]]; then
+              echo "::error::A successful regression run must produce Playwright reports."
+              exit 1
+            fi
+            echo "::notice::Regression execution was blocked or failed before Playwright reports were produced; see the platform verdict."
+            exit 0
+          fi
           pnpm exec playwright merge-reports --config playwright.regression.config.ts --reporter html merged-blobs
+          echo "available=true" >> "$GITHUB_OUTPUT"
 
       - name: Assemble complete report
         id: assemble-report
+        env:
+          MERGED_REPORT_AVAILABLE: ${{ steps.merge-reports.outputs.available }}
         run: |
-          test -f platform-reports/macos/report/results.json
           test -f platform-reports/windows/report/results.json
-          cp -a merged-html/. combined-report/
+          if [[ "$MERGED_REPORT_AVAILABLE" == "true" ]]; then
+            cp -a merged-html/. combined-report/
+            test -f combined-report/index.html
+          fi
           cp -a platform-reports combined-report/evidence
           mv combined-report/combined-report.md combined-report/summary.md
-          test -f combined-report/index.html
 
       - name: Upload aggregate report
         id: upload-report
@@ -792,7 +804,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
-            --jq '.artifacts[] | select(.name == "test-evidence-macos" or .name == "test-evidence-windows") | .id' \
+            --jq '.artifacts[] | select(.name == "test-evidence-windows") | .id' \
             > temporary-artifact-ids.txt
           while read -r artifact_id; do
             gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id"

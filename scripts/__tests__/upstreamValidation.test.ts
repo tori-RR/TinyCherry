@@ -11,6 +11,7 @@ import {
   mergeUpstream,
   validationEnvironment,
   validationSteps,
+  verifyFullCi,
   verifyUpstream
 } from '../validation/upstream.mjs'
 import {
@@ -66,23 +67,31 @@ describe('upstream validation plan and environment', () => {
     const steps = validationSteps(previous)
     const ids = steps.map(([id]) => id)
     expect(ids).toEqual(UPSTREAM_CHECKS)
-    expect(steps.find(([id]) => id === 'static-checks')?.[1]).toEqual(['check', '--all', '--group', 'checks'])
-    expect(steps[0][0]).toBe('environment')
-    expect(steps[1]).toEqual(['dependencies', ['install', '--frozen-lockfile']])
-    expect(steps.find(([id]) => id === 'platform-tests')?.[1]).toEqual([
+    expect(steps.find(([id]) => id === 'static-checks')?.[1]).toEqual([
       'check',
+      '--target',
+      'tauri',
       '--all',
       '--group',
-      'platform',
+      'checks'
+    ])
+    expect(steps[0][0]).toBe('environment')
+    expect(steps[1]).toEqual(['dependencies', ['install', '--frozen-lockfile']])
+    expect(steps.find(([id]) => id === 'tauri-tests')?.[1]).toEqual([
+      'check',
+      '--target',
+      'tauri',
+      '--all',
+      '--group',
+      'tests',
       '--max-workers=2'
     ])
-    expect(steps.find(([id]) => id === 'dependency-imports')?.[1]).toContain(
-      "await import('@earendil-works/pi-ai'); await import('@earendil-works/pi-coding-agent')"
-    )
-    for (const id of ['migration-drift', 'provider-id-drift', 'locale-drift'])
+    for (const id of ['dependency-imports', 'migration-drift', 'platform-tests', 'changed-tests'])
+      expect(ids).not.toContain(id)
+    for (const id of ['provider-id-drift', 'locale-drift'])
       expect(ids.indexOf(id)).toBeLessThan(ids.indexOf('static-checks'))
     expect(ids.indexOf('final-i18n')).toBeGreaterThan(ids.indexOf('native-package'))
-    expect(steps.at(-1)?.[1]).toEqual(['check', '--all', '--group', 'i18n'])
+    expect(steps.at(-1)?.[1]).toEqual(['check', '--target', 'tauri', '--all', '--group', 'i18n'])
   })
 
   it('clears inherited subset/prepared flags and creates all temporary paths inside the repository', () => {
@@ -297,6 +306,37 @@ describe('exact-commit full CI promotion gate', () => {
     ].map((runs) => ({ runs }))
   )('rejects missing, mismatched, affected-only or superseded evidence %#', ({ runs }) => {
     expect(() => assertFullCiRun(runs, revision)).toThrow('latest full CI dispatch for this exact commit')
+  })
+
+  it('requires both shared Windows CI and native Portable CI in the actual destination repository', () => {
+    const queries: string[][] = []
+    verifyFullCi(
+      process.cwd(),
+      revision,
+      'https://github.com/example/destination.git',
+      (_command: string, args: string[]) => {
+        queries.push(args)
+        return JSON.stringify([success])
+      }
+    )
+    expect(queries.map((args) => args[args.indexOf('--workflow') + 1])).toEqual(['ci.yml', 'evostack-windows.yml'])
+    for (const args of queries) {
+      expect(args[args.indexOf('--repo') + 1]).toBe('example/destination')
+      expect(args[args.indexOf('--commit') + 1]).toBe(revision)
+      expect(args[args.indexOf('--event') + 1]).toBe('workflow_dispatch')
+    }
+  })
+
+  it.each(['ci.yml', 'evostack-windows.yml'])('blocks promotion when %s has no successful full run', (workflow) => {
+    expect(() =>
+      verifyFullCi(
+        process.cwd(),
+        revision,
+        'https://github.com/example/destination.git',
+        (_command: string, args: string[]) =>
+          JSON.stringify(args[args.indexOf('--workflow') + 1] === workflow ? [] : [success])
+      )
+    ).toThrow(`${workflow}: The latest full CI dispatch`)
   })
 })
 

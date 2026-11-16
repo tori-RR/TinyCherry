@@ -15,7 +15,6 @@ const requiredCiJobs = [
   'main-test-shard',
   'renderer-test-shard',
   'package-test',
-  'platform-test',
   'general-test',
   'render-test'
 ]
@@ -85,6 +84,88 @@ describe('upstream-only workflow policy', () => {
       delete workflow.jobs[job]
     })
     expect(() => checkWorkflowPolicy(root)).toThrow(`Required CI job is missing: ${job}`)
+  })
+
+  it.each(['main-test-shard', 'renderer-test-shard', 'package-test'])(
+    'rejects a non-Windows test runner in %s',
+    (job) => {
+      const root = workflowFixture()
+      editWorkflow(root, 'ci.yml', (workflow) => {
+        workflow.jobs[job]['runs-on'] = 'ubuntu-latest'
+      })
+      expect(() => checkWorkflowPolicy(root)).toThrow('Windows runners only')
+    }
+  )
+
+  it.each(['schedule', 'push', 'pull_request'])(
+    'rejects automatic Electron E2E event %s or a removed manual entry',
+    (event) => {
+      const root = workflowFixture()
+      editWorkflow(root, 'e2e-regression-test.yml', (workflow) => {
+        workflow.on[event] = event === 'schedule' ? [{ cron: '0 0 * * *' }] : {}
+      })
+      expect(() => checkWorkflowPolicy(root)).toThrow('manual-only')
+      editWorkflow(root, 'e2e-regression-test.yml', (workflow) => {
+        delete workflow.on[event]
+        delete workflow.on.workflow_dispatch
+      })
+      expect(() => checkWorkflowPolicy(root)).toThrow('manual-only')
+    }
+  )
+
+  it('rejects non-Windows runners added through a matrix include entry', () => {
+    const root = workflowFixture()
+    editWorkflow(root, 'ci.yml', (workflow) => {
+      workflow.jobs['renderer-test-shard']['runs-on'] = '${{ matrix.os }}'
+      workflow.jobs['renderer-test-shard'].strategy.matrix.os = ['windows-2022']
+      workflow.jobs['renderer-test-shard'].strategy.matrix.include = [{ os: 'macos-latest' }]
+    })
+    expect(() => checkWorkflowPolicy(root)).toThrow('Windows runners only')
+  })
+
+  it.each(['electron', '${{ inputs.target }}'])('rejects changing a main CI execution target to %s', (target) => {
+    const root = workflowFixture()
+    editWorkflow(root, 'ci.yml', (workflow) => {
+      const step = workflow.jobs['renderer-test-shard'].steps.find((item: { run?: string }) =>
+        item.run?.includes('pnpm check')
+      )
+      step.run = step.run.replace('--target tauri', `--target ${target}`)
+    })
+    expect(() => checkWorkflowPolicy(root)).toThrow('fixed Tauri target')
+  })
+
+  it('rejects a switchable main target or automatically triggered Electron compatibility', () => {
+    const root = workflowFixture()
+    editWorkflow(root, 'ci.yml', (workflow) => {
+      workflow.on.workflow_dispatch = { inputs: { target: { type: 'string', default: 'tauri' } } }
+    })
+    expect(() => checkWorkflowPolicy(root)).toThrow('fixed Tauri target')
+    const compatibility = workflowFixture()
+    editWorkflow(compatibility, 'electron-compat.yml', (workflow) => {
+      workflow.on.push = { branches: ['main'] }
+    })
+    expect(() => checkWorkflowPolicy(compatibility)).toThrow('manual-only')
+  })
+
+  it.each(['push', 'pull_request'])('rejects loss of native main coverage for %s', (event) => {
+    const root = workflowFixture()
+    editWorkflow(root, 'evostack-windows.yml', (workflow) => {
+      workflow.on[event].branches = ['evostack']
+    })
+    expect(() => checkWorkflowPolicy(root)).toThrow(`main ${event} events`)
+  })
+
+  it('rejects non-Windows E2E and on-demand QA targets', () => {
+    const e2e = workflowFixture()
+    editWorkflow(e2e, 'e2e-regression-test.yml', (workflow) => {
+      workflow.jobs.test['runs-on'] = 'macos-latest'
+    })
+    expect(() => checkWorkflowPolicy(e2e)).toThrow('Windows runners only')
+    const qa = workflowFixture()
+    editWorkflow(qa, 'qa-ondemand.yml', (workflow) => {
+      workflow.on.workflow_dispatch.inputs.platform.options.push('macos')
+    })
+    expect(() => checkWorkflowPolicy(qa)).toThrow('Windows test target only')
   })
 })
 

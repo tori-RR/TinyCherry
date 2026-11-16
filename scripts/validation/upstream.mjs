@@ -54,47 +54,20 @@ export function validationSteps(base) {
     ['environment'],
     ['dependencies', ['install', '--frozen-lockfile']],
     ['git-hooks', ['exec', 'prek', 'install']],
-    [
-      'dependency-imports',
-      [
-        'exec',
-        'node',
-        '--input-type=module',
-        '-e',
-        "await import('@earendil-works/pi-ai'); await import('@earendil-works/pi-coding-agent')"
-      ]
-    ],
     ['workflow-policy'],
     ['actionlint'],
     ['catalog-policy'],
     ['changeset-policy', ['changeset:check']],
     ['provider-compatibility', ['--filter', '@cherrystudio/provider-registry', 'compat:policy', '--', base]],
     ['changesets', ['changeset', 'status', `--since=${base}`]],
-    ['migration-drift', ['db:migrations:generate']],
     ['provider-id-drift', ['gen:system-provider-ids']],
     ['locale-drift', ['i18n:sync']],
-    ['static-checks', ['check', '--all', '--group', 'checks']],
-    ['platform-tests', ['check', '--all', '--group', 'platform', '--max-workers=2']],
-    [
-      'gate-tests',
-      [
-        'exec',
-        'vitest',
-        'run',
-        '--project',
-        'scripts',
-        'scripts/__tests__/validationPlan.test.ts',
-        'scripts/__tests__/upstreamWorkflow.test.ts',
-        'scripts/__tests__/upstreamState.test.ts',
-        'scripts/__tests__/upstreamValidation.test.ts',
-        'scripts/__tests__/upstreamDependencies.test.ts',
-        'scripts/__tests__/piAiPatch.test.ts',
-        '--maxWorkers',
-        '2'
-      ]
-    ],
+    ['static-checks', ['check', '--target', 'tauri', '--all', '--group', 'checks']],
+    ['tauri-tests', ['check', '--target', 'tauri', '--all', '--group', 'tests', '--max-workers=2']],
+    ['web-search-package', ['--filter', '@cherrystudio/web-search', 'test:package']],
+    ['provider-registry-package', ['--filter', '@cherrystudio/provider-registry', 'test:package']],
     ['native-package'],
-    ['final-i18n', ['check', '--all', '--group', 'i18n']]
+    ['final-i18n', ['check', '--target', 'tauri', '--all', '--group', 'i18n']]
   ]
 }
 
@@ -158,7 +131,15 @@ function runStep(id, args, context) {
   if (id === 'native-package') {
     return execute(
       'powershell.exe',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'native/evostack/build.ps1'],
+      [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        'native/evostack/build.ps1',
+        '-ExpectedRevision',
+        commit(root, 'HEAD')
+      ],
       root,
       env
     )
@@ -194,35 +175,41 @@ export function assertFullCiRun(runs, revision) {
   }
 }
 
-export function verifyFullCi(root, revision, remoteUrl) {
+export function verifyFullCi(root, revision, remoteUrl, run = execFileSync) {
   const origin = remoteUrl ?? git(root, ['remote', 'get-url', 'origin'])
   const repository = origin.match(
     /^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/
   )?.[1]
   if (!repository) throw new Error('The promotion gate requires a GitHub origin repository')
-  const runs = JSON.parse(
-    execFileSync(
-      'gh',
-      [
-        'run',
-        'list',
-        '--repo',
-        repository,
-        '--workflow',
-        'ci.yml',
-        '--commit',
-        revision,
-        '--event',
-        'workflow_dispatch',
-        '--limit',
-        '20',
-        '--json',
-        'headSha,event,status,conclusion'
-      ],
-      { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }
+  for (const workflow of ['ci.yml', 'evostack-windows.yml']) {
+    const runs = JSON.parse(
+      run(
+        'gh',
+        [
+          'run',
+          'list',
+          '--repo',
+          repository,
+          '--workflow',
+          workflow,
+          '--commit',
+          revision,
+          '--event',
+          'workflow_dispatch',
+          '--limit',
+          '20',
+          '--json',
+          'headSha,event,status,conclusion'
+        ],
+        { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }
+      )
     )
-  )
-  assertFullCiRun(runs, revision)
+    try {
+      assertFullCiRun(runs, revision)
+    } catch (error) {
+      throw new Error(`${workflow}: ${error.message}`, { cause: error })
+    }
+  }
 }
 
 export function checkPush(root, input, checker = verifyReceipt, ciChecker = verifyFullCi) {

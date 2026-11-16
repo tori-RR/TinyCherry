@@ -27,7 +27,7 @@ pnpm upstream:hooks
 - 保留的功能与明确移除的功能，以及对应的测试和依赖。
 - TinyCherry 品牌、应用路径、首次启动、导航与现有交互。
 - 共享类型、IPC 注册、运行时适配层、数据库迁移和生成的注册表。
-- 上游专用发布与通知任务、fork 配置和必要的 secrets。
+- 上游专用发布与通知任务、仅手动运行的 Electron E2E、Windows 测试 runner、fork 配置和场景所需的 secrets。
 - 文档、翻译目录、打包内容，以及上游正式版改变的行为。
 
 修复仍支持的行为，更新已移除功能的过期预期，保留有效功能的检查。完成生成与格式化，结束所有并行修改，提交最终候选版本后再验证。
@@ -40,20 +40,22 @@ pnpm upstream:verify --base TARGET_SHA --upstream UPSTREAM_SHA
 
 门禁要求工作树干净，且没有未完成的 merge 或 rebase。它设置 `CI=true`，清除继承的 `VALIDATION_PLAN` 和 `VALIDATION_WORKSPACE_PREPARED`。核对固定的 Node 和 pnpm 环境后，先将已有的 `node_modules` 备份到被忽略的 `.cache/` 下，再按 `--frozen-lockfile` 创建新的依赖安装。安装失败时恢复原依赖树；成功的备份会保留并报告，不会静默删除。`--all` 的优先级高于继承的增量计划。
 
-本地门禁沿用 CI 的平台分工，检查工作流语法与 fork 边界、目录与发布策略、生成的迁移/服务商/翻译漂移、全部静态检查、Windows 平台测试清单、门禁与计划器回归测试，以及完整的原生打包。静态与平台阶段使用以下命令：
+本地门禁检查工作流语法与 fork 边界、目录与发布策略、生成的服务商/翻译漂移、静态检查、Windows 上原生界面复用的 TypeScript 测试、包契约，以及完整的原生打包。验证目标固定为 `tauri`；静态、运行时测试与包契约阶段使用以下命令：
 
 ```shell
-pnpm check --all --group checks
-pnpm check --all --group platform --max-workers 2
+pnpm check --target tauri --all --group checks
+pnpm check --target tauri --all --group tests --max-workers=2
+pnpm --filter @cherrystudio/web-search test:package
+pnpm --filter @cherrystudio/provider-registry test:package
 ```
 
-本地 actionlint 关闭 ShellCheck 和 Pyflakes 集成，ShellCheck 在完整的 Linux CI 容器中执行。所有本地测试和生成结束后，门禁再执行最终 i18n 检查。原生包必须报告候选提交的身份，并通过启动和契约检查。
+本地 actionlint 关闭 ShellCheck 和 Pyflakes 集成，ShellCheck 在 CI 的 Ubuntu 工具容器中执行。所有本地测试和生成结束后，门禁再执行最终 i18n 检查。原生验证覆盖 Go/Rust、真实临时 SQLite 数据库、JSON-RPC 与界面契约，以及打包后的 Tauri 启动。原生包必须报告候选提交的身份。合成电脑工具契约不能证明实际桌面操作；此门禁也不确立原生 Agent 或 MCP 执行支持。
 
-Linux 测试项目继续由完整的 Linux CI 套件执行，Windows/macOS runner 保留各自的平台契约。不得为了在 Windows 上运行归属 Linux 的套件而改变产品行为或重写无关的 POSIX fixtures。真实缺陷应在测试归属的平台上修复。
+运行时测试使用 Windows runner。Tauri 目标保留 renderer/shared 测试、可移植 UI、预览、提供商与协议包、实际消费的网页搜索元数据、相关工具，以及原生入口使用的原始 preload 桥。`src/main` 中的纯提供商过滤函数和电脑工具定义仍是生成输入；Electron 后端不是原生后端。Ubuntu jobs 执行静态工具和报告聚合，不运行 Linux 应用测试。保留 macOS/Linux 源码不代表这些系统已通过托管环境验收。
 
 每一步都核对同一 HEAD、Git tree、暂存区与工作树。源码变化、暂存修改或非忽略的未跟踪文件都会终止验证。发现生成漂移后，先审查并提交修正结果，再重新执行门禁。验证期间不得修改候选版本。
 
-只有完整成功的执行才会将本地结果写入 `.cache/upstream-validation/receipts/`，将提交和 tree 绑定到检查集合、Node 版本及原生产物哈希。执行失败会使该提交的结果失效。结果与诊断日志保持忽略，根 README 继续负责产品介绍。
+只有完整成功的执行才会将本地结果写入 `.cache/upstream-validation/receipts/`，将提交和 tree 绑定到 `tauri` 目标、检查集合、Node 版本及原生产物哈希。执行失败会使该提交的结果失效。结果与诊断日志保持忽略，根 README 继续负责产品介绍。
 
 验证、`pnpm upstream:check` 和 `git push` 必须在使用 `.node-version` 的同一环境中执行。若系统默认 Node 版本不同，先切换到项目指定版本再继续，保留验证结果和验证 hook。
 
@@ -68,13 +70,16 @@ git push origin HEAD
 
 ## 完成平台 CI
 
-首次推送候选版本使用本地门禁。在该分支上手动触发完整 CI：
+首次推送候选版本使用本地门禁。在该分支上手动触发两个必需工作流：
 
 ```shell
 gh workflow run ci.yml --ref CANDIDATE_BRANCH
+gh workflow run evostack-windows.yml --ref CANDIDATE_BRANCH
 ```
 
-确认该运行对应准确的候选 SHA，并使用完整计划：全部已配置的 Linux 测试项目，包括 main/package/renderer 测试，以及 Windows/macOS 平台契约。等待全部必需 jobs 及聚合检查通过。推进候选提交要求 origin 仓库中该 SHA 最近一次的 `workflow_dispatch` CI 已完成且成功。向 `main`、`evostack` 或 `release/*` 推送，则要求实际推送 remote URL 对应的仓库中存在该结果。增量运行或其他 SHA 的结果不能满足此要求。本地 Windows 验证只能证明在 Windows 上实际执行的行为，其他平台由对应 runner 提供验证证据。
+确认两次运行均对应准确的候选 SHA。`ci.yml` 必须使用完整的 `tauri` 计划；`evostack-windows.yml` 必须完成 Go race、原生构建、契约与启动检查。等待全部必需 jobs 及聚合检查通过。推进候选提交要求 origin 仓库中该 SHA 对应的每个工作流最近一次 `workflow_dispatch` 均已完成且成功。向 `main`、`evostack` 或 `release/*` 推送，则要求实际推送 remote URL 对应的仓库中存在这两个结果。增量运行、其他 SHA 的结果、仅一个工作流成功或 Electron 兼容运行成功，都不能满足此要求。这些结果只确立 Windows 验收。
+
+原生工作流也会针对 `main`、`evostack` 的相关推送，以及目标为这些分支的 pull request 运行。完整 Electron 单测清单在手动 Windows 兼容工作流中，通过 `pnpm check --all --target electron` 独立运行。Electron E2E 同样仅限 Windows、手动触发，没有每日计划。这两个兼容工作流均不阻塞 Tauri 主线验证，也不替代原生验收。E2E 预检仅检查所选场景使用的提供商字段。本地和启动场景不需要无关的 CherryIN 或 embedding 配置。现有 mock 模式只支持其声明的定向任务，不支持 `all`。
 
 若 CI 需要修正，提交修改并重新执行本地验证后，再发布新的候选版本。先前的定向测试或旧候选版本的绿色运行，不能验证已改变的最终提交。
 
@@ -91,7 +96,7 @@ pnpm upstream:check
 git push origin main
 ```
 
-封装命令要求候选结果有效、产物未变、工作副本干净、候选提交是当前目标的后代，并且该候选提交的完整 CI 已通过。它执行 `git merge --ff-only`，保留已验证的候选 SHA 和对应的打包身份。需要解决冲突的合并必须返回候选准备阶段。
+封装命令要求候选结果有效、产物未变、工作副本干净、候选提交是当前目标的后代，并且两个必需工作流针对该候选提交的运行都已成功。它执行 `git merge --ff-only`，保留已验证的候选 SHA 和对应的打包身份。需要解决冲突的合并必须返回候选准备阶段。
 
 上游推进必须使用该封装：Git 的 `pre-merge-commit` hook 不覆盖 fast-forward 合并。本地 pre-push hook 仍会核对实际推送的提交。这些本地工具不会配置 GitHub 分支保护，也不替代平台 CI 要求。
 

@@ -1,12 +1,12 @@
-name: QA On-Demand Test
+name: Electron QA (Manual)
 
 on:
   workflow_dispatch:
     inputs:
       platform:
-        description: "Hosted platform"
+        description: "Hosted Windows platform"
         type: choice
-        options: [windows, macos]
+        options: [windows]
         default: windows
       mode:
         description: "branch builds source; tag installs a release"
@@ -89,7 +89,12 @@ jobs:
           CHERRY_TEST_CUSTOM_PROVIDER_EMBEDDING_BASE_URL: ${{ vars.CHERRY_TEST_CUSTOM_PROVIDER_EMBEDDING_BASE_URL }}
           CHERRY_TEST_CUSTOM_PROVIDER_EMBEDDING_API_KEY: ${{ secrets.CHERRY_TEST_CUSTOM_PROVIDER_EMBEDDING_API_KEY }}
           CHERRY_TEST_CUSTOM_PROVIDER_EMBEDDING_MODEL: ${{ vars.CHERRY_TEST_CUSTOM_PROVIDER_EMBEDDING_MODEL }}
-        run: pnpm exec tsx scripts/e2e/ondemand/run.ts resolve
+        run: |
+          if [[ "$QA_PLATFORM" != "windows" ]]; then
+            echo "::error::Hosted QA supports Windows only."
+            exit 2
+          fi
+          pnpm exec tsx scripts/e2e/ondemand/run.ts resolve
       - name: Upload input failure
         if: failure()
         uses: actions/upload-artifact@v7

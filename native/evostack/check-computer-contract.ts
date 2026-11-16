@@ -355,7 +355,9 @@ async function main(): Promise<void> {
     const assistant = await data('POST', '/assistants', { name: 'Computer contract', modelId: model.id })
     assert.equal(await invoke('preference:get', 'app.computer_use.agent_control.enabled'), true)
     assert.deepEqual(
-      computerUseRequestSchemas['computer_use.get_approvals'].output.parse(await command('computer_use.get_approvals')),
+      computerUseRequestSchemas['computer_use.get_approvals'].output.parse(
+        await command('computer_use.get_approvals', undefined)
+      ),
       []
     )
     assert.equal(

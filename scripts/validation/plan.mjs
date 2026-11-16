@@ -1,5 +1,7 @@
 import { execFileSync } from 'node:child_process'
 
+import { TAURI_PROJECTS, TAURI_TASKS, VALIDATION_TARGETS } from './targets.mjs'
+
 export const testProjects = [
   'main',
   'preload',
@@ -32,6 +34,7 @@ export const checkTasks = {
   lint: { group: 'lint', args: ['lint'] },
   'types-node': { group: 'types', args: ['typecheck:node'] },
   'types-web': { group: 'types', args: ['typecheck:web'] },
+  'types-tauri': { group: 'types', args: ['typecheck:tauri'] },
   'types-aicore': { group: 'types', args: ['--filter', '@cherrystudio/ai-core', 'typecheck'] },
   'types-e2e': { group: 'types', args: ['typecheck:e2e'] },
   'types-agent-runtime-pi': { group: 'types', args: ['--filter', '@cherrystudio/agent-runtime-pi', 'typecheck'] },
@@ -129,7 +132,8 @@ function scopeFor(file) {
   return pkg && consumers[pkg] ? pkg : 'all'
 }
 
-export function createPlan(files, fullReason) {
+export function createPlan(files, fullReason, target = 'tauri') {
+  if (!VALIDATION_TARGETS.includes(target)) throw new Error(`Unknown validation target: ${target}`)
   const reasons = {}
   const projects = new Set()
   let platform = false
@@ -167,6 +171,7 @@ export function createPlan(files, fullReason) {
     if (affected.includes('main') && !/^packages\/(?:aiCore|ai-sdk-provider|web-search)\/src\/.*\.tsx?$/.test(file))
       platform = true
     for (const project of affected) projects.add(project)
+    if (affected.some((project) => TAURI_PROJECTS.includes(project))) add('types-tauri', file)
     if (affected.some((project) => ['main', 'shared', 'scripts', 'provider-registry'].includes(project)))
       add('types-node', file)
     if (affected.includes('renderer')) add('types-web', file)
@@ -189,12 +194,32 @@ export function createPlan(files, fullReason) {
     add('i18n-unused', file)
     if (!inTestDirectory && !/\.test\.tsx?$/.test(file)) add('i18n-hardcoded', file)
   }
+  const tasks = Object.keys(checkTasks).filter((task) => reasons[task] && taskAllowed(task, target))
   return {
-    tasks: Object.keys(checkTasks).filter((task) => reasons[task]),
-    projects: testProjects.filter((project) => projects.has(project)),
-    platform,
-    reasons
+    target,
+    tasks,
+    projects: testProjects.filter((project) => projects.has(project) && projectAllowed(project, target)),
+    platform: target === 'electron' && platform,
+    reasons: Object.fromEntries(tasks.map((task) => [task, reasons[task]]))
   }
+}
+
+const taskAllowed = (task, target) => (target === 'tauri' ? TAURI_TASKS.includes(task) : task !== 'types-tauri')
+const projectAllowed = (project, target) => target === 'electron' || TAURI_PROJECTS.includes(project)
+
+export function validatePlan(plan, target = 'tauri') {
+  if (!VALIDATION_TARGETS.includes(target)) throw new Error(`Unknown validation target: ${target}`)
+  if (plan?.target !== target) throw new Error(`Validation target mismatch: expected ${target}`)
+  if (
+    !Array.isArray(plan.tasks) ||
+    !Array.isArray(plan.projects) ||
+    typeof plan.platform !== 'boolean' ||
+    plan.tasks.some((task) => !Object.hasOwn(checkTasks, task) || !taskAllowed(task, target)) ||
+    plan.projects.some((project) => !testProjects.includes(project) || !projectAllowed(project, target)) ||
+    (target === 'tauri' && plan.platform)
+  )
+    throw new Error('Invalid validation plan')
+  return plan
 }
 
 export function changedFiles(cwd, base = 'origin/main', head = 'HEAD', local = true) {
@@ -217,7 +242,7 @@ export function selectedGroups(plan) {
     lint: plan.tasks.includes('lint'),
     types: plan.tasks.some((task) => checkTasks[task].group === 'types'),
     i18n: plan.tasks.some((task) => checkTasks[task].group === 'i18n'),
-    main: plan.projects.includes('main'),
+    main: plan.projects.some((project) => ['main', 'preload'].includes(project)),
     platform: plan.platform,
     renderer: plan.projects.includes('renderer'),
     packages: plan.projects.some((project) => !['main', 'preload', 'renderer'].includes(project))

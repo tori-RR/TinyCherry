@@ -1,7 +1,9 @@
 # Validation tooling
 
 `pnpm check --plan` explains the checks and Vitest projects selected by `plan.mjs`.
-`pnpm check` executes that plan serially; `pnpm check:all` runs the full gate.
+`pnpm check` executes that plan serially for the default `tauri` target;
+`pnpm check:all` runs that target's full gate. Use `--target electron` only for the
+separate Electron compatibility inventory. `ci.yml` explicitly selects `--target tauri`.
 `lint` only checks lint rules, `lint:fix` applies lint fixes, and `format` formats files.
 
 ## Upstream synchronization
@@ -9,13 +11,13 @@
 Follow the required [upstream synchronization workflow](../../docs/dev/contrib/upstream-sync.md)
 before promoting or pushing an upstream integration. `pnpm upstream:verify --base
 <target-sha> --upstream <upstream-ref>` validates the committed, clean candidate with
-a fresh frozen dependency installation, all static checks, CI's Windows platform-test
-inventory, gate/planner regressions, drift/policy checks, native packaging, and final
+a fresh frozen dependency installation, static checks, the Tauri target's shared tests
+on Windows, package contracts, drift/policy checks, native packaging, and final
 i18n checks after all local tests. Existing dependencies are backed up under ignored
 `.cache/` before installation, restored on installation failure, and retained as a
-reported backup on success. Linux's full test projects and Windows/macOS contracts
-remain mandatory in exact-SHA full CI before promotion. Results stay under ignored `.cache/` and bind the
-commit/tree to the check set, Node version, and package hashes. Source or artifact
+reported backup on success. Exact-SHA manual runs of both `ci.yml` and
+`evostack-windows.yml` remain mandatory before promotion. Results stay under ignored `.cache/` and bind the
+commit/tree to the `tauri` target, check set, Node version, and package hashes. Source or artifact
 changes require a new result. `pnpm upstream:check` verifies that result;
 `pnpm upstream:merge --ref <candidate>` performs validated fast-forward promotion.
 Install the dedicated pre-push hook with `pnpm upstream:hooks` in each synchronization
@@ -33,8 +35,8 @@ READMEs, the generated `docs/dev/sources-index.json`, and translation-pairing `.
 retains full checks. Skill files select the skill gate as well. Unknown inputs,
 root configuration, workflow changes, and the planner itself select all tasks.
 
-Source changes select their project and known consumers. Shared changes select all
-projects. Renderer `.ts`, `.tsx`, and `.css` changes, including colocated tests, select
+Source changes select their project and known consumers within the chosen target.
+Shared changes select all projects in that target. Renderer `.ts`, `.tsx`, and `.css` changes, including colocated tests, select
 the existing UI `theme:check` command in the repository group. This runs in `basic-checks`
 without selecting the UI test project or a package-test job. Renderer JSON, test setup,
 and mock files outside `src/renderer/` do not add this check. UI package changes retain
@@ -43,30 +45,44 @@ references cross file boundaries. Test-only changes omit only scanners that excl
 those paths: catalog coverage ignores `__tests__` but still reads adjacent main tests;
 hardcoded detection ignores `__tests__` and `.test.ts(x)`, but not adjacent `.spec.ts(x)`.
 Unused-key analysis stays selected because the renderer catalog reads test sources too.
-Unclassified/configuration inputs still select all checks. The planner selects whole projects;
-it does not claim that file-level affected tests cover runtime dependencies.
+Unclassified/configuration inputs still select the target's full checks. The planner
+selects whole projects, except for the explicit shared preload bridge and tooling
+inventories; it does not claim that file-level affected tests cover runtime dependencies.
+
+The Tauri inventory retains `renderer`, `shared`, `ui`, `file-preview`,
+`provider-registry`, `web-search`, and `remote-protocol`. It also retains
+`src/preload/__tests__/preload.test.ts`, because the native entry imports the original
+preload bridge through native Electron API shims, and a maintained list of shared
+tooling tests from the `scripts` project. Web-search metadata and protocol schemas
+are shared inputs; their inclusion does not establish native search or remote Agent support.
+Pure provider-filter and computer-tool definitions under `src/main` remain native
+generation inputs without bringing in the Electron backend.
 
 ## Execution
 
 `--group repository|lint|types|i18n|main|renderer|packages|platform|checks|tests` restricts an
-existing plan. `--shard=N/M` forwards Vitest's built-in sharding option; `--max-workers N`
+existing plan. `main` selects the shared preload bridge for Tauri; `platform` belongs
+to Electron compatibility. `--shard=N/M` forwards Vitest's built-in sharding option; `--max-workers N`
 sets an explicit positive worker limit. `--plan --json`
-prints a machine-readable plan. Test commands are one Vitest invocation with explicit
-projects; compilers run serially. Local Vitest defaults to two workers, overridable
+prints a machine-readable plan. Test invocations specify explicit projects;
+compilers run serially. Local Vitest defaults to two workers, overridable
 through the direct Vitest command or project wrappers' `--maxWorkers` option.
 `--max-workers=N` bounds workers without changing the selected tests; the local upstream gate uses two workers with CI lint semantics.
+The preload bridge and shared tooling list run separately from unrestricted project
+invocations, so selecting their containing projects cannot accidentally run the
+entire legacy inventory.
 
 Required workspace packages are built before typechecks and tests. CI setup marks a
 successful installation with `VALIDATION_WORKSPACE_PREPARED=true`, so later groups
 reuse those exports in the same job. Unprepared local validation still builds them;
-main tests still rebuild SQLite for Node. Do not run Electron development and Node tests concurrently in one
+Electron main tests still rebuild SQLite for Node. Do not run Electron development and Node tests concurrently in one
 worktree. Use isolated worktrees and dependency installations for concurrent agents.
 
 `VALIDATION_PLAN` lets CI execute the exact plan from its classification job.
 An explicit `--all` overrides that environment plan; the upstream gate also clears
 inherited plan/prepared-workspace flags and sets `CI=true`.
 `--github-output` emits that plan and selected job groups without installing dependencies.
-Unknown tasks or groups fail before execution. Summary validation rejects failed,
+Unknown targets, tasks or groups fail before execution. Summary validation rejects failed,
 cancelled, missing, or unexpectedly skipped jobs selected by the plan.
 
 ## CI
@@ -95,28 +111,38 @@ formatting with the pinned tools, without installing workspace dependencies. Fai
 planning or preflight prevents heavy jobs from starting; required gates still report
 the failure.
 
-Main/preload uses two Vitest shards; selected package tests use a separate unsharded
-Linux job. Neither group waits for the other. Renderer uses three Vitest shards.
-Both matrices disable fail-fast so sibling shards still finish after a failure.
-Together with basic checks and one job per macOS/Windows platform, a full plan uses
-nine heavy runners and three lightweight classification/aggregation jobs. This targets
-about ten minutes of execution; shared-runner queue time is measured separately.
-macOS/Windows retain the platform-gated test inventory (including system speech).
-Portable TypeScript source changes under `packages/aiCore/src`,
-`packages/ai-sdk-provider/src`, and `packages/web-search/src` retain their Linux
-project and consumer tests without selecting native platform jobs. Any mixed input
-that otherwise selects main tests, including main/shared source, native adapters,
-package configuration, dependency locks, and unknown inputs, retains both native
-platforms. Scheduled/manual full validation always retains both platforms. The plan
-records platform selection separately from its Linux projects; the scope hash and
-required gates use that selection.
+The stable `main-test-shard` job runs only the shared preload bridge on Windows,
+without sharding. Renderer uses three Windows Vitest shards with fail-fast disabled.
+The separate Windows package job runs the shared packages and the explicit tooling
+inventory. There is no Electron platform-contract job in Tauri CI. Ubuntu jobs perform
+static checks, classification, and result aggregation; they do not run Linux application
+tests. Scheduled/manual full CI covers the complete Tauri target.
+
+`electron-compat.yml` is a separate Windows-only manual workflow using
+`pnpm check --all --target electron`. It retains the complete legacy Vitest inventory,
+including Electron main/preload, AI engines, Agent runtimes, remote transport and
+desktop controller tests. Its results do not block Tauri mainline validation.
+
+`evostack-windows.yml` separately validates Go race behavior, the native build, IPC
+contracts, and Portable startup for relevant `main`/`evostack` pushes and pull requests,
+as well as manual dispatch. Protected promotion and pushes require the exact SHA's latest
+manual run of both workflows to succeed. Electron compatibility success cannot replace
+either result. The local upstream gate runs all Tauri-related Vitest coverage through
+`pnpm check --target tauri --all --group tests --max-workers=2`, then checks
+the Web Search and Provider Registry package contracts before packaging.
+The native build validates Go/Rust, real temporary SQLite databases, JSON-RPC and
+renderer contracts, and actual packaged Tauri startup. Synthetic computer-tool tests
+do not send desktop input and do not establish real-action acceptance; native Agent
+and MCP execution are not covered. The separate Electron regression workflow is
+Windows-only and manual-only; it validates configuration consumed by selected cases
+without requiring unrelated CherryIN or embedding fields.
 
 The required `basic-checks`, `general-test`, and `render-test` names remain stable.
 Their verifier requires classification to succeed, checks every planned job, and
 accepts a skipped dependency only when the plan explicitly excludes it. The basic
 gate also checks all four group outcomes in the same job, rejecting missing or
-unexpectedly skipped work even if that job reports success. Schema drift,
-provider generation, changeset policy, and catalog edit guards remain CI checks.
+unexpectedly skipped work even if that job reports success. Provider generation,
+changeset policy, and catalog edit guards remain CI checks.
 
 ## Performance observations
 

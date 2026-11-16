@@ -1,7 +1,8 @@
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 
-import { getSensitiveConfigValues, loadTestConfig, REQUIRED_CONFIG } from '../config'
+import { selectCases } from '../cases'
+import { getSensitiveConfigValues, loadTestConfig, REQUIRED_CONFIG, requiredConfigForCases } from '../config'
 
 describe('regression test configuration', () => {
   const validEnv = {
@@ -16,6 +17,18 @@ describe('regression test configuration', () => {
     CHERRY_TEST_CHERRYIN_IMAGE_MODEL: 'image-test',
     CHERRY_TEST_CHERRYIN_ACCOUNT: 'automation@example.test',
     CHERRY_TEST_CHERRYIN_PASSWORD: 'account-secret'
+  }
+
+  function preflight(task: string, configured: Record<string, string> = {}) {
+    const names = new Set(REQUIRED_CONFIG.map((name) => name.toLowerCase()))
+    const environment = Object.fromEntries(
+      Object.entries(process.env).filter(([name]) => !names.has(name.toLowerCase()))
+    )
+    return spawnSync(
+      process.execPath,
+      [createRequire(import.meta.url).resolve('tsx/cli'), 'scripts/e2e/regression/cli.ts', 'preflight', '--task', task],
+      { env: { ...environment, ...configured }, encoding: 'utf8', timeout: 20_000 }
+    )
   }
 
   it('requires a separate Anthropic URL instead of reusing the OpenAI URL', () => {
@@ -60,22 +73,96 @@ describe('regression test configuration', () => {
     ).toEqual(['provider-secret'])
   })
 
-  it('allows the local mock task to pass preflight without external credentials', () => {
-    const environment = { ...process.env }
-    for (const name of REQUIRED_CONFIG) delete environment[name]
-    const result = spawnSync(
-      process.execPath,
-      [
-        createRequire(import.meta.url).resolve('tsx/cli'),
-        'scripts/e2e/regression/cli.ts',
-        'preflight',
-        '--task',
-        'chat-stream-failure'
-      ],
-      { env: environment, encoding: 'utf8', timeout: 20_000 }
+  it.each([
+    'startup-smoke',
+    'notes',
+    'mini-app',
+    'provider-model-scroll',
+    'clear-chat-messages',
+    'everything-mcp'
+  ] as const)('does not require cloud configuration for %s', (task) => {
+    const required = requiredConfigForCases(selectCases(task))
+    expect(required).toEqual([])
+    const config = loadTestConfig({}, required)
+    expect(() => config.customProvider.apiKey).toThrow(
+      'Missing regression test configuration: CHERRY_TEST_CUSTOM_PROVIDER_API_KEY'
     )
-    expect(result.status).toBe(0)
   })
+
+  it('requires only the custom provider for custom chat and validates it before launch', () => {
+    const required = requiredConfigForCases(selectCases('custom-provider-chat'))
+    expect(required).toEqual(REQUIRED_CONFIG.slice(0, 4))
+    const environment = Object.fromEntries(required.map((name) => [name, validEnv[name]]))
+    const config = loadTestConfig(environment, required)
+    expect(config.customProvider.chatModel).toBe(validEnv.CHERRY_TEST_CUSTOM_PROVIDER_CHAT_MODEL)
+    expect(() => loadTestConfig({ ...environment, CHERRY_TEST_CUSTOM_PROVIDER_API_KEY: '' }, required)).toThrow(
+      'Missing regression test configuration: CHERRY_TEST_CUSTOM_PROVIDER_API_KEY'
+    )
+    expect(() => config.cherryIn.account).toThrow('CHERRY_TEST_CHERRYIN_ACCOUNT')
+    expect(() => config.customEmbeddingProvider.model).toThrow('CHERRY_TEST_CUSTOM_PROVIDER_EMBEDDING_MODEL')
+  })
+
+  it.each([
+    ['cherryin-chat', 'CHERRY_TEST_CHERRYIN_CHAT_MODEL'],
+    ['image-generation', 'CHERRY_TEST_CHERRYIN_IMAGE_MODEL']
+  ] as const)('checks the selected CherryIN capability for %s', (task, modelName) => {
+    const required = requiredConfigForCases(selectCases(task))
+    expect(required).toEqual([modelName, 'CHERRY_TEST_CHERRYIN_ACCOUNT', 'CHERRY_TEST_CHERRYIN_PASSWORD'])
+    const environment = Object.fromEntries(required.map((name) => [name, validEnv[name]]))
+    expect(loadTestConfig(environment, required).cherryIn.account).toBe(validEnv.CHERRY_TEST_CHERRYIN_ACCOUNT)
+    expect(() => loadTestConfig({ ...environment, [modelName]: undefined }, required)).toThrow(modelName)
+    expect(() => loadTestConfig({ ...environment, CHERRY_TEST_CHERRYIN_PASSWORD: '' }, required)).toThrow(
+      'CHERRY_TEST_CHERRYIN_PASSWORD'
+    )
+  })
+
+  it('combines selected capabilities without requiring unrelated embeddings', () => {
+    const required = requiredConfigForCases(selectCases(['custom-provider-chat', 'image-generation']))
+    expect(required).toEqual([
+      ...REQUIRED_CONFIG.slice(0, 4),
+      'CHERRY_TEST_CHERRYIN_IMAGE_MODEL',
+      'CHERRY_TEST_CHERRYIN_ACCOUNT',
+      'CHERRY_TEST_CHERRYIN_PASSWORD'
+    ])
+    expect(requiredConfigForCases(selectCases('all'))).toEqual([
+      ...REQUIRED_CONFIG.slice(0, 4),
+      ...REQUIRED_CONFIG.slice(7)
+    ])
+    expect(() => loadTestConfig(validEnv, required)).not.toThrow()
+  })
+
+  it('validates only selected URLs and still rejects an unconfigured consumer access', () => {
+    const required = requiredConfigForCases(selectCases('custom-provider-chat'))
+    const config = loadTestConfig({ ...validEnv, CHERRY_TEST_CUSTOM_PROVIDER_EMBEDDING_BASE_URL: 'invalid' }, required)
+    expect(config.customProvider.baseUrl).toBe(validEnv.CHERRY_TEST_CUSTOM_PROVIDER_BASE_URL)
+    expect(() => config.customEmbeddingProvider.baseUrl).toThrow(
+      'CHERRY_TEST_CUSTOM_PROVIDER_EMBEDDING_BASE_URL must be an absolute URL'
+    )
+    expect(() => loadTestConfig({ ...validEnv, CHERRY_TEST_CUSTOM_PROVIDER_BASE_URL: 'invalid' }, required)).toThrow(
+      'CHERRY_TEST_CUSTOM_PROVIDER_BASE_URL must be an absolute URL'
+    )
+  })
+
+  it('scopes the actual CLI to custom chat and reports only the missing selected configuration', () => {
+    const required = requiredConfigForCases(selectCases('custom-provider-chat'))
+    const environment = Object.fromEntries(required.map((name) => [name, validEnv[name]]))
+    const success = preflight('custom-provider-chat', environment)
+    expect(success.status, success.stderr).toBe(0)
+    expect(JSON.parse(success.stdout).configured).toEqual(required)
+    const missing = preflight('custom-provider-chat', { ...environment, CHERRY_TEST_CUSTOM_PROVIDER_API_KEY: '' })
+    expect(missing.status).not.toBe(0)
+    expect(missing.stderr).toContain('Missing regression test configuration: CHERRY_TEST_CUSTOM_PROVIDER_API_KEY')
+    expect(missing.stderr).not.toContain('CHERRY_TEST_CHERRYIN')
+    expect(missing.stderr).not.toContain('EMBEDDING')
+  })
+
+  it.each(['chat-stream-failure', 'startup-smoke', 'notes-smoke'])(
+    'allows %s to pass the CLI preflight without external credentials',
+    (task) => {
+      const result = preflight(task)
+      expect(result.status).toBe(0)
+    }
+  )
 
   it('fails before application launch when any required value is blank', () => {
     expect(() =>

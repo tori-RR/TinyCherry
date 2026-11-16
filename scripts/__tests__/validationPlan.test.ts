@@ -8,11 +8,15 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   changedFiles,
   checkTasks,
-  createPlan,
+  createPlan as createTargetPlan,
   selectedGroups,
   testProjects,
+  validatePlan,
   verifyResults
 } from '../validation/plan.mjs'
+import { assertTestFiles, TAURI_PROJECTS, TAURI_TOOLING_TESTS, testInvocations } from '../validation/targets.mjs'
+
+const createPlan = (files: string[], fullReason?: string) => createTargetPlan(files, fullReason, 'electron')
 
 const directories: string[] = []
 afterEach(() => {
@@ -28,7 +32,7 @@ function stubPnpmEnvironment(pnpm: string, overrides: NodeJS.ProcessEnv) {
   return env
 }
 
-describe('validation selection', () => {
+describe('legacy Electron validation selection', () => {
   it.each([
     'docs/dev/contrib/development.md',
     'docs/dev/sources-index.json',
@@ -306,15 +310,19 @@ describe('working tree changes', () => {
 // A docs-only plan must never start compilers, native rebuilds, lint fixes, or tests.
 describe('validation execution', () => {
   it('honors explicit full validation over an inherited subset plan', () => {
-    const result = spawnSync(process.execPath, ['scripts/validation/run.mjs', '--all', '--plan', '--json'], {
-      env: { ...process.env, VALIDATION_PLAN: JSON.stringify(createPlan(['docs/dev/contrib/development.md'])) },
-      encoding: 'utf8'
-    })
+    const result = spawnSync(
+      process.execPath,
+      ['scripts/validation/run.mjs', '--target', 'electron', '--all', '--plan', '--json'],
+      {
+        env: { ...process.env, VALIDATION_PLAN: JSON.stringify(createPlan(['docs/dev/contrib/development.md'])) },
+        encoding: 'utf8'
+      }
+    )
 
     expect(result.status, result.stderr).toBe(0)
     const plan = JSON.parse(result.stdout)
     expect(plan.projects).toEqual(testProjects)
-    expect(plan.tasks).toEqual(Object.keys(checkTasks))
+    expect(plan.tasks).toEqual(Object.keys(checkTasks).filter((task) => task !== 'types-tauri'))
     expect(plan.platform).toBe(true)
   })
 
@@ -328,13 +336,17 @@ describe('validation execution', () => {
       pnpm,
       `require('node:fs').appendFileSync(process.env.COMMAND_LOG, JSON.stringify(process.argv.slice(2)) + '\\n')`
     )
-    const result = spawnSync(process.execPath, ['scripts/validation/run.mjs', '--group', 'platform'], {
-      env: stubPnpmEnvironment(pnpm, {
-        COMMAND_LOG: log,
-        VALIDATION_PLAN: JSON.stringify(createPlan(['packages/web-search/src/providers/tavily.ts']))
-      }),
-      encoding: 'utf8'
-    })
+    const result = spawnSync(
+      process.execPath,
+      ['scripts/validation/run.mjs', '--target', 'electron', '--group', 'platform'],
+      {
+        env: stubPnpmEnvironment(pnpm, {
+          COMMAND_LOG: log,
+          VALIDATION_PLAN: JSON.stringify(createPlan(['packages/web-search/src/providers/tavily.ts']))
+        }),
+        encoding: 'utf8'
+      }
+    )
     expect(result.status, result.stderr).toBe(0)
     expect(readFileSync(log, 'utf8')).toBe('')
   })
@@ -349,14 +361,18 @@ describe('validation execution', () => {
       `require('node:fs').appendFileSync(process.env.COMMAND_LOG, JSON.stringify(process.argv.slice(2)) + '\\n');
        if (process.argv.includes('theme:check')) process.exit(Number(process.env.THEME_EXIT))`
     )
-    const result = spawnSync(process.execPath, ['scripts/validation/run.mjs', '--group', 'repository'], {
-      env: stubPnpmEnvironment(pnpm, {
-        COMMAND_LOG: log,
-        THEME_EXIT: String(exitCode),
-        VALIDATION_PLAN: JSON.stringify(createPlan(['src/renderer/components/Thing.tsx']))
-      }),
-      encoding: 'utf8'
-    })
+    const result = spawnSync(
+      process.execPath,
+      ['scripts/validation/run.mjs', '--target', 'electron', '--group', 'repository'],
+      {
+        env: stubPnpmEnvironment(pnpm, {
+          COMMAND_LOG: log,
+          THEME_EXIT: String(exitCode),
+          VALIDATION_PLAN: JSON.stringify(createPlan(['src/renderer/components/Thing.tsx']))
+        }),
+        encoding: 'utf8'
+      }
+    )
     expect(result.status, result.stderr).toBe(exitCode)
     const commands: string[][] = readFileSync(log, 'utf8')
       .trim()
@@ -381,7 +397,10 @@ describe('validation execution', () => {
       VALIDATION_PLAN: JSON.stringify(createPlan(['docs/dev/contrib/development.md']))
     })
     const invoke = (...args: string[]) =>
-      spawnSync(process.execPath, ['scripts/validation/run.mjs', ...args], { env, encoding: 'utf8' })
+      spawnSync(process.execPath, ['scripts/validation/run.mjs', '--target', 'electron', ...args], {
+        env,
+        encoding: 'utf8'
+      })
     expect(invoke().status).toBe(0)
     expect(
       readFileSync(log, 'utf8')
@@ -395,7 +414,150 @@ describe('validation execution', () => {
     expect(readFileSync(log, 'utf8')).toBe(before)
     expect(invoke('--group', 'unknown').status).not.toBe(0)
     expect(
-      spawnSync(process.execPath, ['scripts/validation/run.mjs'], { env: { ...env, COMMAND_EXIT: '7' } }).status
+      spawnSync(process.execPath, ['scripts/validation/run.mjs', '--target', 'electron'], {
+        env: { ...env, COMMAND_EXIT: '7' }
+      }).status
     ).toBe(7)
+  })
+})
+
+describe('Tauri validation boundary', () => {
+  it.each([
+    [[], 'Explicit full validation'],
+    [['pnpm-lock.yaml'], undefined],
+    [['scripts/validation/run.mjs'], undefined],
+    [['src/shared/IpcChannel.ts'], undefined]
+  ])('keeps full and conservative plans inside the native target: %j', (files, reason) => {
+    const plan = createTargetPlan(files, reason)
+    expect(plan.target).toBe('tauri')
+    expect(plan.projects).toEqual(testProjects.filter((project) => TAURI_PROJECTS.includes(project)))
+    expect(plan.platform).toBe(false)
+    expect(plan.tasks).toContain('types-tauri')
+    expect(plan.tasks).toContain('types-web')
+    expect(plan.tasks).not.toEqual(expect.arrayContaining(['types-node', 'types-e2e']))
+    expect(plan.tasks).not.toContain('migrations')
+    expect(plan.tasks.some((task: string) => task.startsWith('types-agent-'))).toBe(false)
+    expect(() => validatePlan(plan)).not.toThrow()
+  })
+
+  it('keeps the reused preload bridge selected without the Electron main process', () => {
+    const plan = createTargetPlan(['src/preload/preload.ts'])
+    expect(plan.projects).toEqual(['preload', 'renderer'])
+    expect(plan.tasks).toContain('types-tauri')
+    expect(selectedGroups(plan)).toMatchObject({ main: true, renderer: true, platform: false })
+    expect(testInvocations(plan, ['preload'])).toEqual([
+      { projects: ['preload'], files: ['src/preload/__tests__/preload.test.ts'] }
+    ])
+  })
+
+  it('isolates the tooling and preload filters from shared UI/package tests', () => {
+    const plan = createTargetPlan([], 'Full')
+    const invocations = testInvocations(plan)
+    expect(invocations[0].projects).toContain('renderer')
+    expect(invocations[0].files).toEqual([])
+    expect(invocations.find((invocation) => invocation.projects.includes('scripts'))?.files).toEqual(
+      TAURI_TOOLING_TESTS
+    )
+    for (const file of TAURI_TOOLING_TESTS) expect(readFileSync(file, 'utf8').length).toBeGreaterThan(0)
+    expect(TAURI_TOOLING_TESTS).toContain('scripts/e2e/regression/__tests__/config.test.ts')
+    expect(TAURI_TOOLING_TESTS).toContain('scripts/e2e/regression/__tests__/report.test.ts')
+    expect(TAURI_TOOLING_TESTS.some((file) => /nativeAdapters|gitcode|piAiPatch|externalResources/.test(file))).toBe(
+      false
+    )
+    expect(testInvocations(createPlan([], 'Full'))).toEqual([{ projects: testProjects, files: [] }])
+  })
+
+  it('rejects Electron plans, missing targets and legacy work injected into a native plan', () => {
+    const plan = createTargetPlan([], 'Full')
+    expect(() => validatePlan(createPlan([], 'Full'))).toThrow('target mismatch')
+    expect(() => validatePlan({ ...plan, target: undefined })).toThrow('target mismatch')
+    expect(() => validatePlan({ ...plan, projects: [...plan.projects, 'main'] })).toThrow('Invalid validation plan')
+    expect(() => validatePlan({ ...plan, tasks: [...plan.tasks, 'types-node'] })).toThrow('Invalid validation plan')
+    expect(() => validatePlan({ ...plan, platform: true })).toThrow('Invalid validation plan')
+  })
+
+  it('rejects a missing selected file before Vitest can silently filter it out', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'cherry-validation-files-'))
+    directories.push(cwd)
+    expect(() => assertTestFiles(cwd, [{ files: ['bridge.test.ts'] }])).toThrow(
+      'Missing validation test: bridge.test.ts'
+    )
+    writeFileSync(join(cwd, 'bridge.test.ts'), 'test fixture')
+    expect(() => assertTestFiles(cwd, [{ files: ['bridge.test.ts'] }])).not.toThrow()
+    mkdirSync(join(cwd, 'directory.test.ts'))
+    expect(() => assertTestFiles(cwd, [{ files: ['directory.test.ts'] }])).toThrow('Missing validation test')
+  })
+
+  it('defaults the CLI to Tauri and rejects mismatched inherited plans before any execution', () => {
+    const invoke = (args: string[], plan?: unknown) =>
+      spawnSync(process.execPath, ['scripts/validation/run.mjs', ...args], {
+        env: { ...process.env, VALIDATION_PLAN: plan ? JSON.stringify(plan) : '' },
+        encoding: 'utf8'
+      })
+    const full = invoke(['--all', '--plan', '--json'], createPlan(['README.md']))
+    expect(full.status, full.stderr).toBe(0)
+    expect(JSON.parse(full.stdout)).toMatchObject({ target: 'tauri', platform: false })
+    expect(invoke(['--plan'], createPlan(['README.md'])).stderr).toContain('target mismatch')
+    expect(invoke(['--target', 'electron', '--plan'], createTargetPlan(['README.md'])).stderr).toContain(
+      'target mismatch'
+    )
+    expect(invoke(['--target', 'unknown', '--plan']).status).not.toBe(0)
+    expect(invoke(['--group', 'platform']).stderr).toContain('Tauri system validation runs in evostack-windows.yml')
+  })
+
+  it('binds the GitHub scope digest to the validation target', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'cherry-validation-target-'))
+    directories.push(cwd)
+    const scopes = ['tauri', 'electron'].map((target) => {
+      const output = join(cwd, target)
+      const plan = createTargetPlan(['README.md'], undefined, target)
+      const result = spawnSync(
+        process.execPath,
+        ['scripts/validation/run.mjs', '--target', target, '--github-output'],
+        {
+          env: { ...process.env, VALIDATION_PLAN: JSON.stringify(plan), GITHUB_OUTPUT: output },
+          encoding: 'utf8'
+        }
+      )
+      expect(result.status, result.stderr).toBe(0)
+      return readFileSync(output, 'utf8')
+        .split('\n')
+        .find((line) => line.startsWith('scope='))
+    })
+    expect(scopes[0]).not.toBe(scopes[1])
+  })
+
+  it('runs only the native bridge and tooling selections without rebuilding Electron SQLite', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'cherry-validation-native-'))
+    directories.push(cwd)
+    const log = join(cwd, 'commands.jsonl')
+    const pnpm = join(cwd, 'pnpm.cjs')
+    writeFileSync(
+      pnpm,
+      `require('node:fs').appendFileSync(process.env.COMMAND_LOG, JSON.stringify(process.argv.slice(2)) + '\\n')`
+    )
+    const plan = createTargetPlan([], 'Full')
+    const result = spawnSync(process.execPath, ['scripts/validation/run.mjs', '--group', 'tests'], {
+      env: stubPnpmEnvironment(pnpm, {
+        COMMAND_LOG: log,
+        VALIDATION_PLAN: JSON.stringify(plan),
+        VALIDATION_WORKSPACE_PREPARED: 'false'
+      }),
+      encoding: 'utf8'
+    })
+    expect(result.status, result.stderr).toBe(0)
+    const commands: string[][] = readFileSync(log, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    expect(commands).not.toContainEqual(['run', 'postinstall'])
+    expect(commands).not.toContainEqual(['rebuild:node'])
+    const tests = commands.filter((command) => command.includes('vitest'))
+    expect(tests).toHaveLength(3)
+    expect(tests[0]).toContain('renderer')
+    expect(tests[0].some((argument) => argument.endsWith('.test.ts'))).toBe(false)
+    expect(tests[1]).toContain('src/preload/__tests__/preload.test.ts')
+    expect(tests[2]).toContain('scripts/e2e/regression/__tests__/config.test.ts')
+    expect(commands.flat().some((argument) => /nativeAdapters|gitcode|piAiPatch/.test(argument))).toBe(false)
   })
 })

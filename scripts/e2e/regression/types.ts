@@ -63,6 +63,7 @@ export type RunVerdict =
 export interface AggregateReport {
   verdict: RunVerdict
   runs: RegressionRun[]
+  expectedPlatforms: Platform[]
   missingPlatforms: Platform[]
   errors: string[]
 }

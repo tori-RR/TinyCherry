@@ -2,8 +2,15 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, write
 import { join, resolve } from 'node:path'
 
 import { probeCapabilities } from './capabilities'
-import { parseTaskSelection, PHASE_IDS, resolveWorkflowTasks, selectCases, serializeTaskSelection } from './cases'
-import { getSensitiveConfigValues, loadTestConfig, REQUIRED_CONFIG } from './config'
+import {
+  parseTaskSelection,
+  PHASE_IDS,
+  resolveWorkflowTasks,
+  selectCases,
+  serializeTaskSelection,
+  supportsPlatform
+} from './cases'
+import { getSensitiveConfigValues, loadTestConfig, REQUIRED_CONFIG, requiredConfigForCases } from './config'
 import { cleanupExternalResources } from './externalResources'
 import { createFixtures } from './fixtureFiles'
 import { prepareRelease } from './installation'
@@ -117,16 +124,18 @@ async function initializeCommand(): Promise<void> {
 }
 
 async function preflightCommand(): Promise<void> {
-  const task = parseTaskSelection(argument('task', false) ?? 'all')
   const directory = argument('run-dir', false)
-  if (directory && readRun(getRunPaths(directory).runState).metadata.providerMode === 'mock') {
+  const run = directory ? readRun(getRunPaths(directory).runState) : undefined
+  const task = parseTaskSelection(argument('task', false) ?? run?.metadata.task ?? 'all')
+  if (directory && run?.metadata.providerMode === 'mock') {
     assertMockTask(task)
     await verifyMockProvider(getRunPaths(directory))
   }
-  if (selectCases(task).every(({ id }) => id === 'C-03')) return
-  loadTestConfig()
+  const cases = selectCases(task).filter(({ id }) => !run || supportsPlatform(id, run.metadata.platform))
+  const required = requiredConfigForCases(cases)
+  loadTestConfig(process.env, required)
   const redacted = createRedactor(getSensitiveConfigValues())
-  process.stdout.write(`${JSON.stringify(redacted({ configured: REQUIRED_CONFIG }), null, 2)}\n`)
+  process.stdout.write(`${JSON.stringify(redacted({ configured: required }), null, 2)}\n`)
 }
 
 async function releaseCommand(): Promise<void> {
@@ -185,9 +194,13 @@ async function aggregateCommand(): Promise<void> {
   const expectedProviderMode = providerModeValue
     ? oneOf(providerModeValue, ['real', 'mock'] as const, 'provider mode')
     : undefined
+  const platformsValue = argument('platforms', false)
+  const expectedPlatforms = platformsValue
+    ? [...new Set(platformsValue.split(',').map((value) => oneOf(value.trim(), PLATFORMS, 'platform')))]
+    : undefined
   const resultFiles = findFiles(input, 'results.json')
   const runs = resultFiles.map(readRun)
-  const report = aggregateRuns(runs, expectedMode, expectedProviderMode)
+  const report = aggregateRuns(runs, expectedMode, expectedProviderMode, expectedPlatforms)
   mkdirSync(output, { recursive: true })
   const markdown = renderAggregateMarkdown(report)
   writeFileSync(join(output, 'combined-results.json'), `${JSON.stringify(report, null, 2)}\n`)

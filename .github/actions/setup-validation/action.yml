@@ -18,7 +18,11 @@ runs:
     - name: Locate pnpm store
       id: store
       shell: bash
-      run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      env:
+        STORE_DIR: ${{ github.workspace }}/.pnpm-store
+      run: |
+        store_path=$(pnpm store path --silent --store-dir "$STORE_DIR")
+        echo "path=$store_path" >> "$GITHUB_OUTPUT"
     - uses: actions/cache/restore@v6
       id: restore
       if: inputs.save-cache != 'true'
@@ -37,6 +41,8 @@ runs:
           ${{ runner.os }}-pnpm-
     - name: Install dependencies
       shell: bash
+      env:
+        STORE_DIR: ${{ github.workspace }}/.pnpm-store
       run: |
-        pnpm install --frozen-lockfile
+        pnpm install --frozen-lockfile --store-dir "$STORE_DIR"
         echo "VALIDATION_WORKSPACE_PREPARED=true" >> "$GITHUB_ENV"

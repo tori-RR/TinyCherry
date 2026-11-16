@@ -16,19 +16,18 @@ export const UPSTREAM_CHECKS = Object.freeze([
   'environment',
   'dependencies',
   'git-hooks',
-  'dependency-imports',
   'workflow-policy',
   'actionlint',
   'catalog-policy',
   'changeset-policy',
   'provider-compatibility',
   'changesets',
-  'migration-drift',
   'provider-id-drift',
   'locale-drift',
   'static-checks',
-  'platform-tests',
-  'gate-tests',
+  'tauri-tests',
+  'web-search-package',
+  'provider-registry-package',
   'native-package',
   'final-i18n'
 ])
@@ -99,7 +98,8 @@ export function writeReceipt(root, snapshot, { base, upstream, checks }) {
   if (!completeChecks(checks)) throw new Error('A receipt requires every upstream validation check in order')
   assertSnapshot(root, snapshot)
   const receipt = {
-    schema: 1,
+    schema: 2,
+    target: 'tauri',
     head: snapshot.head,
     tree: snapshot.tree,
     nodeVersion: process.version,
@@ -134,7 +134,8 @@ export function verifyReceipt(root, ref = 'HEAD') {
     throw new Error('Missing or unreadable upstream validation receipt; run the complete validation')
   }
   if (
-    receipt?.schema !== 1 ||
+    receipt?.schema !== 2 ||
+    receipt.target !== 'tauri' ||
     receipt.head !== head ||
     receipt.tree !== git(root, 'rev-parse', `${head}^{tree}`) ||
     receipt.nodeVersion !== process.version ||

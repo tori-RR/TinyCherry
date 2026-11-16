@@ -26,8 +26,35 @@ permissions:
   id-token: write
 
 jobs:
+  validate:
+    name: Validate Packages on Windows
+    if: github.repository == 'CherryHQ/cherry-studio' && github.ref == 'refs/heads/main'
+    runs-on: windows-2022
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - uses: ./.github/actions/setup-validation
+      - run: pnpm packages:build
+      - name: Check Web Search Package
+        run: |
+          pnpm --filter @cherrystudio/web-search test
+          pnpm --filter @cherrystudio/web-search test:package
+      - name: Check Provider Registry Package
+        run: pnpm --filter @cherrystudio/provider-registry test:package
+      - name: Check Remote Packages
+        run: |
+          pnpm --filter '@cherrystudio/remote-*' typecheck
+          pnpm --filter '@cherrystudio/remote-*' test
+
   release:
     name: Release Packages
+    needs: validate
     if: github.repository == 'CherryHQ/cherry-studio' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
@@ -68,19 +95,6 @@ jobs:
 
       - name: Build Packages
         run: pnpm packages:build
-
-      - name: Check Web Search Package
-        run: |
-          pnpm --filter @cherrystudio/web-search test
-          pnpm --filter @cherrystudio/web-search test:package
-
-      - name: Check Provider Registry Package
-        run: pnpm --filter @cherrystudio/provider-registry test:package
-
-      - name: Check Remote Packages
-        run: |
-          pnpm --filter '@cherrystudio/remote-*' typecheck
-          pnpm --filter '@cherrystudio/remote-*' test
 
       - name: Check release commit is still current
         id: release-head

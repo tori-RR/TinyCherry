@@ -1,29 +1,29 @@
 # On-demand desktop QA
 
-`.github/workflows/qa-ondemand.yml` runs one JSON plan or reviewed scenario on one hosted Windows/macOS runner. It reuses the [regression controller](../regression/README.md) for ref resolution, release installation, and owned-process lifecycle; it does not run regression phases.
+`.github/workflows/qa-ondemand.yml` runs one JSON plan or reviewed scenario manually on a hosted Windows runner. It reuses the [regression controller](../regression/README.md) for ref resolution, release installation, and owned-process lifecycle; it does not run regression phases. Retained non-Windows controller adapters are source compatibility references outside this workflow.
 
 ## Dispatch
 
 Use `--ref main` to select the controller and `-f ref=...` to select the application. The workflow pins and reports both SHAs. The workflow must first exist on the default branch before GitHub accepts a dispatch; `--ref` cannot bypass first-time registration. After that initial merge, selecting a development branch explicitly tests its controller version.
 
 ```sh
-gh workflow run qa-ondemand.yml --repo CherryHQ/cherry-studio --ref main \
+gh workflow run qa-ondemand.yml --repo tori-RR/TinyCherry --ref main \
   -f platform=windows -f mode=branch -f ref=main -f spec=smoke
 
-gh workflow run qa-ondemand.yml --repo CherryHQ/cherry-studio --ref main \
-  -f platform=macos -f mode=tag -f ref=v2.1.7 -f spec=smoke
+gh workflow run qa-ondemand.yml --repo tori-RR/TinyCherry --ref main \
+  -f platform=windows -f mode=tag -f ref=v2.1.7 -f spec=smoke
 
-gh workflow run qa-ondemand.yml --repo CherryHQ/cherry-studio --ref main \
+gh workflow run qa-ondemand.yml --repo tori-RR/TinyCherry --ref main \
   -f platform=windows -f mode=branch -f ref=main -f spec=provider-setup \
   -f plan="$(cat tests/e2e/ondemand/plans/example.json)"
 
-gh workflow run qa-ondemand.yml --repo CherryHQ/cherry-studio --ref main \
+gh workflow run qa-ondemand.yml --repo tori-RR/TinyCherry --ref main \
   -f platform=windows -f mode=branch -f ref=main -f profile=authenticated -f spec=smoke
 ```
 
 With a plan, `spec` is only the report name and needs no matching file. Without a plan, `smoke` uses the bundled JSON; other names require a reviewed code scenario. Names must match `^[a-z0-9][a-z0-9-]{0,40}$`. The plan's **10,240 UTF-8 byte** limit is a tool policy, separate from GitHub's dispatch payload limit. Use a reviewed scenario for longer flows. `timeout_minutes` defaults to 45; branch runs require 15–360 minutes, tag runs 1–360. Branch dependencies and Electron preparation can take several minutes before the test starts.
 
-The platform/spec concurrency group queues requests with `queue: max` and never cancels an active request; it does not deduplicate plans. Linux is tracked in [#22055](https://github.com/CherryHQ/cherry-studio/issues/22055): three consecutive running days of green Windows branch/main and tag smoke, at least six successful runs with complete evidence. Count dispatch dates in Asia/Shanghai, skip dates without runs, do not skip incomplete running days, and reset on related failure/cancellation. Controller SHA changes alone do not reset the evidence.
+The platform/spec concurrency group queues requests with `queue: max` and never cancels an active request; it does not deduplicate plans. The hosted workflow accepts Windows only. Ubuntu request validation is tooling rather than Linux application testing; it does not allocate a Linux desktop runner.
 
 ## Plans and environment
 
@@ -72,4 +72,4 @@ The priority for execution errors is `2 > 3 > 1 > 0`. Cleanup errors remain in `
 
 ## Local verification
 
-Run only explicitly selected tests under `scripts/e2e/ondemand/__tests__/` and affected regression consumers. Reviewed scenarios follow the [frontend testing rules](../../../docs/dev/references/testing/frontend-testing.md). Local unit checks do not establish hosted Windows/macOS or release acceptance.
+Run only explicitly selected tests under `scripts/e2e/ondemand/__tests__/` and affected regression consumers. Reviewed scenarios follow the [frontend testing rules](../../../docs/dev/references/testing/frontend-testing.md). Local unit checks do not establish hosted Windows desktop or release acceptance.

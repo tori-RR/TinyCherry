@@ -123,6 +123,7 @@ describe('upstream validation receipts', () => {
     const root = fixture()
     const receipt = approve(root)
     expect(verifyReceipt(root)).toEqual(receipt)
+    expect(receipt).toMatchObject({ schema: 2, target: 'tauri' })
     expect(receipt.checks).toEqual(UPSTREAM_CHECKS)
     expect(receipt.artifacts.map((artifact: { path: string }) => artifact.path)).toEqual(UPSTREAM_ARTIFACTS)
     expect(receipt.artifacts.every((artifact: { sha256: string }) => /^[a-f0-9]{64}$/.test(artifact.sha256))).toBe(true)
@@ -144,7 +145,7 @@ describe('upstream validation receipts', () => {
     expect(existsSync(receiptFile(root))).toBe(false)
   })
 
-  it.each(['schema', 'head', 'tree', 'nodeVersion', 'checks', 'artifacts', 'base', 'upstream'])(
+  it.each(['schema', 'target', 'head', 'tree', 'nodeVersion', 'checks', 'artifacts', 'base', 'upstream'])(
     'rejects corrupt %s evidence',
     (field) => {
       const root = fixture()
@@ -155,6 +156,16 @@ describe('upstream validation receipts', () => {
       }
       writeFileSync(receiptFile(root), JSON.stringify(changed))
       expect(() => verifyReceipt(root)).toThrow()
+    }
+  )
+
+  it.each([{ schema: 1 }, { target: 'electron' }, { target: undefined }])(
+    'rejects legacy or non-Tauri evidence %#',
+    (fields) => {
+      const root = fixture()
+      const receipt = approve(root)
+      writeFileSync(receiptFile(root), JSON.stringify({ ...receipt, ...fields }))
+      expect(() => verifyReceipt(root)).toThrow('Stale or invalid')
     }
   )
 

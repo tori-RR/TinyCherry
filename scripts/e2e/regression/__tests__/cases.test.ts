@@ -89,7 +89,7 @@ describe('regression execution plan', () => {
   })
 
   it.each([
-    { event_name: 'schedule', ref_type: 'branch', ref: 'refs/heads/main', allowed: true },
+    { event_name: 'schedule', ref_type: 'branch', ref: 'refs/heads/main', allowed: false },
     { event_name: 'workflow_dispatch', ref_type: 'branch', ref: 'refs/heads/main', allowed: true },
     { event_name: 'workflow_dispatch', ref_type: 'branch', ref: 'refs/heads/feature/e2e-fix', allowed: true },
     { event_name: 'workflow_dispatch', ref_type: 'tag', ref: 'refs/tags/v2.0.8', allowed: false },
@@ -97,7 +97,7 @@ describe('regression execution plan', () => {
     { event_name: 'push', ref_type: 'branch', ref: 'refs/heads/main', allowed: false }
   ])('gates controller execution for $event_name on $ref', ({ allowed, ...github }) => {
     const workflow = parse(readFileSync(resolve('.github/workflows/e2e-regression-test.yml'), 'utf8'))
-    expect(Object.keys(workflow.on).sort()).toEqual(['schedule', 'workflow_dispatch'])
+    expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch'])
     expect(runInNewContext(workflow.jobs.resolve.if, { github })).toBe(allowed)
     expect(workflow.concurrency['cancel-in-progress']).toBe(false)
   })

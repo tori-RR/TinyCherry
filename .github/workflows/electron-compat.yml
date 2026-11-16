@@ -1,0 +1,34 @@
+name: Legacy Electron Compatibility
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: electron-compat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compatibility:
+    name: Electron compatibility (manual)
+    runs-on: windows-2022
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: true
+      TRANSLATION_BASE_LOCALE: en-us
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+      - uses: ./.github/actions/setup-validation
+      - name: Check legacy Electron sources and tooling
+        run: pnpm check --target electron --all --group checks
+      - name: Run all legacy Electron test projects
+        run: pnpm check --target electron --all --group tests --max-workers=2
+      - name: Check legacy Windows platform contracts
+        run: pnpm check --target electron --all --group platform --max-workers=2

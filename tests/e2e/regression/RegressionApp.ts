@@ -6,7 +6,12 @@ import { chromium } from '@playwright/test'
 
 import type { IpcResult } from '@shared/ipc/errors/IpcError'
 
-import { loadTestConfig, type RegressionTestConfig } from '../../../scripts/e2e/regression/config'
+import { getCase } from '../../../scripts/e2e/regression/cases'
+import {
+  loadTestConfig,
+  requiredConfigForCases,
+  type RegressionTestConfig
+} from '../../../scripts/e2e/regression/config'
 import { assertOwnedAppIsolation, prepareWindowsCdpConnection } from '../../../scripts/e2e/regression/debugBridge'
 import {
   adoptRelaunchedApp,
@@ -61,7 +66,7 @@ export class RegressionApp {
   }
 
   get config(): RegressionTestConfig {
-    return loadTestConfig()
+    return loadTestConfig(process.env, requiredConfigForCases([getCase(this.caseId)]))
   }
 
   get record(): AppRecord {

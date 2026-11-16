@@ -52,6 +52,32 @@ describe('regression report gate', () => {
     delete mock.metadata.providerMode
     expect(aggregateRuns([mock, backendRun('windows', 'real')]).verdict).toBe('release_blocked')
   })
+
+  it('accepts a complete Windows-only run without requiring a macOS report', () => {
+    const report = aggregateRuns([backendRun('windows', 'real')], 'tag', 'real', ['windows'])
+    expect(report.verdict).toBe('release_pass')
+    expect(report.missingPlatforms).toEqual([])
+    const markdown = renderAggregateMarkdown(report)
+    expect(markdown).toContain('| ID | Test case | Windows |')
+    expect(markdown).toContain('`evidence/windows`')
+    expect(markdown).not.toContain('macOS')
+    expect(markdown).not.toContain('evidence/macos')
+  })
+
+  it('blocks a missing Windows report and rejects unselected platform evidence', () => {
+    const missing = aggregateRuns([], 'branch', 'real', ['windows'])
+    expect(missing.verdict).toBe('development_blocked')
+    expect(missing.missingPlatforms).toEqual(['windows'])
+    const extra = aggregateRuns([backendRun('macos', 'real'), backendRun('windows', 'real')], 'tag', 'real', [
+      'windows'
+    ])
+    expect(extra.verdict).toBe('release_blocked')
+    expect(extra.errors).toContain('A platform report falls outside the selected regression platforms.')
+  })
+
+  it('rejects an empty platform selection instead of certifying an empty run', () => {
+    expect(() => aggregateRuns([], 'branch', 'real', [])).toThrow('At least one supported regression platform')
+  })
   describe.each([
     ['branch', 'development'],
     ['tag', 'release']

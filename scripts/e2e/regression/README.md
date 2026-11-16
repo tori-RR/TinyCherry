@@ -2,6 +2,7 @@
 
 This directory owns the CI controller for the [Playwright regression scenarios](../../../tests/e2e/regression/README.md).
 It controls only the application recorded in its isolated run directory; it never discovers or stops a developer's Electron instance.
+The hosted Electron regression workflow is manual-only and runs Windows scenarios. It has no daily schedule and is separate from EvoStack's native build and startup gate.
 
 The separate [on-demand QA controller](../ondemand/README.md) reuses the ref, installation, and lifecycle functions for one temporary test on one selected platform. Its reports and task selection remain independent from regression runs.
 
@@ -75,7 +76,7 @@ npm_config_cache=/absolute/run-directory/private/npm-cache \
 ```
 
 Manual runs accept any branch in the current repository or a `v*` release tag as
-the `ref` input. The resolver pins it to an exact commit before either platform
+the `ref` input. The resolver pins it to an exact commit before the Windows runner
 checks out the application; fork references and raw commit SHAs are not inputs.
 Ambiguous branch/tag names require `refs/heads/...` or `refs/tags/...`.
 
@@ -84,7 +85,7 @@ chooses the application under test. To validate workflow and test changes before
 merging, select the PR branch for both, or use:
 
 ```sh
-gh workflow run e2e-regression-test.yml --repo CherryHQ/cherry-studio \
+gh workflow run e2e-regression-test.yml --repo tori-RR/TinyCherry \
   --ref feature/e2e-fix -f ref=feature/e2e-fix -f task=all
 ```
 
@@ -142,18 +143,27 @@ overlapping cases execute once in manifest order. Unknown or empty entries and m
 regression default. Reports retain the normalized comma-separated selection; existing
 reports keep their recorded task names and outcomes.
 The complete Settings phase allows 40 minutes on hosted runners.
-`native-recovery` selects backup-restore relaunch on one prepared runner per platform.
+`native-recovery` selects backup-restore relaunch on the prepared Windows runner.
+
+Configuration preflight resolves the selected cases before checking provider fields.
+Custom-provider scenarios require the custom endpoint URLs, key, and chat model;
+CherryIN chat or image scenarios require their account, password, and matching model.
+Startup and local-only cases do not require unrelated provider configuration. The
+current case selection does not consume the separately declared embedding configuration,
+so it is not required by `all`. A helper that actually accesses a missing field still
+fails explicitly. Model availability and desktop capabilities remain runtime checks.
 
 `run.json` schema version 2 records both cases and phases. The parent marks a phase running before starting Playwright; the reporter records test results and executor errors; a nonzero child exit also fails the phase.
-A phase left pending/running becomes blocked during finalization. Passing cases cannot hide a failed or unfinished phase. Missing platform reports block the aggregate gate.
+A phase left pending/running becomes blocked during finalization. Passing cases cannot hide a failed or unfinished phase. Missing expected Windows reports block the aggregate gate.
 Only one phase writes a platform's run state at a time; keep `workers: 1` and sequential workflow steps.
-The macOS and Windows jobs run in parallel; each platform keeps its own isolated run directory.
+The hosted Windows job uses its own isolated run directory.
 The native-adapter gate runs after run-state initialization and stores its JSON
 results in the platform report, so an adapter failure still produces blocked-case evidence.
-Hosted macOS images disable the Notification Center launch agent. The workflow reads its actual
+Retained macOS adapter source is a compatibility reference, outside the hosted Windows gate.
+Its Notification Center preparation reads the actual
 plist label, records the GUI service's enabled/loaded state, enables it for native checks, and
-restores the recorded state afterward. This preparation never runs on a developer's Mac.
-On macOS, the workflow observes known runner and isolated-app requests for local-network access
+restores the recorded state afterward. The adapter is restricted to disposable hosted runners.
+The macOS observer handles known runner and isolated-app requests for local-network access
 and Terminal/System Events automation. The observer requires a GitHub-hosted environment and an
 initialized directory below `RUNNER_TEMP`, records permission kinds and system process names,
 and stops before app cleanup within the job's six-hour limit.
@@ -184,24 +194,25 @@ that differs from the requested mode. Older reports without provider provenance 
 be rerun. Cases using their own fixtures record `data-source` annotations, retained in
 JSON and platform Markdown, even when the configured backend is real.
 
-The aggregate job publishes `test-report`. Download and extract
-it, then open `index.html` to browse every platform and phase in one HTML
-report, including failures and attachments. The same artifact contains
-`summary.md`. Only the aggregate job writes GitHub's summary: platform
-counts, actionable case/phase issues, and a cross-platform case table. Full
-platform reports, logs, fixtures, and generated files are bundled under
-`evidence/macos` and `evidence/windows` without duplication in the summary.
+The aggregate job passes `--platforms windows` and publishes `test-report`. Download and
+extract it, then open `index.html` to browse executed Windows phases, failures, and
+attachments. If preflight blocked execution before Playwright produced blobs, the
+artifact instead contains `summary.md` and the blocked platform evidence; no HTML
+result is manufactured. Only the aggregate job writes GitHub's summary: counts and
+actionable case/phase issues. Full platform reports, logs, fixtures, and generated files
+are bundled under `evidence/windows` without duplication in the summary.
 After the complete bundle is uploaded, the aggregate job deletes only this run's
-temporary `test-evidence-macos` and `test-evidence-windows` artifacts. If download,
+temporary `test-evidence-windows` artifact. If download,
 assembly, or upload fails, temporary artifacts are retained for diagnosis.
 When the platform jobs succeeded, an aggregate-only rerun can recover missing
 temporary artifacts from the previous bundle. Failed platform jobs never fall
 back to old evidence. Rerunning a job replaces its same-named artifact.
 
 Each phase retains a blob report with a platform/phase-specific filename. The aggregate
-job uses Playwright's built-in `merge-reports` with an explicit test root for cross-OS
-paths. Bundled platform evidence retains raw logs and generated files. The JSON
-aggregate verdict remains authoritative, including missing or interrupted phases.
+job uses Playwright's built-in `merge-reports` with an explicit test root. A successful
+platform run without blobs fails reporting; a blocked run without blobs retains its
+blocked verdict. Bundled platform evidence retains raw logs and generated files. The
+JSON aggregate verdict remains authoritative, including missing or interrupted phases.
 
 ## Verification
 
@@ -212,12 +223,15 @@ case-owned names instead of depending on a runner-installed media encoder.
 
 - `pnpm exec vitest run --project scripts scripts/e2e/regression`
 - `pnpm typecheck:e2e`
-- `CHERRY_TEST_RUN_DIR=/tmp/cherry-regression-list pnpm test:e2e:regression --list`
+- `CHERRY_TEST_RUN_DIR=.cache/cherry-regression-list pnpm test:e2e:regression --list`
 - `pnpm lint` and `pnpm docs:check`
 
-Enumeration does not launch Electron or require an initialized run. Full desktop acceptance still requires both hosted platforms and the aggregate gate.
+Enumeration does not launch Electron or require an initialized run. Hosted desktop acceptance requires the selected Windows cases and the aggregate gate; it does not establish macOS/Linux acceptance.
 
 ## macOS development notifications
+
+This retained adapter documentation is a source compatibility reference. The hosted
+regression workflow does not schedule or execute macOS runs.
 
 Electron's native notification API requires a Developer ID signed runtime. Before
 exercising the run-owned notification adapters in development, prepare a run-owned copy:
@@ -232,7 +246,7 @@ This uses an already-installed local signing identity, preserves the checkout's
 Electron download, and reuses the signed copy across profile restarts.
 The copy has a workspace-specific application identifier and name, so notification
 activation cannot select another development workspace with the default Electron identity.
-That identity stays stable across runs and profile restarts. CI imports
+That identity stays stable across runs and profile restarts. The retained hosted preparation imports
 `CSC_LINK`/`CSC_KEY_PASSWORD` into a temporary keychain for this step only, restores
 the original search list, and removes its certificate files and keychain before
 launch. The signed runtime stays under the isolated run directory, outside uploaded

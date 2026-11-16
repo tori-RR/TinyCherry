@@ -264,16 +264,25 @@ function aggregateVerdict(
 export function aggregateRuns(
   runs: RegressionRun[],
   expectedMode?: RunMode,
-  expectedProviderMode?: ProviderMode
+  expectedProviderMode?: ProviderMode,
+  expectedPlatforms: readonly Platform[] = PLATFORMS
 ): AggregateReport {
+  if (!expectedPlatforms.length || expectedPlatforms.some((platform) => !PLATFORMS.includes(platform))) {
+    throw new Error('At least one supported regression platform is required')
+  }
+  const platforms = [...new Set(expectedPlatforms)]
   const presentPlatforms = new Set(runs.map(({ metadata }) => metadata.platform))
-  const missingPlatforms = PLATFORMS.filter((platform) => !presentPlatforms.has(platform))
+  const missingPlatforms = platforms.filter((platform) => !presentPlatforms.has(platform))
   const providerMode = expectedProviderMode ?? runs[0]?.metadata.providerMode
   const errors = runs.some((run) => !run.metadata.providerMode || run.metadata.providerMode !== providerMode)
-    ? ['Provider evidence is missing or mixes mock and real backends; run both platforms in the same mode.']
+    ? ['Provider evidence is missing or mixes mock and real backends; run selected platforms in the same mode.']
     : []
+  if (runs.some(({ metadata }) => !platforms.includes(metadata.platform))) {
+    errors.push('A platform report falls outside the selected regression platforms.')
+  }
   return {
     runs,
+    expectedPlatforms: platforms,
     missingPlatforms,
     errors,
     verdict: aggregateVerdict(runs, missingPlatforms, expectedMode, providerMode, errors)
@@ -281,6 +290,7 @@ export function aggregateRuns(
 }
 
 export function renderAggregateMarkdown(report: AggregateReport): string {
+  const platforms = report.expectedPlatforms
   const runs = [...report.runs].sort(
     (left, right) => PLATFORMS.indexOf(left.metadata.platform) - PLATFORMS.indexOf(right.metadata.platform)
   )
@@ -339,11 +349,11 @@ export function renderAggregateMarkdown(report: AggregateReport): string {
     '',
     '## All cases',
     '',
-    '| ID | Test case | macOS | Windows |',
-    '| --- | --- | --- | --- |',
+    `| ID | Test case | ${platforms.map((platform) => PLATFORM_LABELS[platform]).join(' | ')} |`,
+    `| --- | --- | ${platforms.map(() => '---').join(' | ')} |`,
     ...REGRESSION_CASES.filter(({ id }) => runs.some((run) => run.cases[id].status !== 'not_applicable')).map(
       ({ id, title }) => {
-        const statuses = PLATFORMS.map((platform) => {
+        const statuses = platforms.map((platform) => {
           const run = runs.find((candidate) => candidate.metadata.platform === platform)
           return run ? STATUS_LABELS[run.cases[id].status] : '⛔ Missing report'
         })
@@ -353,7 +363,7 @@ export function renderAggregateMarkdown(report: AggregateReport): string {
     '',
     '## Detailed report',
     '',
-    'Download and extract the `test-report` artifact, then open `index.html` to view all platforms and phases. See `summary.md` for the summary and `evidence/macos` or `evidence/windows` for platform reports, logs, and generated files.',
+    `Download and extract the \`test-report\` artifact, then open \`index.html\` to view selected platforms and phases. See \`summary.md\` for the summary and ${platforms.map((platform) => `\`evidence/${platform}\``).join(' or ')} for platform reports, logs, and generated files.`,
     ''
   ].join('\n')
 }

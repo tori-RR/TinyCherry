@@ -27,6 +27,7 @@ export default defineConfig({
         ) {
           return readFileSync(adapterPath('WindowControls.tsx'), 'utf8')
         }
+        return null
       }
     },
     uiContractPlugin(),

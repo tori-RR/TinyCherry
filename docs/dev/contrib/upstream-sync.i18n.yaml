@@ -1,5 +1,5 @@
 # Bilingual-pair consistency record (docs/dev/i18n/README.md).
 # After editing either side, update its counterpart and re-record with:
 #   pnpm docs:check-pairing --write docs/dev/contrib/upstream-sync.md
-upstream-sync.md: 48cb1bf4d7876e683a1026a7f86230fcd498ad4b
-upstream-sync.zh.md: bb19fad210e0a9de65df1ed2ee08e7a78f903de8
+upstream-sync.md: 03214e4b33927bf29e451857474b5ee3ee793f37
+upstream-sync.zh.md: 3c8f25ad00166e29bf8b5b3c878e5d3bac352017

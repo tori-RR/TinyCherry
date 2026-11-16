@@ -1,4 +1,4 @@
-param([switch]$SkipChecks)
+param([switch]$SkipChecks, [ValidatePattern('^[0-9a-f]{40}$')][string]$ExpectedRevision)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'prepare-env.ps1')
 $EvoRepo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -12,6 +12,8 @@ function Invoke-EvoStep([scriptblock]$Action) {
 
 Push-Location $EvoRepo
 try {
+  if ($ExpectedRevision) { & (Join-Path $PSScriptRoot 'verify-source.ps1') -ExpectedRevision $ExpectedRevision }
+  & (Join-Path $PSScriptRoot 'check-webview2.ps1')
   $EvoGo = & go env GOVERSION
   if ($EvoGo -notmatch '^go(\d+\.\d+)' -or [version]$Matches[1] -lt [version]'1.27') { throw 'Go 1.27 or later required' }
   $EvoRust = & rustc --version
@@ -34,9 +36,13 @@ process.stdout.write(JSON.stringify({ directory: dirname(packageFile), version: 
     if (-not (Test-Path -LiteralPath (Join-Path $EvoComputerDirectory $EvoComputerFile) -PathType Leaf)) { throw "Computer-use package is incomplete: $EvoComputerFile" }
   }
   $env:EVOSTACK_APP_VERSION = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
-  $EvoRevision = & git rev-parse HEAD
-  if ($LASTEXITCODE -ne 0) { throw 'Could not identify package revision' }
-  if (& git status --porcelain --untracked-files=no) { $EvoRevision += '-dirty' }
+  if ($ExpectedRevision) {
+    $EvoRevision = $ExpectedRevision
+  } else {
+    $EvoRevision = & git rev-parse HEAD
+    if ($LASTEXITCODE -ne 0) { throw 'Could not identify package revision' }
+    if (& git status --porcelain --untracked-files=no) { $EvoRevision += '-dirty' }
+  }
   $env:EVOSTACK_BUILD_REVISION = $EvoRevision
   New-Item -ItemType Directory -Path $EvoPortable -Force | Out-Null
   Invoke-EvoStep { pnpm exec tsx --tsconfig tsconfig.web.json native/evostack/generate-contract.ts }
@@ -44,6 +50,7 @@ process.stdout.write(JSON.stringify({ directory: dirname(packageFile), version: 
   Invoke-EvoStep { pnpm exec vite build --config native/evostack/vite.config.mts }
   if (-not $SkipChecks) {
     Invoke-EvoStep { pnpm exec tsc --noEmit -p tsconfig.web.json --composite false }
+    Invoke-EvoStep { pnpm exec tsc --noEmit -p tsconfig.tauri.json --composite false }
     Invoke-EvoStep { cargo fmt --manifest-path native/evostack/src-tauri/Cargo.toml --check }
     Invoke-EvoStep { cargo test --release --locked --manifest-path native/evostack/src-tauri/Cargo.toml }
     $env:EVOSTACK_TEST_COMPUTER_RUNTIME = Join-Path $EvoComputerDirectory 'runtime\open-computer-use.exe'
@@ -83,6 +90,7 @@ process.stdout.write(JSON.stringify({ directory: dirname(packageFile), version: 
   $EvoFiles = @('TinyCherry-EvoStack.exe','tinycherry-evostack-backend.exe','open-computer-use.exe','README.md','LICENSE.txt','computer-use-LICENSE.txt','computer-use-THIRD-PARTY-NOTICES.md','SHA256.json')
   if (Compare-Object @((Get-ChildItem -LiteralPath $EvoPortable -Force).Name | Sort-Object) @($EvoFiles | Sort-Object)) { throw 'Unexpected package files' }
   Compress-Archive -LiteralPath @($EvoFiles | ForEach-Object { Join-Path $EvoPortable $_ }) -DestinationPath ($EvoPortable + '.zip')
+  if ($ExpectedRevision) { & (Join-Path $PSScriptRoot 'verify-source.ps1') -ExpectedRevision $ExpectedRevision }
   $EvoBackup = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ('.cache\portable-backups\' + [Guid]::NewGuid().ToString('N'))))
   foreach ($EvoPath in @($EvoPortable,$EvoDestination,$EvoBackup)) {
     if (-not [IO.Path]::GetFullPath($EvoPath).StartsWith($PSScriptRoot + '\',[StringComparison]::OrdinalIgnoreCase)) { throw 'Package path escaped EvoStack directory' }

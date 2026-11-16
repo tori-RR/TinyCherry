@@ -15,7 +15,7 @@ for (const source of ['resources/skills', 'resources/code-cli-skills']) {
     const directory = join(root, source, entry.name)
     const files: Record<string, string> = {}
     let size = 0
-    for (const name of readdirSync(directory, { recursive: true }).sort()) {
+    for (const name of readdirSync(directory, { recursive: true, encoding: 'utf8' }).sort()) {
       const file = join(directory, name)
       const info = lstatSync(file)
       if (info.isSymbolicLink()) throw new Error(`Bundled skill contains a symbolic link: ${file}`)

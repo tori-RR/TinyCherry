@@ -108,11 +108,16 @@ describe('single regression artifact bundle', () => {
     mkdirSync(dirname(target), { recursive: true })
     writeFileSync(target, content)
   }
-  const runStep = (name: string, result = 'success') =>
+  const runStep = (name: string, result = 'success', mergedReportAvailable = 'true') =>
     spawnSync(bash, ['-e', '-o', 'pipefail', '-c', steps.find((step) => step.name === name)!.run!], {
       cwd: directory,
       encoding: 'utf8',
-      env: { ...process.env, TEST_RESULT: result }
+      env: {
+        ...process.env,
+        TEST_RESULT: result,
+        MERGED_REPORT_AVAILABLE: mergedReportAvailable,
+        GITHUB_OUTPUT: join(directory, 'github-output')
+      }
     })
 
   beforeEach(() => {
@@ -120,7 +125,7 @@ describe('single regression artifact bundle', () => {
   })
   afterEach(() => rmSync(directory, { recursive: true, force: true }))
 
-  it('retains both platforms and HTML attachments without overwriting the summary', () => {
+  it('retains Windows evidence and HTML attachments without overwriting the summary', () => {
     for (const platform of ['macos', 'windows']) {
       write(`downloaded-reports/test-evidence-${platform}/report/results.json`, '{}')
       write(`downloaded-reports/test-evidence-${platform}/evidence/logs/app.log`, platform)
@@ -133,21 +138,49 @@ describe('single regression artifact bundle', () => {
     expect(runStep('Assemble complete report').status).toBe(0)
     expect(readFileSync(join(directory, 'combined-report/summary.md'), 'utf8')).toBe('Summary')
     expect(readFileSync(join(directory, 'combined-report/data/evidence.txt'), 'utf8')).toBe('Attachment')
-    for (const platform of ['macos', 'windows']) {
-      expect(readFileSync(join(directory, `combined-report/evidence/${platform}/evidence/logs/app.log`), 'utf8')).toBe(
-        platform
-      )
-    }
+    expect(readFileSync(join(directory, 'combined-report/evidence/windows/evidence/logs/app.log'), 'utf8')).toBe(
+      'windows'
+    )
+    expect(existsSync(join(directory, 'combined-report/evidence/macos'))).toBe(false)
   })
 
-  it('prefers fresh evidence and recovers successful unchanged platforms on rerun', () => {
-    write('downloaded-reports/test-evidence-macos/report/results.json', 'fresh')
+  it('prefers fresh Windows evidence and ignores unselected platforms', () => {
+    write('downloaded-reports/test-evidence-windows/report/results.json', 'fresh')
     for (const platform of ['macos', 'windows']) {
       write(`downloaded-reports/test-report/evidence/${platform}/report/results.json`, 'previous')
     }
     expect(runStep('Collect platform evidence').status).toBe(0)
-    expect(readFileSync(join(directory, 'platform-reports/macos/report/results.json'), 'utf8')).toBe('fresh')
+    expect(readFileSync(join(directory, 'platform-reports/windows/report/results.json'), 'utf8')).toBe('fresh')
+    expect(existsSync(join(directory, 'platform-reports/macos'))).toBe(false)
+  })
+
+  it('recovers successful unchanged Windows evidence on rerun', () => {
+    write('downloaded-reports/test-report/evidence/windows/report/results.json', 'previous')
+    expect(runStep('Collect platform evidence').status).toBe(0)
     expect(readFileSync(join(directory, 'platform-reports/windows/report/results.json'), 'utf8')).toBe('previous')
+  })
+
+  it('keeps blocked diagnostics when execution produced no Playwright report', () => {
+    write('platform-reports/windows/report/results.json', '{"verdict":"development_blocked"}')
+    write('combined-report/combined-report.md', 'Blocked: missing selected configuration')
+    write('combined-report/combined-results.json', '{"verdict":"development_blocked"}')
+    const merge = runStep('Merge detailed Playwright reports', 'failure')
+    expect(merge.status, merge.stderr).toBe(0)
+    expect(merge.stdout).toContain('blocked or failed before Playwright reports were produced')
+    expect(readFileSync(join(directory, 'github-output'), 'utf8')).toContain('available=false')
+    expect(runStep('Assemble complete report', 'failure', 'false').status).toBe(0)
+    expect(readFileSync(join(directory, 'combined-report/summary.md'), 'utf8')).toContain('Blocked:')
+    expect(existsSync(join(directory, 'combined-report/index.html'))).toBe(false)
+  })
+
+  it('rejects a successful execution without reports or its required HTML bundle', () => {
+    mkdirSync(join(directory, 'platform-reports'))
+    const merge = runStep('Merge detailed Playwright reports')
+    expect(merge.status).not.toBe(0)
+    expect(merge.stdout).toContain('A successful regression run must produce Playwright reports')
+    write('platform-reports/windows/report/results.json', '{}')
+    write('combined-report/combined-report.md', 'Summary')
+    expect(runStep('Assemble complete report').status).not.toBe(0)
   })
 
   it('does not hide failed jobs behind old evidence or assemble an incomplete bundle', () => {

@@ -5,11 +5,13 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 
-import { changedFiles, checkTasks, createPlan, selectedGroups, testProjects } from './plan.mjs'
+import { changedFiles, checkTasks, createPlan, selectedGroups, validatePlan } from './plan.mjs'
+import { assertTestFiles, testInvocations, VALIDATION_TARGETS } from './targets.mjs'
 
 const { values } = parseArgs({
   options: {
     all: { type: 'boolean' },
+    target: { type: 'string', default: 'tauri' },
     plan: { type: 'boolean' },
     json: { type: 'boolean' },
     base: { type: 'string', default: 'origin/main' },
@@ -22,37 +24,33 @@ const { values } = parseArgs({
   }
 })
 const root = fileURLToPath(new URL('../../', import.meta.url))
+const target = values.target
+if (!VALIDATION_TARGETS.includes(target)) throw new Error(`Unknown validation target: ${target}`)
 const groups = ['repository', 'lint', 'types', 'i18n', 'main', 'renderer', 'packages', 'platform', 'checks', 'tests']
 if (values.group && !groups.includes(values.group)) throw new Error(`Unknown validation group: ${values.group}`)
+if (target === 'tauri' && values.group === 'platform')
+  throw new Error('Tauri system validation runs in evostack-windows.yml; platform is an Electron compatibility group')
 if (values.shard && !/^\d+\/\d+$/.test(values.shard)) throw new Error('Expected --shard=N/M')
 if (values['max-workers'] && !/^[1-9]\d*$/.test(values['max-workers']))
   throw new Error('Expected a positive --max-workers count')
 
 let plan
 if (values.all) {
-  plan = createPlan([], 'Explicit full validation')
+  plan = createPlan([], 'Explicit full validation', target)
 } else if (process.env.VALIDATION_PLAN) {
-  plan = JSON.parse(process.env.VALIDATION_PLAN)
-  if (
-    !Array.isArray(plan.tasks) ||
-    !Array.isArray(plan.projects) ||
-    typeof plan.platform !== 'boolean' ||
-    plan.tasks.some((task) => !Object.hasOwn(checkTasks, task)) ||
-    plan.projects.some((project) => !testProjects.includes(project))
-  )
-    throw new Error('Invalid validation plan')
+  plan = validatePlan(JSON.parse(process.env.VALIDATION_PLAN), target)
 } else {
   try {
-    plan = createPlan(changedFiles(root, values.base, values.head, !values.committed))
+    plan = createPlan(changedFiles(root, values.base, values.head, !values.committed), undefined, target)
   } catch {
-    plan = createPlan([], `Full validation: comparison history unavailable (${values.base})`)
+    plan = createPlan([], `Full validation: comparison history unavailable (${values.base})`, target)
   }
 }
 
 if (values['github-output']) {
   if (!process.env.GITHUB_OUTPUT) throw new Error('GITHUB_OUTPUT is required')
   const scope = createHash('sha256')
-    .update(JSON.stringify([plan.tasks, plan.projects, plan.platform]))
+    .update(JSON.stringify([plan.target, plan.tasks, plan.projects, plan.platform]))
     .digest('hex')
   appendFileSync(
     process.env.GITHUB_OUTPUT,
@@ -63,6 +61,7 @@ if (values['github-output']) {
 }
 if (values.json) process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`)
 else {
+  process.stdout.write(`Validation target: ${plan.target}\n`)
   for (const task of plan.tasks)
     process.stdout.write(`${task}: ${plan.reasons?.[task]?.join(', ') ?? 'Selected by CI plan'}\n`)
   process.stdout.write(`Test projects: ${plan.projects.join(', ') || 'none'}\n`)
@@ -95,8 +94,10 @@ function run(args) {
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
 if (tasks.some((task) => task.startsWith('types-')) || projects.length) {
-  if (process.env.VALIDATION_WORKSPACE_PREPARED !== 'true') run(['run', 'postinstall'])
-  if (tasks.some((task) => task.startsWith('types-'))) run(['--filter', '@cherrystudio/ai-sdk-provider', 'build'])
+  if (process.env.VALIDATION_WORKSPACE_PREPARED !== 'true')
+    run(target === 'electron' ? ['run', 'postinstall'] : ['--filter', '@cherrystudio/remote-protocol', 'build'])
+  if (target === 'electron' && tasks.some((task) => task.startsWith('types-')))
+    run(['--filter', '@cherrystudio/ai-sdk-provider', 'build'])
 }
 for (const task of tasks) run(checkTasks[task].args)
 if (projects.length) {
@@ -114,13 +115,17 @@ if (projects.length) {
           )
       : []
   if (values.group === 'platform' && !files.length) throw new Error('No platform-gated tests found')
-  run([
-    'exec',
-    'vitest',
-    'run',
-    ...projects.flatMap((project) => ['--project', project]),
-    ...files,
-    ...(values.shard ? [`--shard=${values.shard}`] : []),
-    ...(values['max-workers'] ? ['--maxWorkers', values['max-workers']] : [])
-  ])
+  const invocations = testInvocations(plan, projects)
+  assertTestFiles(root, invocations)
+  for (const invocation of invocations)
+    run([
+      'exec',
+      'vitest',
+      'run',
+      ...invocation.projects.flatMap((project) => ['--project', project]),
+      ...files,
+      ...invocation.files,
+      ...(values.shard ? [`--shard=${values.shard}`] : []),
+      ...(values['max-workers'] ? ['--maxWorkers', values['max-workers']] : [])
+    ])
 }

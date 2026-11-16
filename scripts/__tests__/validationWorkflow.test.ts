@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
@@ -14,12 +14,17 @@ const verify = (gate: string, jobs: unknown, steps?: unknown) =>
     env: { ...process.env, VALIDATION_JOBS: JSON.stringify(jobs), VALIDATION_STEPS: JSON.stringify(steps) }
   }).status
 const directories: string[] = []
+
+function stubEnvironment(directory: string, values: NodeJS.ProcessEnv) {
+  const inherited = Object.fromEntries(Object.entries(process.env).filter(([name]) => name.toLowerCase() !== 'path'))
+  return { ...inherited, ...values, PATH: `${directory}${delimiter}${process.env.PATH}` }
+}
 afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true })
 })
 
-describe('nine-runner full validation', () => {
-  it('uses seven Linux runners and one runner per native platform', () => {
+describe('Windows Tauri validation', () => {
+  it('runs shared tests on Windows and keeps static tooling on Linux', () => {
     const jobs = Object.values(workflow.jobs) as {
       'runs-on': string
       steps: { uses?: string }[]
@@ -33,14 +38,11 @@ describe('nine-runner full validation', () => {
       })
 
     expect(runners.sort()).toEqual([
-      'macos-latest',
       'ubuntu-latest',
-      'ubuntu-latest',
-      'ubuntu-latest',
-      'ubuntu-latest',
-      'ubuntu-latest',
-      'ubuntu-latest',
-      'ubuntu-latest',
+      'windows-2022',
+      'windows-2022',
+      'windows-2022',
+      'windows-2022',
       'windows-2022'
     ])
   })
@@ -48,15 +50,16 @@ describe('nine-runner full validation', () => {
   it('runs the complete selected package group without shard filters', () => {
     const job = workflow.jobs['package-test']
     expect(job.steps.find((step: { run?: string }) => step.run?.startsWith('pnpm check')).run).toBe(
-      'pnpm check --group packages'
+      'pnpm check --target tauri --group packages --max-workers=2'
     )
   })
 
-  it('covers both main/preload shards without cancelling siblings on failure', () => {
+  it('runs the reused preload bridge without sharding a single test file', () => {
     const job = workflow.jobs['main-test-shard']
-    expect(job.strategy).toEqual({ 'fail-fast': false, matrix: { shard: [1, 2] } })
+    expect(job.name).toBe('preload-bridge')
+    expect(job.strategy).toBeUndefined()
     expect(job.steps.find((step: { run?: string }) => step.run?.startsWith('pnpm check')).run).toBe(
-      'pnpm check --group main --shard=${{ matrix.shard }}/2'
+      'pnpm check --target tauri --group main --max-workers=2'
     )
     expect(workflow.jobs['general-test'].needs).toContain('main-test-shard')
   })
@@ -65,9 +68,30 @@ describe('nine-runner full validation', () => {
     const job = workflow.jobs['renderer-test-shard']
     expect(job.strategy).toEqual({ 'fail-fast': false, matrix: { shard: [1, 2, 3] } })
     expect(job.steps.find((step: { run?: string }) => step.run?.startsWith('pnpm check')).run).toBe(
-      'pnpm check --group renderer --shard=${{ matrix.shard }}/3'
+      'pnpm check --target tauri --group renderer --shard=${{ matrix.shard }}/3 --max-workers=2'
     )
     expect(workflow.jobs['render-test'].needs).toContain('renderer-test-shard')
+  })
+
+  it('fixes main CI to Tauri and keeps the full Electron suite manual and separate', () => {
+    expect(workflow.on.workflow_dispatch?.inputs).toBeUndefined()
+    const plan = workflow.jobs.changes.steps.find((step: { id?: string }) => step.id === 'plan').run
+    for (const command of plan.split('\n').filter((line: string) => line.includes('scripts/validation/run.mjs')))
+      expect(command).toContain('--target tauri')
+    for (const job of Object.values(workflow.jobs) as { steps: { run?: string }[] }[])
+      for (const step of job.steps.filter((entry) => entry.run?.startsWith('pnpm check ')))
+        expect(step.run).toContain('--target tauri')
+    expect(workflow.jobs['platform-test']).toBeUndefined()
+    const legacy = parse(readFileSync('.github/workflows/electron-compat.yml', 'utf8'))
+    expect(Object.keys(legacy.on)).toEqual(['workflow_dispatch'])
+    expect(legacy.jobs.compatibility['runs-on']).toMatch(/^windows-/)
+    expect(legacy.jobs.compatibility.steps.map((step: { run?: string }) => step.run)).toEqual(
+      expect.arrayContaining([
+        'pnpm check --target electron --all --group checks',
+        'pnpm check --target electron --all --group tests --max-workers=2',
+        'pnpm check --target electron --all --group platform --max-workers=2'
+      ])
+    )
   })
 })
 
@@ -77,12 +101,27 @@ describe('CI preparation and preflight', () => {
     const install = action.runs.steps.find((step: { name?: string }) => step.name === 'Install dependencies')
     const cwd = mkdtempSync(join(tmpdir(), 'cherry-ci-install-'))
     directories.push(cwd)
-    writeFileSync(join(cwd, 'pnpm'), '#!/bin/sh\nexit "$INSTALL_EXIT"\n', { mode: 0o755 })
+    writeFileSync(join(cwd, 'pnpm'), '#!/bin/sh\nprintf "%s\\n" "$@" > "$COMMAND_LOG"\nexit "$INSTALL_EXIT"\n', {
+      mode: 0o755
+    })
     const envFile = join(cwd, 'environment')
+    const argumentsFile = join(cwd, 'arguments')
+    const store = join(cwd, '.pnpm-store')
     const result = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', install.run], {
-      env: { ...process.env, PATH: `${cwd}:${process.env.PATH}`, INSTALL_EXIT: String(exitCode), GITHUB_ENV: envFile }
+      env: stubEnvironment(cwd, {
+        INSTALL_EXIT: String(exitCode),
+        GITHUB_ENV: envFile,
+        STORE_DIR: store,
+        COMMAND_LOG: argumentsFile
+      })
     })
     expect(result.status).toBe(exitCode)
+    expect(readFileSync(argumentsFile, 'utf8').trim().split('\n')).toEqual([
+      'install',
+      '--frozen-lockfile',
+      '--store-dir',
+      store
+    ])
     expect(existsSync(envFile) ? readFileSync(envFile, 'utf8') : '').toBe(
       exitCode === 0 ? 'VALIDATION_WORKSPACE_PREPARED=true\n' : ''
     )
@@ -95,7 +134,7 @@ describe('CI preparation and preflight', () => {
     const log = join(cwd, 'arguments')
     writeFileSync(join(cwd, 'pnpm'), '#!/bin/sh\nprintf "%s\\n" "$@" > "$COMMAND_LOG"\n', { mode: 0o755 })
     const result = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', format.run], {
-      env: { ...process.env, PATH: `${cwd}:${process.env.PATH}`, COMMAND_LOG: log }
+      env: stubEnvironment(cwd, { COMMAND_LOG: log })
     })
     expect(result.status).toBe(0)
     const manifest = JSON.parse(readFileSync('package.json', 'utf8'))
@@ -159,8 +198,12 @@ describe('CI validation planning', () => {
       expect(plan.projects).toContain('renderer')
       expect(plan.projects).not.toContain('main')
     }
-    for (const event of ['schedule', 'workflow_dispatch']) expect(run(event).projects).toContain('main')
-    expect(run('push', '0000000000000000000000000000000000000000').projects).toContain('main')
+    for (const event of ['schedule', 'workflow_dispatch']) {
+      expect(run(event)).toMatchObject({ target: 'tauri', platform: false })
+      expect(run(event).projects).toContain('preload')
+      expect(run(event).projects).not.toContain('main')
+    }
+    expect(run('push', '0000000000000000000000000000000000000000').projects).toContain('preload')
     git('checkout', '-qb', 'docs-only', base)
     writeFileSync(join(cwd, 'README.md'), 'docs only')
     commit('docs only')
@@ -189,7 +232,7 @@ describe('CI validation planning', () => {
     }
   })
 
-  it('accepts omitted native jobs for portable changes while requiring Linux consumer tests', () => {
+  it('requires the reused bridge and shared packages without reviving old platform contracts', () => {
     const jobs = Object.fromEntries(
       workflow.jobs['general-test'].needs.map((dependency: string) => [dependency, { result: 'success' }])
     )
@@ -197,7 +240,6 @@ describe('CI validation planning', () => {
       result: 'success',
       outputs: { plan: JSON.stringify(createPlan(['packages/web-search/src/providers/tavily.ts'])) }
     }
-    jobs['platform-test'].result = 'skipped'
     expect(verify('general', jobs)).toBe(0)
     for (const dependency of ['main-test-shard', 'package-test']) {
       jobs[dependency].result = 'skipped'
@@ -237,10 +279,17 @@ describe('CI validation planning', () => {
     jobs.changes.outputs.plan = JSON.stringify(createPlan(['README.md']))
     for (const id of ['type-checks', 'lint-checks', 'i18n-checks']) steps[id].outcome = 'skipped'
     expect(verify('basic', jobs, steps)).toBe(0)
-    jobs.changes.outputs.plan = JSON.stringify({ tasks: ['types-node'], projects: [] })
+    jobs.changes.outputs.plan = JSON.stringify({
+      target: 'tauri',
+      tasks: ['types-tauri'],
+      projects: [],
+      platform: false
+    })
     steps['repository-result'].outcome = 'skipped'
     steps['type-checks'].outcome = 'success'
     expect(verify('basic', jobs, steps)).toBe(0)
+    jobs.changes.outputs.plan = JSON.stringify(createPlan(['package.json'], undefined, 'electron'))
+    expect(verify('basic', jobs, steps)).not.toBe(0)
   })
 })
 
@@ -280,7 +329,7 @@ describe('basic checks in one runner', () => {
   ])('preserves %s selection and readiness for %s', (group, id) => {
     const needs = { changes: { outputs: { [group]: 'true' } } }
     const step = job.steps.find((step: { id?: string }) => step.id === id)
-    if (id !== 'i18n-sync') expect(step.run).toBe(`pnpm check --group ${group}`)
+    if (id !== 'i18n-sync') expect(step.run).toBe(`pnpm check --target tauri --group ${group}`)
     const condition = step.if.replaceAll('steps.i18n-sync', "steps['i18n-sync']")
     const selected = (outcome: string, cancelled: boolean) =>
       new Function('needs', 'steps', 'cancelled', 'success', `return (${condition})`)(

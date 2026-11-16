@@ -1,6 +1,6 @@
 # Critical-path desktop regression
 
-These scenarios run against one controller-owned Electron instance per platform. The [controller](../../../scripts/e2e/regression/README.md) installs and launches either the requested development checkout or release installer.
+The hosted workflow runs these scenarios manually against one controller-owned Windows Electron instance. The [controller](../../../scripts/e2e/regression/README.md) installs and launches either the requested development checkout or release installer. This suite is separate from EvoStack's native build and startup checks; retained macOS adapters are source compatibility references.
 The separate [Playwright config](../../../playwright.regression.config.ts) uses CDP rather than the per-test launch fixture used by the older E2E smoke suite.
 
 ## File organization
@@ -84,10 +84,11 @@ pnpm download:binaries
 pnpm rebuild:electron
 pnpm run build:utility-process
 pnpm exec dotenv -v CHERRY_EDITION=global -- electron-vite build
-TEST_RUN_DIR="$(mktemp -d "${TMPDIR:-/tmp}/cherry-stream-failure.XXXXXX")"
+mkdir -p .cache/e2e-regression
+TEST_RUN_DIR="$(mktemp -d "$PWD/.cache/e2e-regression/cherry-stream-failure.XXXXXX")"
 pnpm exec tsx scripts/e2e/regression/cli.ts preflight --task chat-stream-failure
 pnpm exec tsx scripts/e2e/regression/cli.ts initialize \
-  --run-dir "$TEST_RUN_DIR" --mode branch --platform macos \
+  --run-dir "$TEST_RUN_DIR" --mode branch --platform windows \
   --task chat-stream-failure --ref "$(git branch --show-current)" \
   --sha "$(git rev-parse HEAD)" --runner local
 pnpm exec tsx scripts/e2e/regression/cli.ts launch \
@@ -102,7 +103,7 @@ pnpm exec tsx scripts/e2e/regression/cli.ts cleanup --run-dir "$TEST_RUN_DIR"
 Always run `cleanup`, including after a failure. The controller stops only its
 recorded process. The run directory contains the report and failure evidence;
 boot configuration and application data are isolated under the run directory. Keep
-local runs outside the source checkout so generated extension code is not scanned
+local runs under an ignored run-owned directory so generated extension code is not scanned
 by repository lint. Do not run Node SQLite tests
 while Electron is running, since native dependency rebuilds switch its ABI.
 
@@ -119,14 +120,14 @@ MP-52 opens the edited source file itself in TextEdit on macOS or Notepad on Win
 
 Windows MP-90 opens the exported image in Microsoft Edge with a run-owned profile under `private/`, checks its decoded dimensions, and closes that browser. Edge must be installed on the runner.
 
-The repository variables/secrets are listed in `scripts/e2e/regression/config.ts`; the image model variable is `CHERRY_TEST_CHERRYIN_IMAGE_MODEL`.
+The repository variables/secrets are listed in `scripts/e2e/regression/config.ts`; the image model variable is `CHERRY_TEST_CHERRYIN_IMAGE_MODEL`. Preflight derives requirements from the selected case IDs. Startup/local-only cases need no unrelated CherryIN or custom-provider fields. CherryIN chat/image cases require the corresponding model and account fields; custom-provider chat cases require their custom-provider fields. Current regression cases do not consume embedding configuration, so selecting `all` does not require it.
 
 Custom chat provider creation fills two required endpoint URLs:
 
 - OpenAI: `CHERRY_TEST_CUSTOM_PROVIDER_BASE_URL` (for example, `https://api.siliconflow.cn/v1`).
 - Anthropic: `CHERRY_TEST_CUSTOM_PROVIDER_ANTHROPIC_BASE_URL` (for example, `https://api.siliconflow.cn`).
 
-Both endpoints use `CHERRY_TEST_CUSTOM_PROVIDER_API_KEY`. The embedding provider remains separately configured.
+Both endpoints use `CHERRY_TEST_CUSTOM_PROVIDER_API_KEY`. Embedding fields remain separately declared for helpers that explicitly consume them; they are not a blanket prerequisite for local knowledge-base flows. Missing configuration still fails when an actual consumer accesses it.
 
 Never attach credentials or enable credential-bearing Playwright traces. HTML reports and failure screenshots are produced by Playwright and the fixture; sanitized Electron logs are copied during finalization.
 
@@ -135,11 +136,11 @@ Use the [frontend testing guidelines](../../../docs/dev/references/testing/front
 
 ## Desktop platform coverage
 
-All 95 registered regression cases retained in this layer participate on both macOS and Windows, including the marketplace navigation smoke case. The additional 23 cases in [draft #23868](https://github.com/CherryHQ/cherry-studio/pull/23868) are deferred and are not part of this layer's coverage. Platform-specific subflows use the actual desktop integration: TextEdit or Notepad, native file and print dialogs, native notification and tray menus, and Terminal or the Windows console. macOS permission prompts and transparent window controls are checked only where the product exposes them; shared settings, execution, persistence and cleanup assertions still run on Windows.
+The hosted workflow selects Windows for this retained case library, including the marketplace navigation smoke case. The additional 23 cases in [draft #23868](https://github.com/CherryHQ/cherry-studio/pull/23868) are deferred and are not part of this layer's coverage. Windows subflows use actual desktop integration: Notepad, native file and print dialogs, native notification and tray menus, and the Windows console. Shared settings, execution, persistence and cleanup assertions remain enabled. Retained TextEdit, Terminal, and macOS permission adapters do not imply a hosted macOS run.
 
 Windows single-instance checks use Restart Manager's [resource-user query](https://learn.microsoft.com/en-us/windows/win32/api/_rstmgr/) to verify SQLite file owners. The probe never calls shutdown or restart APIs. Native console input is limited to the new Claude launch process under the isolated run directory, with PID and creation-time checks before each operation.
 
-These adapters require real desktop execution; successful typechecking or enumeration is not cross-platform acceptance.
+These adapters require real desktop execution; successful typechecking or enumeration does not establish desktop acceptance.
 
 ## Partial coverage
 
