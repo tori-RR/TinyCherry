@@ -24,6 +24,11 @@ afterEach(() => {
 })
 
 describe('Windows Tauri validation', () => {
+  it('keeps push, PR and manual CI without a daily schedule', () => {
+    expect(Object.hasOwn(workflow.on, 'schedule')).toBe(false)
+    expect(Object.keys(workflow.on)).toEqual(['workflow_dispatch', 'push', 'pull_request'])
+  })
+
   it('runs shared tests on Windows and keeps static tooling on Linux', () => {
     const jobs = Object.values(workflow.jobs) as {
       'runs-on': string
@@ -198,11 +203,10 @@ describe('CI validation planning', () => {
       expect(plan.projects).toContain('renderer')
       expect(plan.projects).not.toContain('main')
     }
-    for (const event of ['schedule', 'workflow_dispatch']) {
-      expect(run(event)).toMatchObject({ target: 'tauri', platform: false })
-      expect(run(event).projects).toContain('preload')
-      expect(run(event).projects).not.toContain('main')
-    }
+    const manualPlan = run('workflow_dispatch')
+    expect(manualPlan).toMatchObject({ target: 'tauri', platform: false })
+    expect(manualPlan.projects).toContain('preload')
+    expect(manualPlan.projects).not.toContain('main')
     expect(run('push', '0000000000000000000000000000000000000000').projects).toContain('preload')
     git('checkout', '-qb', 'docs-only', base)
     writeFileSync(join(cwd, 'README.md'), 'docs only')

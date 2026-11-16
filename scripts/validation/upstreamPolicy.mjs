@@ -70,6 +70,9 @@ function requiresUpstreamRepository(condition) {
 export function checkWorkflowPolicy(root) {
   const registry = parse(readFileSync(join(root, '.github/workflows/sync-registry-data.yml'), 'utf8'))
   const ci = parse(readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8'))
+  if (Object.hasOwn(ci.on ?? {}, 'schedule')) {
+    throw new Error('Main CI must not run on a schedule')
+  }
   for (const [name, job] of [
     ['sync-registry-data.sync', registry.jobs?.sync],
     ['ci.notify', ci.jobs?.notify]

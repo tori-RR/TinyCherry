@@ -88,13 +88,12 @@ cancelled, missing, or unexpectedly skipped jobs selected by the plan.
 ## CI
 
 PRs compare the checked-out merge commit with its first parent, so earlier commits
-remain covered. Pushes compare the event's before/after range. A daily schedule and
-manual dispatch run the full plan. Concurrency groups are isolated by event and
+remain covered. Pushes compare the event's before/after range. CI runs only on pushes,
+pull requests, and manual dispatch; manual dispatch runs the full plan. Concurrency groups are isolated by event and
 PR number or full ref. New PR runs replace earlier runs for that PR; new manual
 runs replace earlier manual runs for the same ref. Pushes are not cancelled,
 because a later push's affected plan does not cover the earlier push's range.
-Scheduled full validation remains independent. Pull requests targeting a parent
-stack branch also run CI.
+Pull requests targeting a parent stack branch also run CI.
 
 `Cancel closed PR CI` requests cancellation of unfinished PR and feature-branch
 manual CI after a PR closes. It reads current PR state and runs only trusted
@@ -116,7 +115,7 @@ without sharding. Renderer uses three Windows Vitest shards with fail-fast disab
 The separate Windows package job runs the shared packages and the explicit tooling
 inventory. There is no Electron platform-contract job in Tauri CI. Ubuntu jobs perform
 static checks, classification, and result aggregation; they do not run Linux application
-tests. Scheduled/manual full CI covers the complete Tauri target.
+tests. Manual full CI covers the complete Tauri target.
 
 `electron-compat.yml` is a separate Windows-only manual workflow using
 `pnpm check --all --target electron`. It retains the complete legacy Vitest inventory,

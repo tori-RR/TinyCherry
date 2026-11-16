@@ -42,6 +42,14 @@ describe('upstream-only workflow policy', () => {
     expect(() => checkWorkflowPolicy(process.cwd())).not.toThrow()
   })
 
+  it('rejects restoring scheduled main CI', () => {
+    const root = workflowFixture()
+    editWorkflow(root, 'ci.yml', (workflow) => {
+      workflow.on.schedule = [{ cron: '17 3 * * *' }]
+    })
+    expect(() => checkWorkflowPolicy(root)).toThrow('must not run on a schedule')
+  })
+
   it.each(['sync-registry-data.yml', 'ci.yml'])('rejects a missing owner guard in %s', (file) => {
     const root = workflowFixture()
     editWorkflow(root, file, (workflow) => {

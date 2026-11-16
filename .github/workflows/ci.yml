@@ -5,8 +5,6 @@ permissions:
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "17 3 * * *"
   push:
     branches: [main, "release/v*"]
   pull_request:
