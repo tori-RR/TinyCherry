@@ -82,6 +82,7 @@ async function runChecks(plan) {
     if (needsBuild && ['types', 'ts', 'go', 'vet', 'race', 'rust'].includes(task)) {
       await build()
       needsBuild = false
+      if (tasks.has('smoke')) await smoke(false)
     }
     await once(task, async () => {
       if (task === 'format')
@@ -134,7 +135,10 @@ async function runChecks(plan) {
       }
     })
   }
-  if (needsBuild) await build()
+  if (needsBuild) {
+    await build()
+    if (tasks.has('smoke')) await smoke(false)
+  }
   if (tasks.has('contracts'))
     await once('contracts', async () => {
       const args = tasks.has('build') ? ['-Directory', candidate().directory] : []
@@ -145,8 +149,8 @@ async function runChecks(plan) {
 function verificationPath(directory) {
   return resolve(native, '.cache/verified-candidates', `${hash(resolve(directory, 'candidate.json'))}.json`)
 }
-async function smoke() {
-  return once('smoke', async () => {
+async function smoke(record = true) {
+  const proof = await once('smoke', async () => {
     windows()
     const { directory, manifest } = candidate()
     await ps('verify-package.ps1', [
@@ -158,16 +162,15 @@ async function smoke() {
       manifest.revision
     ])
     validateCandidate(directory, identity())
-    const file = verificationPath(directory)
-    mkdirSync(resolve(native, '.cache/verified-candidates'), { recursive: true })
-    writeFileSync(
-      file,
-      JSON.stringify({
-        candidateHash: hash(resolve(directory, 'candidate.json')),
-        verifiedAt: new Date().toISOString()
-      })
-    )
+    return { directory, candidateHash: hash(resolve(directory, 'candidate.json')) }
   })
+  if (!record) return
+  const { directory } = candidate()
+  if (directory !== proof.directory || hash(resolve(directory, 'candidate.json')) !== proof.candidateHash)
+    throw new Error('Candidate changed after packaged startup verification')
+  const file = verificationPath(directory)
+  mkdirSync(resolve(native, '.cache/verified-candidates'), { recursive: true })
+  writeFileSync(file, JSON.stringify({ candidateHash: proof.candidateHash, verifiedAt: new Date().toISOString() }))
 }
 async function pack() {
   windows()

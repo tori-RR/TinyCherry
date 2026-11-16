@@ -6,6 +6,8 @@ Development uses an isolated project-local profile and an owned loopback Vite se
 
 Checks are selected by the changed paths. Documentation does not start Go, Rust or a WebView. Cross-process contracts and build inputs select native contracts and real packaged startup. Ordinary Go race checks run once; `verify --stress` requests ten iterations.
 
+Verification checks packaged startup immediately after building, then runs the selected tests and contracts. It records the exact candidate's verification stamp only after those checks pass. Startup runs once, and packaging archives the same unchanged candidate.
+
 GitHub Actions runs only when started manually. `Desktop Checks (Manual)` accepts an optional base commit/ref; leaving it blank selects complete checks. `Windows Desktop Candidate` always verifies and packages a complete candidate. Pushes, pull requests and schedules do not start either workflow.
 
 `pnpm validation:plan --base <ref>` writes `.cache/validation/plan.json`; omit the base to select complete checks. Run it with `pnpm verify --plan-file .cache/validation/plan.json` (or `pnpm check --plan-file ...` for static checks). CI uploads only this plan file and downloads it in the dependent job. Job outputs contain three boolean flags; CI never passes path lists or reasons through outputs, environment variables or command-line JSON. Invalid/missing plan files fail instead of silently skipping verification.

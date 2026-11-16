@@ -21,6 +21,7 @@ $EvoPreviousProfile = $env:TINYCHERRY_EVOSTACK_DATA_DIR
 $EvoPreviousDebug = $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
 $EvoPreviousWebViewProfile = $env:WEBVIEW2_USER_DATA_FOLDER
 $EvoPreviousSmokeToken = $env:TINYCHERRY_EVOSTACK_SMOKE_TOKEN
+$EvoPreviousSmokePort = $env:TINYCHERRY_EVOSTACK_SMOKE_PORT
 $EvoSmoke = Join-Path $PSScriptRoot ('.cache\package-smoke-' + [Guid]::NewGuid().ToString('N'))
 $EvoToken = [Guid]::NewGuid().ToString('N')
 $EvoPortProbe = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
@@ -31,8 +32,10 @@ $EvoHost = $null
 try {
   $env:TINYCHERRY_EVOSTACK_DATA_DIR = $EvoSmoke
   $env:TINYCHERRY_EVOSTACK_SMOKE_TOKEN = $EvoToken
+  $env:TINYCHERRY_EVOSTACK_SMOKE_PORT = [string]$EvoPort
   $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $EvoSmoke 'webview'
-  $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$EvoPort --remote-debugging-address=127.0.0.1 --disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows --disable-features=CalculateNativeWinOcclusion"
+  # The host configures the validated port through Tauri's environment options.
+  $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--disable-background-timer-throttling'
   $EvoHost = Start-Process -FilePath (Join-Path $EvoDirectory 'TinyCherry-EvoStack.exe') -WorkingDirectory $EvoDirectory -WindowStyle Hidden -PassThru
   $EvoDeadline = (Get-Date).AddSeconds(20)
   do {
@@ -65,7 +68,16 @@ try {
     if ($EvoBrowser) { break }
     Start-Sleep -Milliseconds 100
   } while ((Get-Date) -lt $EvoDeadline)
-  if (-not $EvoBrowser) { throw 'The owned smoke CDP listener did not become ready' }
+  if (-not $EvoBrowser) {
+    $EvoProfileMarker = [IO.Path]::GetFileName($EvoSmoke)
+    $EvoBrowserDiagnostics = @(Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe' OR Name='msedge.exe'" | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($EvoProfileMarker) } | Select-Object -First 8 | ForEach-Object {
+      $EvoRuntimeVersion = $null
+      try { $EvoRuntimeVersion = (Get-Item -LiteralPath $_.ExecutablePath).VersionInfo.FileVersion } catch { }
+      [ordered]@{pid=$_.ProcessId;parent=$_.ParentProcessId;runtime=$EvoRuntimeVersion;hasRequestedPort=($_.CommandLine -match ('(?:^|\s)--remote-debugging-port=' + $EvoPort + '(?:\s|$)'));debuggingDisabled=($_.CommandLine -match '--disable-features=\S*RemoteDebugging')}
+    })
+    Write-Output ('Synthetic WebView2 startup diagnostics: ' + (ConvertTo-Json -InputObject $EvoBrowserDiagnostics -Compress))
+    throw 'The owned smoke CDP listener did not become ready'
+  }
   & node (Join-Path $PSScriptRoot 'verify-renderer.mjs') $EvoPort $EvoSmoke $ExpectedRevision
   if ($LASTEXITCODE -ne 0) { throw 'Packaged React interaction failed' }
   if (-not $EvoHost.CloseMainWindow() -or -not $EvoHost.WaitForExit(15000)) { throw 'Host did not close gracefully' }
@@ -84,4 +96,5 @@ try {
   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = $EvoPreviousDebug
   $env:WEBVIEW2_USER_DATA_FOLDER = $EvoPreviousWebViewProfile
   $env:TINYCHERRY_EVOSTACK_SMOKE_TOKEN = $EvoPreviousSmokeToken
+  $env:TINYCHERRY_EVOSTACK_SMOKE_PORT = $EvoPreviousSmokePort
 }

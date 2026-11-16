@@ -4,6 +4,7 @@ mod computer_use;
 mod host;
 mod platform;
 mod rpc_writer;
+mod smoke;
 
 use host::{
     build_info, capture_stderr, request_timeout, trusted_origin, verify_backend_info, Diagnostics,
@@ -738,6 +739,16 @@ fn main() {
             if !data_dir.is_absolute() {
                 return Err("EvoStack data directory must be absolute".into());
             }
+            let smoke_arguments = smoke::browser_arguments(
+                std::env::var("TINYCHERRY_EVOSTACK_SMOKE_TOKEN")
+                    .ok()
+                    .as_deref(),
+                std::env::var("TINYCHERRY_EVOSTACK_SMOKE_PORT")
+                    .ok()
+                    .as_deref(),
+                std::env::var_os("TINYCHERRY_EVOSTACK_DATA_DIR").is_some(),
+            )
+            .map_err(std::io::Error::other)?;
             std::fs::create_dir_all(&data_dir)?;
             let backend = Arc::new(Backend::start(data_dir.clone())?);
             let info = backend
@@ -745,7 +756,7 @@ fn main() {
                 .map_err(std::io::Error::other)?;
             verify_backend_info(&info).map_err(std::io::Error::other)?;
             app.manage(backend);
-            let window = WebviewWindowBuilder::new(
+            let mut window_builder = WebviewWindowBuilder::new(
                 app,
                 "main",
                 frontend_url(),
@@ -755,8 +766,11 @@ fn main() {
             .min_inner_size(900.0, 600.0)
             .decorations(false)
             .data_directory(data_dir.join("webview"))
-            .on_navigation(trusted_origin)
-            .build()?;
+            .on_navigation(trusted_origin);
+            if let Some(arguments) = smoke_arguments {
+                window_builder = window_builder.additional_browser_args(&arguments);
+            }
+            let window = window_builder.build()?;
             let backend = app.state::<Arc<Backend>>().inner().clone();
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::ThemeChanged(theme) = event {
