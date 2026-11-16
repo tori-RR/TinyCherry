@@ -6,7 +6,7 @@ try {
   node scripts/desktop/candidate.mjs validate $DesktopSource
   if ($LASTEXITCODE -ne 0) { throw 'Candidate validation failed; packaging did not run' }
   # Use the Windows BCL directly, without optional PowerShell archive modules.
-  [void][System.Reflection.Assembly]::Load('System.IO.Compression')
+  [void][System.Reflection.Assembly]::Load('System.IO.Compression, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089')
   $DesktopSha = [System.Security.Cryptography.SHA256]::Create()
   function Get-DesktopBufferHash([byte[]]$Buffer) {
     return [BitConverter]::ToString($DesktopSha.ComputeHash($Buffer)).Replace('-', '').ToLowerInvariant()
