@@ -8,6 +8,7 @@ import { dev } from './dev.mjs'
 import { checkDocs } from './docs.mjs'
 import { prepareEnvironment } from './environment.mjs'
 import { checkExit } from './exit-gate.mjs'
+import { readPlanFile } from './plan-file.mjs'
 import { native, pnpm, root, run, stopAll, windows } from './process.mjs'
 import { checkWorkflows } from './workflow.mjs'
 
@@ -21,6 +22,7 @@ const {
     all: { type: 'boolean' },
     base: { type: 'string' },
     plan: { type: 'string' },
+    'plan-file': { type: 'string' },
     stress: { type: 'boolean' },
     project: { type: 'string', multiple: true },
     'expected-revision': { type: 'string' }
@@ -45,6 +47,8 @@ const candidate = () => {
   return { directory, manifest }
 }
 const selected = () => {
+  if (values.plan && values['plan-file']) throw new Error('Choose --plan-file or --plan, not both')
+  if (values['plan-file']) return readPlanFile(values['plan-file'])
   if (values.plan) return validatePlan(JSON.parse(values.plan))
   if (values.all) return createPlan([], 'Explicit complete verification')
   return createPlan(changedFiles(root, values.base ?? 'origin/main'))
@@ -87,6 +91,7 @@ async function runChecks(plan) {
             ? [
                 'src',
                 'scripts/desktop',
+                'scripts/validation',
                 'scripts/uiContract',
                 'build/renderer.config.ts',
                 'native/evostack',
@@ -118,7 +123,7 @@ async function runChecks(plan) {
         await batchedPnpm(
           ['exec', 'oxlint'],
           values.all || !files.length
-            ? ['src', 'build', 'scripts/desktop']
+            ? ['src', 'build', 'scripts/desktop', 'scripts/validation']
             : files.filter((file) => /\.[cm]?[jt]sx?$/.test(file))
         )
       if (task === 'types') await types()
@@ -201,7 +206,8 @@ try {
       await ps('test.ps1', ['-Task', task, ...(task === 'race' ? ['-Count', values.stress ? '10' : '1'] : [])])
     await ps('test.ps1', ['-Task', 'contracts'])
   } else if (mode === 'verify') {
-    const plan = values.plan || values.base ? selected() : createPlan([], 'Complete candidate verification')
+    const plan =
+      values.plan || values['plan-file'] || values.base ? selected() : createPlan([], 'Complete candidate verification')
     await runChecks(plan)
     if (plan.tasks.includes('build')) await pack()
   } else throw new Error('Use dev, build, start, package, check, test or verify')

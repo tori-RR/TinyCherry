@@ -23,6 +23,6 @@ Use the pinned Node and pnpm versions. All generated files, temporary data and c
 - `pnpm verify`: build once, run the current checks, validate contracts, test actual packaged startup and archive the same bytes. `--stress` opts into ten Go race iterations.
 - `pnpm package`: archive an already verified, unchanged candidate.
 
-CI has no schedule. `ci.yml` selects Windows checks by changed paths; `desktop-build.yml` is the manual complete candidate workflow. Unknown paths select full verification. Read [scripts/desktop/README.md](scripts/desktop/README.md) for lifecycle and candidate ownership.
+Both Windows workflows run only through `workflow_dispatch`; push, pull requests and schedules do not start CI. `ci.yml` selects checks using an optional comparison base; `desktop-build.yml` verifies a complete candidate. Plans travel as JSON files, with only boolean job outputs. Unknown paths select full verification. Read [scripts/desktop/README.md](scripts/desktop/README.md) for lifecycle and candidate ownership.
 
 Keep fixes focused, verify the changed behavior, and commit using Conventional Commits. Push only when requested. The root README contains the product introduction; private evaluation notes belong in an ignored local log.

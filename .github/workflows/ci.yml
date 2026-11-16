@@ -1,17 +1,16 @@
-name: Desktop CI
+name: Desktop Checks (Manual)
 on:
-  push:
-    branches: [main, evostack]
-  pull_request:
-    branches: [main, evostack]
   workflow_dispatch:
+    inputs:
+      base:
+        description: Base commit or ref (blank verifies everything)
+        type: string
+        required: false
 permissions:
   contents: read
 concurrency:
   group: desktop-ci-${{ github.workflow }}-${{ github.ref }}
-  # PR comparisons cover the entire PR. Push jobs finish so a newer docs-only
-  # commit cannot cancel the only verification of an earlier source change.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 defaults:
   run:
     shell: pwsh
@@ -19,7 +18,6 @@ jobs:
   plan:
     runs-on: windows-2025
     outputs:
-      plan: ${{ steps.plan.outputs.plan }}
       desktop: ${{ steps.plan.outputs.desktop }}
     steps:
       - uses: actions/checkout@v7
@@ -31,19 +29,26 @@ jobs:
       - id: plan
         name: Select current product checks
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE: ${{ inputs.base }}
         run: |
           if ($env:BASE -and $env:BASE -notmatch '^0+$') { node scripts/desktop/plan.mjs --base $env:BASE }
           else { node scripts/desktop/plan.mjs --all }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Check changed documentation
         if: steps.plan.outputs.desktop == 'false'
-        env:
-          PLAN: ${{ steps.plan.outputs.plan }}
         run: |
-          $files = ($env:PLAN | ConvertFrom-Json).files
-          node scripts/desktop/docs.mjs @files
+          node scripts/desktop/docs.mjs --plan-file .cache/validation/plan.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload selected plan
+        if: steps.plan.outputs.desktop == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-validation-plan-${{ github.sha }}
+          path: .cache/validation/plan.json
+          include-hidden-files: true
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 1
   desktop:
     needs: plan
     if: needs.plan.outputs.desktop == 'true'
@@ -58,6 +63,11 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
+      - name: Download selected plan
+        uses: actions/download-artifact@v8
+        with:
+          name: desktop-validation-plan-${{ github.sha }}
+          path: .cache/validation
       - uses: pnpm/action-setup@v5
       - uses: actions/setup-go@v7
         with:
@@ -96,9 +106,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run selected verification once
         env:
-          PLAN: ${{ needs.plan.outputs.plan }}
           EXPECTED_REVISION: ${{ github.sha }}
-        run: pnpm verify --plan $env:PLAN --expected-revision $env:EXPECTED_REVISION
+        run: pnpm verify --plan-file .cache/validation/plan.json --expected-revision $env:EXPECTED_REVISION
       - uses: actions/upload-artifact@v7
         if: success() && hashFiles('native/evostack/dist/*.zip') != ''
         with:

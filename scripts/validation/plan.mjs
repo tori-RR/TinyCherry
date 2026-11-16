@@ -56,7 +56,7 @@ export function createPlan(files, fullReason) {
       add(['exit', 'workflow', 'ts'], file, ['tooling'])
     } else if (file.startsWith('scripts/desktop/')) {
       full(`Build and lifecycle tooling: ${file}`)
-    } else if (/^packages\//.test(file)) {
+    } else if (file.startsWith('packages/')) {
       add(
         ['exit', 'lint', 'types', 'ts'],
         file,
@@ -82,6 +82,8 @@ export function createPlan(files, fullReason) {
 export function validatePlan(plan) {
   if (
     plan?.target !== 'tauri' ||
+    !Array.isArray(plan.files) ||
+    plan.files.some((file) => typeof file !== 'string' || !file || file.includes('\0')) ||
     !Array.isArray(plan.tasks) ||
     !Array.isArray(plan.projects) ||
     plan.tasks.some((task) => !allTasks.includes(task)) ||

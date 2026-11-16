@@ -87,7 +87,7 @@ Verify builds once, runs the current TypeScript/Go/Rust tests, private helper pr
 
 All build outputs, temporary files and Go/Cargo/pnpm caches stay inside the project. The script checks the installed Evergreen WebView2 Runtime using Microsoft's [documented registry locations](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution#detect-if-a-webview2-runtime-is-already-installed); it does not install a runtime. The pinned Windows helper package supplies the native executable and license notices, without its JavaScript SDK or a Node runtime in the product.
 
-The default Go race check runs once. `pnpm verify --stress` opts into ten iterations. CI has no schedule: one Windows workflow selects current checks by changed paths, and a separate manual Windows workflow verifies complete candidates. macOS/Linux are pending platform ports and are not in the CI matrix.
+The default Go race check runs once. `pnpm verify --stress` opts into ten iterations. Both Windows workflows are manual-only: one selects checks using an optional comparison base, and the other verifies complete candidates. macOS/Linux are pending platform ports and are not in the CI matrix.
 
 ## Verification
 

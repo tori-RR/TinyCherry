@@ -12,7 +12,7 @@
     "check:staged": "node scripts/desktop/staged.mjs",
     "dev": "node scripts/desktop/cli.mjs dev",
     "format": "oxfmt --write --no-error-on-unmatched-pattern",
-    "lint": "oxlint src build scripts/desktop",
+    "lint": "oxlint src build scripts/desktop scripts/validation",
     "package": "node scripts/desktop/cli.mjs package",
     "start": "node scripts/desktop/cli.mjs start",
     "test": "node scripts/desktop/cli.mjs test",

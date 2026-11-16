@@ -1,9 +1,11 @@
-import { appendFileSync } from 'node:fs'
 import { parseArgs } from 'node:util'
 
 import { changedFiles, createPlan } from '../validation/plan.mjs'
+import { defaultPlanFile, writePlanFile, writePlanOutputs } from './plan-file.mjs'
 
-const { values } = parseArgs({ options: { base: { type: 'string' }, all: { type: 'boolean' } } })
+const { values } = parseArgs({
+  options: { base: { type: 'string' }, all: { type: 'boolean' }, output: { type: 'string', default: defaultPlanFile } }
+})
 let plan
 try {
   plan =
@@ -13,9 +15,8 @@ try {
 } catch {
   plan = createPlan([], 'Comparison history unavailable')
 }
-if (process.env.GITHUB_OUTPUT)
-  appendFileSync(
-    process.env.GITHUB_OUTPUT,
-    `plan=${JSON.stringify(plan)}\ndesktop=${plan.desktop}\ngo=${plan.go}\nrust=${plan.rust}\n`
-  )
-process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`)
+writePlanFile(values.output, plan)
+if (process.env.GITHUB_OUTPUT) writePlanOutputs(process.env.GITHUB_OUTPUT, plan)
+process.stdout.write(
+  `${JSON.stringify({ target: plan.target, changedFiles: plan.files.length, tasks: plan.tasks, projects: plan.projects, file: values.output })}\n`
+)

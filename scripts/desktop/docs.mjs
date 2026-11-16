@@ -1,5 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
+import { parseArgs } from 'node:util'
+
+import { readPlanFile } from './plan-file.mjs'
 
 /** Light link and whitespace checks on changed documentation only. */
 export function checkDocs(root, files) {
@@ -17,4 +20,7 @@ export function checkDocs(root, files) {
   }
 }
 
-if (process.argv[1]?.endsWith('docs.mjs')) checkDocs(process.cwd(), process.argv.slice(2))
+if (process.argv[1]?.endsWith('docs.mjs')) {
+  const { values, positionals } = parseArgs({ allowPositionals: true, options: { 'plan-file': { type: 'string' } } })
+  checkDocs(process.cwd(), values['plan-file'] ? readPlanFile(values['plan-file']).files : positionals)
+}
