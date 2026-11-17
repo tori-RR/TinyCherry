@@ -15,8 +15,10 @@ vi.unmock('@data/DataApiService')
 vi.unmock('@data/hooks/useDataApi')
 
 const executable = process.env.EVOSTACK_BACKEND_EXECUTABLE
+if (!executable)
+  throw new Error('EVOSTACK_BACKEND_EXECUTABLE is required; run native/evostack/test.ps1 -Task contracts')
 
-describe.runIf(Boolean(executable))('native mutation delivery contract', () => {
+describe('native mutation delivery contract', () => {
   let child: ChildProcessWithoutNullStreams
   let profile: string
   let nextId = 0

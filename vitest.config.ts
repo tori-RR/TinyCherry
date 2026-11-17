@@ -12,16 +12,20 @@ process.env.TZ = 'UTC'
 process.stdout.setMaxListeners(64)
 process.stderr.setMaxListeners(64)
 const aliases = rendererAliases
+const excludes = ['**/node_modules/**', '**/dist/**', '**/.cache/**']
+const nativeMutationFile = 'src/renderer/data/__tests__/DataApiService.nativeMutation.test.ts'
+const rendererSetup = ['@vitest/web-worker', 'tests/renderer.setup.ts']
 const project = (
   name: string,
   include: string[],
   environment: 'node' | 'jsdom' = 'node',
-  setupFiles: string[] = []
+  setupFiles: string[] = [],
+  exclude: string[] = []
 ) => ({
   extends: true as const,
   resolve: { alias: aliases },
   plugins: environment === 'jsdom' ? [react()] : [],
-  test: { name, include, environment, setupFiles }
+  test: { name, include, environment, setupFiles, exclude: [...excludes, ...exclude] }
 })
 export default defineConfig({
   define: { ...rendererDefines(pkg.version), __DESKTOP_DEV_ORIGIN__: 'null' },
@@ -32,12 +36,9 @@ export default defineConfig({
     pool: 'forks',
     maxWorkers: process.env.CI ? '50%' : 4,
     testTimeout: 20000,
-    exclude: ['**/node_modules/**', '**/dist/**', '**/.cache/**'],
+    exclude: excludes,
     projects: [
-      project('renderer', ['src/renderer/**/*.{test,spec}.{ts,tsx}'], 'jsdom', [
-        '@vitest/web-worker',
-        'tests/renderer.setup.ts'
-      ]),
+      project('renderer', ['src/renderer/**/*.{test,spec}.{ts,tsx}'], 'jsdom', rendererSetup, [nativeMutationFile]),
       project('desktop', ['src/platform/**/*.{test,spec}.{ts,tsx}'], 'jsdom', ['tests/renderer.setup.ts']),
       project('shared', ['src/shared/**/*.{test,spec}.{ts,tsx}']),
       project('ui', ['packages/ui/src/**/*.{test,spec}.{ts,tsx}']),
@@ -65,7 +66,11 @@ export default defineConfig({
       project('provider-registry', ['packages/provider-registry/**/*.{test,spec}.{ts,tsx}']),
       project('web-search', ['packages/web-search/src/**/__tests__/**/*.test.ts']),
       project('remote-protocol', ['packages/remote-protocol/tests/**/*.{test,spec}.{ts,tsx}']),
-      project('tooling', ['scripts/uiContract/**/*.{test,spec}.{ts,tsx}'])
+      project('tooling', ['scripts/uiContract/**/*.{test,spec}.{ts,tsx}']),
+      // The native contract phase supplies its staged Go executable explicitly.
+      ...(process.env.EVOSTACK_BACKEND_EXECUTABLE
+        ? [project('native-contract', [nativeMutationFile], 'jsdom', rendererSetup)]
+        : [])
     ]
   }
 })

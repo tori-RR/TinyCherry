@@ -6,6 +6,8 @@ Development uses an isolated project-local profile and an owned loopback Vite se
 
 Checks are selected by the changed paths. Documentation does not start Go, Rust or a WebView. Cross-process contracts and build inputs select native contracts and real packaged startup. Ordinary Go race checks run once; `verify --stress` requests ten iterations.
 
+Ordinary TypeScript projects exclude the native mutation integration suite. The contract phase supplies the staged Go executable and runs that suite through the separate `native-contract` project. A missing executable is an error in that suite; it is not reported as skipped unit tests.
+
 Verification checks packaged startup immediately after building, then runs the selected tests and contracts. It records the exact candidate's verification stamp only after those checks pass. Startup runs once, and packaging archives the same unchanged candidate.
 
 GitHub Actions runs only when started manually. `Desktop Checks (Manual)` accepts an optional base commit/ref; leaving it blank selects complete checks. `Windows Desktop Candidate` always verifies and packages a complete candidate. Pushes, pull requests and schedules do not start either workflow.

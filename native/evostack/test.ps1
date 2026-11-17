@@ -48,7 +48,7 @@ try {
       try {
         Invoke-TestStep { pnpm exec tsx --tsconfig tsconfig.web.json native/evostack/check-contract.ts }
         Invoke-TestStep { pnpm exec tsx --tsconfig tsconfig.web.json native/evostack/check-computer-contract.ts }
-        Invoke-TestStep { pnpm exec vitest run --project renderer src/renderer/data/__tests__/DataApiService.nativeMutation.test.ts }
+        Invoke-TestStep { pnpm exec vitest run --project native-contract }
       } finally { Remove-Item -LiteralPath Env:\EVOSTACK_BACKEND_EXECUTABLE -ErrorAction SilentlyContinue }
     }
   }

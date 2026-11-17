@@ -91,7 +91,7 @@ The default Go race check runs once. `pnpm verify --stress` opts into ten iterat
 
 ## Verification
 
-Default packaging explicitly runs the pinned helper's private-session permission/capability preflight and owned-process descendant cleanup tests. These checks do not discover applications or send desktop input. The original renderer/DataApi-to-Go mutation delivery tests also run against that staged backend executable.
+Candidate verification explicitly runs the pinned helper's private-session permission/capability preflight and owned-process descendant cleanup tests. These checks do not discover applications or send desktop input. The original renderer/DataApi-to-Go mutation delivery tests run in the separate `native-contract` project against that staged backend executable. Ordinary TypeScript projects exclude this integration suite; its dedicated entry requires the backend instead of skipping its cases.
 
 ```powershell
 . ./native/evostack/prepare-env.ps1
