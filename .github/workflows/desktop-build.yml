@@ -55,8 +55,8 @@ jobs:
             native/evostack/.cache/cargo/registry
             native/evostack/.cache/cargo/git
             native/evostack/.cache/target
-          key: desktop-windows-${{ hashFiles('pnpm-lock.yaml', 'native/evostack/backend/go.sum', 'native/evostack/src-tauri/Cargo.lock') }}
-          restore-keys: desktop-windows-
+          key: desktop-windows-${{ runner.arch }}-rust1.98.0-${{ hashFiles('.node-version', 'native/evostack/backend/go.mod') }}-${{ hashFiles('pnpm-lock.yaml', 'native/evostack/backend/go.sum', 'native/evostack/src-tauri/Cargo.lock') }}
+          restore-keys: desktop-windows-${{ runner.arch }}-rust1.98.0-${{ hashFiles('.node-version', 'native/evostack/backend/go.mod') }}-
       - name: Install pinned dependencies and workflow validator
         run: |
           pnpm install --frozen-lockfile

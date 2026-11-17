@@ -40,7 +40,13 @@ await test('every shipped workflow is manual-only and selected checks transfer o
     assert(!/--plan\s/.test(JSON.stringify(workflow)), 'Plan content cannot enter native command arguments')
   }
   const workflow = parse(readFileSync(resolve(directory, 'ci.yml'), 'utf8'))
-  assert.deepEqual(Object.keys(workflow.jobs.plan.outputs), ['desktop'])
+  assert.deepEqual(Object.keys(workflow.jobs.plan.outputs), ['desktop', 'go', 'rust'])
+  const steps = workflow.jobs.desktop.steps
+  assert.equal(steps.find((step) => step.uses?.startsWith('actions/setup-go@')).if, "needs.plan.outputs.go == 'true'")
+  assert.equal(
+    steps.find((step) => step.name === 'Prepare Rust toolchain when selected').if,
+    "needs.plan.outputs.rust == 'true'"
+  )
   const upload = workflow.jobs.plan.steps.find((step) => step.uses?.startsWith('actions/upload-artifact@'))
   const download = workflow.jobs.desktop.steps.find((step) => step.uses?.startsWith('actions/download-artifact@'))
   assert.equal(upload.with.path, defaultPlanFile, 'Only the generated plan may be uploaded')

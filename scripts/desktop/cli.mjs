@@ -4,6 +4,7 @@ import { parseArgs } from 'node:util'
 
 import { changedFiles, createPlan, testProjects, validatePlan } from '../validation/plan.mjs'
 import { checkIdentities, currentCandidate, hash, sourceIdentity, validateCandidate } from './candidate.mjs'
+import { runSelectedChecks } from './checks.mjs'
 import { dev } from './dev.mjs'
 import { checkDocs } from './docs.mjs'
 import { prepareEnvironment } from './environment.mjs'
@@ -71,20 +72,13 @@ async function tsTests(projects) {
   await run(process.execPath, ['--test', 'scripts/desktop/tests/*.test.mjs'])
 }
 async function runChecks(plan) {
-  const tasks = new Set(plan.tasks)
-  // Cheap static failures stop before compilation. The one build also supplies
-  // the frontend required by Rust's generate_context! tests and owns type checks.
-  let needsBuild = tasks.has('build')
   const files = plan.files.filter((file) => existsSync(resolve(root, file)))
   const complete = !plan.files.length && plan.tasks.length > 2
-  for (const task of plan.tasks) {
-    if (task === 'build' || task === 'contracts' || task === 'smoke') continue
-    if (needsBuild && ['types', 'ts', 'go', 'vet', 'race', 'rust'].includes(task)) {
-      await build()
-      needsBuild = false
-      if (tasks.has('smoke')) await smoke(false)
-    }
-    await once(task, async () => {
+  await runSelectedChecks(plan, {
+    once,
+    build,
+    smoke,
+    task: async (task) => {
       if (task === 'format')
         await batchedPnpm(
           ['exec', 'oxfmt', '--check', '--no-error-on-unmatched-pattern'],
@@ -133,18 +127,12 @@ async function runChecks(plan) {
         windows()
         await ps('test.ps1', ['-Task', task, ...(task === 'race' ? ['-Count', values.stress ? '10' : '1'] : [])])
       }
-    })
-  }
-  if (needsBuild) {
-    await build()
-    if (tasks.has('smoke')) await smoke(false)
-  }
-  if (tasks.has('contracts'))
-    await once('contracts', async () => {
-      const args = tasks.has('build') ? ['-Directory', candidate().directory] : []
+    },
+    contracts: async (built) => {
+      const args = built ? ['-Directory', candidate().directory] : []
       await ps('test.ps1', ['-Task', 'contracts', ...args])
-    })
-  if (tasks.has('smoke')) await smoke()
+    }
+  })
 }
 function verificationPath(directory) {
   return resolve(native, '.cache/verified-candidates', `${hash(resolve(directory, 'candidate.json'))}.json`)

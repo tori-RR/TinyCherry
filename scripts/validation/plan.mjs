@@ -27,6 +27,11 @@ const allTasks = [
   'contracts',
   'smoke'
 ]
+const flags = (tasks) => ({
+  desktop: tasks.some((task) => !['format', 'docs'].includes(task)),
+  go: tasks.some((task) => ['go', 'vet', 'race', 'build', 'contracts', 'workflow'].includes(task)),
+  rust: tasks.some((task) => ['rust', 'build', 'smoke'].includes(task))
+})
 
 /** Selection is by current product boundary, never by a retired desktop target. */
 export function createPlan(files, fullReason) {
@@ -40,12 +45,18 @@ export function createPlan(files, fullReason) {
   if (fullReason) full(fullReason)
   for (const file of [...new Set(files)].sort()) {
     add(['format'], file)
-    if (/\.(?:md|txt)$/.test(file) || file.startsWith('docs/')) {
+    if (
+      file.startsWith('resources/skills/') ||
+      file.startsWith('resources/code-cli-skills/') ||
+      file === 'packages/provider-registry/data/providers.json'
+    ) {
+      add(['exit', 'ts', 'go', 'vet', 'race', 'build', 'contracts', 'smoke'], file, ['desktop', 'provider-registry'])
+    } else if (/\.(?:md|txt)$/.test(file) || file.startsWith('docs/')) {
       add(['docs'], file)
     } else if (/^native\/evostack\/backend\/.*\.go$/.test(file)) {
-      add(['go', 'vet', 'race', 'build', 'contracts', 'smoke'], file, ['desktop'])
+      add(['ts', 'go', 'vet', 'race', 'build', 'contracts', 'smoke'], file, ['desktop'])
     } else if (/^native\/evostack\/src-tauri\/src\/.*\.rs$/.test(file)) {
-      add(['rust', 'build', 'contracts', 'smoke'], file, ['desktop'])
+      add(['ts', 'rust', 'build', 'contracts', 'smoke'], file, ['desktop'])
     } else if (file.startsWith('src/platform/') || file.startsWith('src/shared/')) {
       full(`Cross-process contract: ${file}`)
     } else if (/^src\/renderer\/(?:ipc|data|windows\/evostack)\//.test(file)) {
@@ -72,9 +83,7 @@ export function createPlan(files, fullReason) {
     files: [...new Set(files)].sort(),
     tasks,
     projects: testProjects.filter((project) => projects.has(project)),
-    desktop: tasks.some((task) => !['format', 'docs'].includes(task)),
-    go: tasks.some((task) => ['go', 'vet', 'race', 'build', 'contracts'].includes(task)),
-    rust: tasks.some((task) => ['rust', 'build', 'smoke'].includes(task)),
+    ...flags(tasks),
     reasons: Object.fromEntries(tasks.map((task) => [task, [...new Set(reasons[task])]]))
   }
 }
@@ -87,7 +96,9 @@ export function validatePlan(plan) {
     !Array.isArray(plan.tasks) ||
     !Array.isArray(plan.projects) ||
     plan.tasks.some((task) => !allTasks.includes(task)) ||
-    plan.projects.some((project) => !testProjects.includes(project))
+    plan.projects.some((project) => !testProjects.includes(project)) ||
+    (plan.projects.length > 0 && !plan.tasks.includes('ts')) ||
+    Object.entries(flags(plan.tasks)).some(([key, value]) => plan[key] !== value)
   )
     throw new Error('Invalid Tauri validation plan')
   return plan
