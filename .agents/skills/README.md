@@ -24,6 +24,8 @@ For each new public skill, run:
 
 ```bash
 pnpm exec tsx scripts/skills-sync.ts
+# Inspect the dry run, then explicitly apply missing links and ignore lists:
+pnpm exec tsx scripts/skills-sync.ts --apply
 ```
 
 `skills:sync` will create/update `.claude/skills/<skill-name>` as a symlink pointing to `../../.agents/skills/<skill-name>`.

@@ -24,6 +24,8 @@
 
 ```bash
 pnpm exec tsx scripts/skills-sync.ts
+# 默认仅预览；确认后才显式创建缺少的链接并更新忽略清单：
+pnpm exec tsx scripts/skills-sync.ts --apply
 ```
 
 `skills:sync` 会自动创建/更新 `.claude/skills/<skill-name>` 为指向 `../../.agents/skills/<skill-name>` 的符号链接。

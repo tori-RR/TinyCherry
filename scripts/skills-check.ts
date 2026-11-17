@@ -29,7 +29,7 @@ function checkGitignore(filePath: string, expected: string, displayPath: string,
     return
   }
   if (actual !== expected) {
-    errors.push(`${displayPath} is out of date (run pnpm skills:sync)`)
+    errors.push(`${displayPath} is out of date (review pnpm exec tsx scripts/skills-sync.ts before using --apply)`)
   }
 }
 
@@ -45,13 +45,15 @@ function checkClaudeSkillSymlink(skillName: string, errors: string[]) {
   try {
     stat = fs.lstatSync(claudeSkillDir)
   } catch {
-    errors.push(`.claude/skills/${skillName} is missing (run pnpm skills:sync)`)
+    errors.push(
+      `.claude/skills/${skillName} is missing (review pnpm exec tsx scripts/skills-sync.ts before using --apply)`
+    )
     return
   }
 
   if (!stat.isSymbolicLink()) {
     errors.push(
-      `.claude/skills/${skillName} must be a symlink, not a ${stat.isDirectory() ? 'directory' : 'file'} (run pnpm skills:sync)`
+      `.claude/skills/${skillName} must be a symlink, not a ${stat.isDirectory() ? 'directory' : 'file'} (review pnpm exec tsx scripts/skills-sync.ts before using --apply)`
     )
     return
   }
