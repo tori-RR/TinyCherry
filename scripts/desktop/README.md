@@ -6,6 +6,8 @@ Candidate promotion atomically replaces `dist/current.json` only after candidate
 
 Development uses an isolated project-local profile and an owned loopback Vite server. Production retains the portable profile next to the executable. Tests use synthetic, disposable profiles. Neither command imports an old desktop database.
 
+Development propagates the first generation, compiler, Vite or host failure after owned cleanup. Cleanup errors are reported alongside that failure. Explicit cancellation stops pending stages without launching another host; cancellation alone is not an operational error. The dev lifecycle tests use synthetic process adapters with real local readiness and file watching; they do not certify a live GUI restart or console Ctrl+C.
+
 Checks are selected by the changed paths. Documentation does not start Go, Rust or a WebView. Cross-process contracts and build inputs select native contracts and real packaged startup. Ordinary Go race checks run once; `verify --stress` requests ten iterations.
 
 Ordinary TypeScript projects exclude the native mutation integration suite. The contract phase supplies the staged Go executable and runs that suite through the separate `native-contract` project. A missing executable is an error in that suite; it is not reported as skipped unit tests.

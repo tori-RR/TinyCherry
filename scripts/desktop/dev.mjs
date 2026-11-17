@@ -35,28 +35,39 @@ export async function dev() {
     EVOSTACK_APP_VERSION: identity.version,
     EVOSTACK_BUILD_REVISION: identity.revision
   }
-  let stopping = false
+  let stopping = false,
+    failure,
+    cleanupFailure,
+    notifyStop
+  const stopRequested = new Promise((done) => {
+    notifyStop = done
+  })
+  const waitStage = (completion) => Promise.race([completion, stopRequested])
   const compileGo = async () => {
     if (stopping) return false
-    await pnpm(['exec', 'tsx', '--tsconfig', 'tsconfig.web.json', 'native/evostack/generate-contract.ts'], { env })
-      .completion
+    await waitStage(
+      pnpm(['exec', 'tsx', '--tsconfig', 'tsconfig.web.json', 'native/evostack/generate-contract.ts'], { env })
+        .completion
+    )
     if (stopping) return false
-    await run(
-      'powershell.exe',
-      [
-        '-NoProfile',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-File',
-        resolve(native, 'dev-backend.ps1'),
-        '-Directory',
-        directory,
-        '-Version',
-        identity.version,
-        '-Revision',
-        identity.revision
-      ],
-      { env }
+    await waitStage(
+      run(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          resolve(native, 'dev-backend.ps1'),
+          '-Directory',
+          directory,
+          '-Version',
+          identity.version,
+          '-Revision',
+          identity.revision
+        ],
+        { env }
+      )
     )
     if (stopping) return false
     copyFileSync(
@@ -74,40 +85,42 @@ export async function dev() {
     if (!stopPromise) {
       stopping = true
       clearTimeout(restartTimer)
-      watcher?.close()
-      stopPromise = stopAll()
+      notifyStop()
+      stopPromise = Promise.allSettled([
+        Promise.resolve().then(() => watcher?.close()),
+        Promise.resolve().then(stopAll)
+      ]).then((results) => {
+        const errors = results.filter((result) => result.status === 'rejected').map((result) => result.reason)
+        if (errors.length === 1) throw errors[0]
+        if (errors.length) throw new AggregateError(errors, 'Owned development cleanup failed')
+      })
     }
     return stopPromise
   }
   const interrupt = () => {
-    void stop().catch((error) => {
-      console.error(error.message)
-      process.exitCode = 1
-    })
+    // The final collector awaits this same promise and reports cleanup failures.
+    void stop().catch(() => {})
+  }
+  const fail = (error) => {
+    failure ??= error
+    interrupt()
   }
   process.once('SIGINT', interrupt)
   process.once('SIGTERM', interrupt)
-  try {
+  const runSession = async () => {
     if (!(await compileGo())) return
     const vite = pnpm(['exec', 'vite', '--config', 'native/evostack/vite.config.mts'], { env })
-    let viteError
     // A server failure after readiness must also close our host and sidecar.
     void vite.completion
       .then(
         () => {
-          if (!stopping) viteError = new Error('Owned Vite exited during development')
+          if (!stopping) fail(new Error('Owned Vite exited during development'))
         },
         (error) => {
-          if (!stopping) viteError = error
+          if (!stopping) fail(error)
         }
       )
-      .then(() => {
-        if (viteError) return stop()
-      })
-      .catch((error) => {
-        viteError = error
-        process.exitCode = 1
-      })
+      .catch(fail)
     const deadline = Date.now() + 30_000
     while (true) {
       if (stopping) return
@@ -128,23 +141,22 @@ export async function dev() {
     tauri = launch()
     let restart = Promise.resolve()
     watcher = watch(resolve(native, 'backend'), { recursive: true }, (_, name) => {
-      if (!name || /^(generated|\.cache)[/\\]/.test(name) || !/\.(go|mod|sum)$/.test(name)) return
+      if (stopping || !name || /^(generated|\.cache)[/\\]/.test(name) || !/\.(go|mod|sum)$/.test(name)) return
       clearTimeout(restartTimer)
       restartTimer = setTimeout(() => {
         restart = restart
           .then(async () => {
             if (stopping) return
             restarting = true
-            console.log('Go source changed: closing the owned dev host before rebuilding')
-            await stopChild(tauri)
-            await compileGo()
-            if (!stopping) tauri = launch()
-            restarting = false
+            try {
+              console.log('Go source changed: closing the owned dev host before rebuilding')
+              await waitStage(stopChild(tauri))
+              if (!stopping && (await compileGo())) tauri = launch()
+            } finally {
+              restarting = false
+            }
           })
-          .catch((error) => {
-            console.error(error.message)
-            interrupt()
-          })
+          .catch(fail)
       }, 350)
     })
     console.log(
@@ -152,18 +164,30 @@ export async function dev() {
     )
     while (!stopping) {
       const current = tauri
-      await current.completion.catch((error) => {
+      await waitStage(current.completion).catch((error) => {
         if (!stopping && !restarting && current === tauri) throw error
       })
       await restart
       if (current === tauri) break
     }
-    if (viteError) throw viteError
+  }
+  try {
+    await runSession()
+  } catch (error) {
+    failure ??= error
   } finally {
-    await stop()
+    try {
+      await stop()
+    } catch (error) {
+      cleanupFailure = error
+    }
     process.removeListener('SIGINT', interrupt)
     process.removeListener('SIGTERM', interrupt)
   }
+  if (failure !== undefined && cleanupFailure !== undefined)
+    throw new AggregateError([failure, cleanupFailure], 'Development failed and owned cleanup also failed')
+  if (failure !== undefined) throw failure
+  if (cleanupFailure !== undefined) throw cleanupFailure
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) await dev()

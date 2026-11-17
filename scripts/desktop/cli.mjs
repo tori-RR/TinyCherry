@@ -204,7 +204,11 @@ try {
     if (plan.tasks.includes('build')) await pack()
   } else throw new Error('Use dev, build, start, package, check, test or verify')
 } catch (error) {
-  console.error(error instanceof Error ? error.message : error)
+  const report = (cause) => {
+    console.error(cause instanceof Error ? cause.message : cause)
+    if (cause instanceof AggregateError) for (const nested of cause.errors) report(nested)
+  }
+  report(error)
   process.exitCode = 1
 } finally {
   await stopAll()
