@@ -1,6 +1,16 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, lstatSync, readFileSync, realpathSync, readdirSync, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import {
+  existsSync,
+  lstatSync,
+  readFileSync,
+  realpathSync,
+  readdirSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync
+} from 'node:fs'
 import { isAbsolute, relative, resolve } from 'node:path'
 
 import { root, native } from './process.mjs'
@@ -112,7 +122,12 @@ export function validateCandidate(directory, expected) {
 export function checkIdentities(directory, manifest) {
   for (const name of ['TinyCherry-EvoStack.exe', 'tinycherry-evostack-backend.exe']) {
     const info = JSON.parse(
-      execFileSync(resolve(directory, name), ['--evostack-build-info'], { encoding: 'utf8', windowsHide: true })
+      execFileSync(resolve(directory, name), ['--evostack-build-info'], {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 10_000,
+        maxBuffer: 64 * 1024
+      })
     )
     if (['version', 'revision', 'protocol'].some((key) => info[key] !== manifest[key]))
       throw new Error(`Candidate version/protocol mismatch: ${name}`)
@@ -133,6 +148,29 @@ export function currentCandidate(distribution = resolve(native, 'dist')) {
   const path = relative(base, directory)
   if (isAbsolute(path) || path.startsWith('..')) throw new Error('Candidate pointer escapes dist/candidates')
   return directory
+}
+
+export function loadCandidate({
+  requireCurrentSource = true,
+  distribution = resolve(native, 'dist'),
+  sourceDirectory = root
+} = {}) {
+  const directory = currentCandidate(distribution)
+  const manifest = validateCandidate(directory, requireCurrentSource ? sourceIdentity(sourceDirectory) : undefined)
+  return { directory, manifest }
+}
+
+export function promoteCandidate(distribution, name, replace = renameSync) {
+  if (!/^[a-zA-Z0-9-]+$/.test(name)) throw new Error('Invalid candidate pointer')
+  validateCandidate(resolve(distribution, 'candidates', name))
+  const pointer = resolve(distribution, 'current.json')
+  const pending = resolve(distribution, `current-${randomUUID()}.tmp`)
+  try {
+    writeFileSync(pending, `${JSON.stringify({ directory: name })}\n`, { flag: 'wx' })
+    replace(pending, pointer)
+  } finally {
+    if (existsSync(pending)) unlinkSync(pending)
+  }
 }
 
 export function writeManifest(directory, expectedSourceHash) {
@@ -158,6 +196,7 @@ if (process.argv[1]?.endsWith('candidate.mjs')) {
     const directory = resolve(process.argv[3])
     if (process.argv[2] === 'hashes') writeBinaryHashes(directory)
     else if (process.argv[2] === 'write') writeManifest(directory, process.argv[4])
+    else if (process.argv[2] === 'promote') promoteCandidate(directory, process.argv[4])
     else {
       const manifest = validateCandidate(directory)
       checkIdentities(directory, manifest)

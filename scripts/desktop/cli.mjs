@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
 import { changedFiles, createPlan, testProjects, validatePlan } from '../validation/plan.mjs'
-import { checkIdentities, currentCandidate, hash, sourceIdentity, validateCandidate } from './candidate.mjs'
+import { checkIdentities, hash, loadCandidate, sourceIdentity, validateCandidate } from './candidate.mjs'
 import { runSelectedChecks } from './checks.mjs'
 import { dev } from './dev.mjs'
 import { checkDocs } from './docs.mjs'
@@ -25,6 +25,7 @@ const {
     plan: { type: 'string' },
     'plan-file': { type: 'string' },
     stress: { type: 'boolean' },
+    'strict-source': { type: 'boolean' },
     project: { type: 'string', multiple: true },
     'expected-revision': { type: 'string' }
   }
@@ -41,9 +42,8 @@ async function batchedPnpm(prefix, files) {
 const ps = (file, args = []) =>
   run('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', resolve(native, file), ...args])
 const identity = () => sourceIdentity()
-const candidate = () => {
-  const directory = currentCandidate()
-  const manifest = validateCandidate(directory, identity())
+const candidate = (options) => {
+  const { directory, manifest } = loadCandidate(options)
   checkIdentities(directory, manifest)
   return { directory, manifest }
 }
@@ -173,7 +173,8 @@ async function pack() {
 }
 async function start() {
   windows()
-  const { directory } = candidate()
+  const { directory, manifest } = candidate({ requireCurrentSource: values['strict-source'] === true })
+  console.log(`Starting candidate ${manifest.version} (${manifest.revision}); pnpm build creates a new candidate.`)
   // Stable across candidate changes; preserves the previous local portable profile.
   const profile = resolve(native, 'dist/portable/evostack-data')
   mkdirSync(profile, { recursive: true })

@@ -39,6 +39,6 @@ try {
   Invoke-DesktopStep { node scripts/desktop/candidate.mjs write $DesktopCandidate $DesktopIdentity.sourceHash }
   # Promotion changes a pointer only. A failed build never replaces an earlier candidate.
   if ($ExpectedRevision) { & (Join-Path $PSScriptRoot 'verify-source.ps1') -ExpectedRevision $ExpectedRevision }
-  [ordered]@{ directory = $DesktopCandidateName } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'dist\current.json') -Encoding utf8
+  Invoke-DesktopStep { node scripts/desktop/candidate.mjs promote (Join-Path $PSScriptRoot 'dist') $DesktopCandidateName }
   Write-Output "Built candidate: $DesktopCandidate"
 } finally { Pop-Location }

@@ -1,6 +1,8 @@
 # Desktop commands
 
-The root `dev`, `build`, `start`, `package`, `check`, `test` and `verify` commands serve one Tauri/Rust/Go application. Build creates a complete candidate; verify tests that candidate; package archives the same bytes. Start validates an existing candidate and never installs or rebuilds it.
+The root `dev`, `build`, `start`, `package`, `check`, `test` and `verify` commands serve one Tauri/Rust/Go application. Build creates a complete candidate; verify tests that candidate; package archives the same bytes. Start validates and launches the last complete candidate, displaying its version/revision without scanning current source. It never installs or rebuilds. `pnpm start --strict-source` also requires the candidate to match the current checkout. Build, verify and package always require that match. Every launch checks file hashes, allowed paths, architecture/protocol and host/backend identities; build-info calls have a bounded timeout.
+
+Candidate promotion atomically replaces `dist/current.json` only after candidate validation. Failed promotion preserves the previous pointer; failed compilation never promotes a partial candidate.
 
 Development uses an isolated project-local profile and an owned loopback Vite server. Production retains the portable profile next to the executable. Tests use synthetic, disposable profiles. Neither command imports an old desktop database.
 
