@@ -16,8 +16,8 @@ Resolve the requested scope and inspect its actual files/diff. Preserve unrelate
 | React UI | `src/renderer/`; keep layout and saved preferences, validate subscriptions, effects, stop/error states and rendering cost |
 | Renderer desktop access | `src/platform/desktop-api/` and typed DataApi/IpcApi facades; business code uses these APIs |
 | Tauri transport | `src/platform/tauri/`; validate cross-process messages, events, cancellation and capability failures |
-| Native host | `native/evostack/src-tauri/`; origin checks, window/profile ownership, DPAPI, bounded IPC and helper cleanup |
-| Backend | `native/evostack/backend/`; SQLite transactions, chat/context boundaries, providers, cancellation and projections |
+| Native host | `native/evostack/src-tauri/`; origin checks, window/profile ownership, bounded IPC and helper cleanup |
+| Backend | `native/evostack/backend/`; SQLite transactions, Windows DPAPI credential storage, chat/context boundaries, providers, cancellation and projections |
 | Build and validation | `scripts/desktop/`, `scripts/validation/`; generated inputs, exact candidate bytes, strict verify/package and manual-only CI |
 
 Trace a proposed shared API to its real production consumers before judging placement. Preserve app-specific approval, revocation, profile locking, key protection and owned-helper cleanup. Unsupported features remain unavailable; migration status lives in `docs/desktop.md`. Existing historical notes provide rationale, not proof of current behavior.
