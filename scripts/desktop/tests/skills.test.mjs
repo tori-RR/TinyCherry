@@ -28,9 +28,12 @@ function fixture(action) {
     writeFileSync(resolve(directory, '.claude/skills/.gitignore'), 'original claude')
     action(directory)
   } finally {
-    if (!realpathSync(directory).startsWith(realpathSync(base) + sep)) throw new Error('Fixture escaped test base')
-    rmSync(directory, { recursive: true })
+    cleanup(directory)
   }
+}
+function cleanup(directory) {
+  if (!realpathSync(directory).startsWith(realpathSync(base) + sep)) throw new Error('Fixture escaped test base')
+  rmSync(directory, { recursive: true })
 }
 await test('skill sync defaults to dry run without creating links or rewriting ignore lists', () =>
   fixture((directory) => {

@@ -35,9 +35,12 @@ export async function dev() {
     EVOSTACK_APP_VERSION: identity.version,
     EVOSTACK_BUILD_REVISION: identity.revision
   }
+  let stopping = false
   const compileGo = async () => {
+    if (stopping) return false
     await pnpm(['exec', 'tsx', '--tsconfig', 'tsconfig.web.json', 'native/evostack/generate-contract.ts'], { env })
       .completion
+    if (stopping) return false
     await run(
       'powershell.exe',
       [
@@ -55,16 +58,17 @@ export async function dev() {
       ],
       { env }
     )
+    if (stopping) return false
     copyFileSync(
       resolve(helperDirectory(), 'runtime/open-computer-use.exe'),
       resolve(directory, 'open-computer-use.exe')
     )
+    return true
   }
   let watcher,
     restartTimer,
     tauri,
     stopPromise,
-    stopping = false,
     restarting = false
   const stop = () => {
     if (!stopPromise) {
@@ -84,7 +88,7 @@ export async function dev() {
   process.once('SIGINT', interrupt)
   process.once('SIGTERM', interrupt)
   try {
-    await compileGo()
+    if (!(await compileGo())) return
     const vite = pnpm(['exec', 'vite', '--config', 'native/evostack/vite.config.mts'], { env })
     let viteError
     // A server failure after readiness must also close our host and sidecar.
@@ -106,6 +110,7 @@ export async function dev() {
       })
     const deadline = Date.now() + 30_000
     while (true) {
+      if (stopping) return
       if (vite.exitCode !== null) throw new Error('Owned Vite exited before readiness')
       try {
         const response = await fetch('http://127.0.0.1:17420/windows/evostack/index.html', {
@@ -118,6 +123,7 @@ export async function dev() {
       if (Date.now() > deadline) throw new Error('Owned Vite readiness timed out')
       await new Promise((done) => setTimeout(done, 150))
     }
+    if (stopping) return
     const launch = () => pnpm(['exec', 'tauri', 'dev'], { cwd: native, env })
     tauri = launch()
     let restart = Promise.resolve()

@@ -66,6 +66,17 @@ export function checkDependencyGraph(documents) {
   return [...new Set(problems)]
 }
 
+export function checkInstalledStore(directory, virtualStoreDir = '.pnpm') {
+  if (typeof virtualStoreDir !== 'string' || !virtualStoreDir) throw new Error('Invalid pnpm virtualStoreDir')
+  // pnpm's modules manifest resolves relative virtualStoreDir from node_modules.
+  const store = resolve(directory, 'node_modules', virtualStoreDir)
+  return existsSync(store)
+    ? readdirSync(store)
+        .filter((entry) => retired(packageName(entry).replace('+', '/')))
+        .map((entry) => `Retired installed package: ${entry}`)
+    : []
+}
+
 export function checkExit(directory = root) {
   const read = (name) => readFileSync(resolve(directory, name), 'utf8')
   const pkg = JSON.parse(read('package.json'))
@@ -82,10 +93,8 @@ export function checkExit(directory = root) {
   const modulesPath = resolve(directory, 'node_modules/.modules.yaml')
   if (existsSync(modulesPath)) {
     const [modules] = parseAllDocuments(readFileSync(modulesPath, 'utf8'))
-    const store = modules.toJS().virtualStoreDir
-    if (store && existsSync(store))
-      for (const entry of readdirSync(store))
-        if (retired(packageName(entry).replace('+', '/'))) problems.push(`Retired installed package: ${entry}`)
+    if (modules.errors.length) throw modules.errors[0]
+    problems.push(...checkInstalledStore(directory, modules.toJS().virtualStoreDir))
   }
   for (const [name, script] of Object.entries(pkg.scripts))
     if (/legacy:|electron|pre-commit|install-hooks|postinstall/.test(`${name} ${script}`))

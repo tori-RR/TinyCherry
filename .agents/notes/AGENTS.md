@@ -1,7 +1,3 @@
-# AGENTS.md — Agent Notes
+# Decision notes
 
-Agent Notes preserve decisions, alternatives, consequences, and verification. Follow [the complete rules](README.md) and use the [`agent-notes`](../skills/agent-notes/SKILL.md) workflow.
-
-Before adding a note, search the active tree by domain terms, mechanism names, paths, and rejected alternatives. Prefer updating the existing owner. For partial supersession, keep both notes current and cross-link them. For full supersession, the new owner must absorb every unique rationale, alternative, consequence, and verification fact; deleting the old note requires explicit human approval.
-
-Instruction files are English-only and excluded from pairing. Every Agent Note and this directory's README remain bilingual triplets.
+Follow [the notes guide](README.md) and the [documentation skill](../skills/docs-governance/SKILL.md). Search existing reasons before adding a note. Keep proposals, decisions and verification distinct. Preserve unique rationale and link successors. Existing historical translations/sidecars need no migration; new work has no mandatory bilingual or lifecycle gate.

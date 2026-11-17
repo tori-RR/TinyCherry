@@ -1,9 +1,3 @@
-# AGENTS.md — Implemented Agent Notes
+# Implemented notes
 
-Implemented notes describe shipped reality in the present tense. Keep paths, symbols, defaults, ownership, failure behavior, and verification current in the same change that alters them.
-
-An Agent Note preserves rationale; it is not authority over a better or corrected implementation. Factual realization may be updated in place. Reversing the decision or rationale requires a new note and cross-link instead of rewriting history.
-
-When a final implementation layer completes a proposed Spec, move both language files and the sidecar together, rewrite `Proposal` as `Decision`, replace acceptance/risk planning with `Consequences`, and map each `AC` to actual evidence under `Verification`.
-
-Validate the move with `pnpm agent-notes:check-transition --base <verified-spec-ref>`. This check confirms the declared transition and complete AC mapping; it does not decide that a layer is final.
+Follow the [notes guide](../README.md). A historical implementation note is evidence of its original decision, not proof of current behavior. Verify paths, ownership and behavior against current source before using it. Preserve unique rationale when superseding a decision and link the successor; do not rewrite old approval history.

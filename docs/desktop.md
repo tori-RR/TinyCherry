@@ -39,7 +39,7 @@ The fixed [pre-migration source snapshot](https://github.com/tori-RR/TinyCherry/
 
 The packaged app retains identifier `com.tinycherry.evostack` and the adjacent `evostack-data` profile. CLI start uses a stable local portable profile independent of candidate folders. Development and smoke checks use separate disposable project-local profiles. API keys remain bound to the same Windows user by DPAPI. This change does not alter database schemas or import another desktop application's profile.
 
-Build/version/protocol/revision information comes from product metadata and compiled host/sidecar identities. Start and package validate exact candidate hashes and source identity. A missing helper, mismatched binary or modified candidate fails explicitly; no fallback runtime or implicit rebuild runs.
+Build/version/protocol/revision information comes from product metadata and compiled host/sidecar identities. Start validates exact candidate hashes and host/sidecar identities, displays its revision and can run the last complete build after source changes. `start --strict-source`, verification and packaging additionally require current source identity. A missing helper, mismatched binary or modified candidate fails explicitly; no fallback runtime or implicit rebuild runs.
 
 ## Verification boundaries
 

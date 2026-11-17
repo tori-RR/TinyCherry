@@ -1,69 +1,19 @@
-# Skills 管理说明
+# 项目开发技能
 
-[English](README.md) | 中文
+`.agents/skills` 保存正文，`.claude/skills` 只提供可选兼容链接。它们与应用打包使用的 `resources/skills`、`resources/code-cli-skills` 分开。
 
-本目录是仓库内 skills 的唯一维护来源（single source of truth）。
+保留 `gh-pr-review`（当前架构审查）、`find-simplifications`（精简提案）、`docs-governance`（文档、决策和指定翻译）、`gh-create-pr`（已授权的 PR 发布），以及 `vercel-react-best-practices` 的 React 客户端参考。
 
-## 新增 Skill 流程
+清单位于 `public-skills.txt`。同步工具可选，不进入安装或构建流程：
 
-1. 在 `.agents/skills/<skill-name>/` 下创建新目录。
-2. 添加 `SKILL.md`，包含：
-   - YAML frontmatter 中的 `name` 和 `description`
-   - 正文中的精简流程说明
-3. （可选）如需 Codex UI 元数据，添加 `agents/openai.yaml`。
-4. 若该 skill 需要作为仓库公共 skill 跟踪，请将 `<skill-name>` 追加到 `.agents/skills/public-skills.txt`。
-
-## 命名规则
-
-- 仅使用小写字母、数字和连字符（`-`）。
-- 优先使用简短、动作导向的名称（例如：`gh-create-pr`）。
-
-## Claude 兼容
-
-每个新增的公共 skill，请执行：
-
-```bash
+```powershell
 pnpm exec tsx scripts/skills-sync.ts
-# 默认仅预览；确认后才显式创建缺少的链接并更新忽略清单：
 pnpm exec tsx scripts/skills-sync.ts --apply
-```
-
-`skills:sync` 会自动创建/更新 `.claude/skills/<skill-name>` 为指向 `../../.agents/skills/<skill-name>` 的符号链接。
-
-## Windows 兼容性
-
-本项目使用符号链接同步 AGENTS.md、skills 等文件。Windows 开发者需要手动启用符号链接支持：
-
-1. **启用开发者模式**（设置 → 更新和安全 → 开发者选项），或
-2. 通过本地安全策略（`secpol.msc`）**授予 `SeCreateSymbolicLinkPrivilege` 权限**。
-3. **配置 Git** 以创建符号链接：
-   ```bash
-   git config --global core.symlinks true
-   ```
-4. 启用后重新克隆仓库（或执行 `pnpm exec tsx scripts/skills-sync.ts`）。
-
-## 白名单跟踪规则
-
-公共白名单由 `.agents/skills/public-skills.txt` 定义。
-
-- 写入该文件的 skill 会同步到 `.agents/skills/.gitignore` 和 `.claude/skills/.gitignore`。
-- 私有/仅本地使用的 skill 不应写入 `public-skills.txt`。
-- 每行只写一个 skill 名称。注释行必须以 `#` 开头，不能写行尾注释。
-
-更新 `public-skills.txt` 后，请执行：
-
-```bash
-pnpm exec tsx scripts/skills-sync.ts
-```
-
-然后校验：
-
-```bash
 pnpm exec tsx scripts/skills-check.ts
 ```
 
-上述脚本会自动维护并校验：
+第一条只预览。显式应用仅创建缺少的链接、更新受管忽略清单；普通文件、目录和异常链接会在写入前报冲突。链接失败会回滚本次新增链接。先自行保存冲突内容，不递归删除、不修改全局 Git/Windows 策略来强行同步。没有链接权限时直接读取正文，或明确选择并维护本地副本。
 
-- `.agents/skills/.gitignore`
-- `.claude/skills/.gitignore`
-- `.claude/skills/<skill-name>` 是指向 `.agents/skills/<skill-name>` 的有效符号链接
+根规则正文为 `CLAUDE.md`。Claude 直接读取；Codex 使用本地标准 `AGENTS.md` 明确要求读取正文，或显式配置 fallback。保留已有本地规则。`AGENTS-og.md` 只是历史别名；fresh checkout 后需在实际客户端确认规则被发现。
+
+精简前完整技能和笔记树可从 `3b84a66575dcb132f7c832957de67a2cffbd05fa` 恢复。旧指南退出活动索引，应用技能资源和待迁移功能决定保留。

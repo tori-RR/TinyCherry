@@ -1,6 +1,6 @@
 ---
 name: find-simplifications
-description: Use when asked to find or plan Cherry Studio cleanup, simplification, refactoring, dead-code removal, duplicated state removal, unnecessary APIs, speculative generality, or library replacements.
+description: Use when asked to find or plan TinyCherry cleanup, simplification, refactoring, dead-code removal, duplicated state removal, unnecessary APIs, speculative generality, or library replacements.
 ---
 
 # Find Simplifications
@@ -9,7 +9,7 @@ This skill finds a few strong candidates, not a deletion quota. Diagnosis and pr
 
 ## Establish context
 
-Read root instructions, relevant architecture/reference docs, and active Agent Notes. Run `pnpm validation:plan --base <verified-ref>` when auditing a branch. When the user requests broad coverage, divide renderer, data systems, IPC, lifecycle services, Agent/runtime, packages/scripts, and test infrastructure into disjoint surveys.
+Read root instructions, relevant architecture/reference docs, and relevant decision notes. Run `pnpm validation:plan --base <verified-ref>` when auditing a branch. When the user requests broad coverage, divide renderer, data systems, typed desktop bridge, native host/backend, packages/scripts, and test infrastructure into disjoint surveys.
 
 ## Evidence bar
 
@@ -23,10 +23,10 @@ A strong candidate has concrete cost and production evidence:
 - a maintained dependency or platform API deletes implementation and dedicated tests with less residual glue;
 - speculative configurability or fallback behavior has no current product owner.
 
-Search exact symbols, wire names, config keys, paths, dynamic registration, tests, docs, and Agent Notes. A call site proves pressure, not that the API belongs at that boundary. Reject a candidate when it removes supported behavior, violates documented ownership, or merely relocates the same complexity.
+Search exact symbols, wire names, config keys, paths, dynamic registration, tests, docs, and decision notes. A call site proves pressure, not that the API belongs at that boundary. Reject a candidate when it removes supported behavior, violates documented ownership, or merely relocates the same complexity.
 
 ## Output
 
-Report the current consumers, proposed removal, tradeoffs, and verification for each strong candidate. Use an optional Agent Note when the reasoning is worth keeping with the project.
+Report the current consumers, proposed removal, tradeoffs, and verification for each strong candidate. Use an optional decision note when the reasoning is worth keeping with the project.
 
 Report surveyed areas, evidence-backed candidates, rejected candidates worth preserving, deliberate exclusions, and checks actually run.

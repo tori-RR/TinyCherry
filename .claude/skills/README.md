@@ -1,8 +1,5 @@
-# Claude Skills Mirror
+# Claude compatibility links
 
-This directory is a synced mirror for Claude-compatible skill files.
+Canonical guides and the active list live in [`.agents/skills`](../../.agents/skills/README.md). These are developer helpers, separate from bundled application skills. Synchronization is optional: preview `pnpm exec tsx scripts/skills-sync.ts`, explicitly add `--apply` to create missing links/update ignore lists, then run `pnpm exec tsx scripts/skills-check.ts`.
 
-- Do not create new skills directly under `.claude/skills`.
-- Create and maintain skills under `.agents/skills` only.
-- Update `.agents/skills/public-skills.txt`, preview with `pnpm exec tsx scripts/skills-sync.ts`, then explicitly use `--apply`. Ordinary files/directories and unexpected links are preserved as conflicts. Windows link permission failures never delete an existing target or change global settings.
-- `pnpm exec tsx scripts/skills-check.ts` verifies `.claude/skills/<skill>` is a valid symlink to `.agents/skills/<skill>`.
+Ordinary files/directories and unexpected links are preserved as conflicts. Link failure rolls back newly created links. Do not change global policies or use recursive deletion to repair a conflict. Private settings and unlisted skills remain local.

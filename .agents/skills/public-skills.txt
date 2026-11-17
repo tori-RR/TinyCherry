@@ -1,12 +1,6 @@
-# Public skills tracked by skills:sync and skills:check.
-# One skill name per line.
+# Optional project developer skills; one name per line.
+docs-governance
+find-simplifications
 gh-create-pr
-gh-stack
-create-skill
-gh-create-issue
 gh-pr-review
 vercel-react-best-practices
-agent-notes
-docs-governance
-translate-docs
-find-simplifications

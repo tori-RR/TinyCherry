@@ -1,69 +1,23 @@
-# Skills Management
+# Project development skills
 
-English | [中文](README.zh.md)
+`.agents/skills` is the single source; `.claude/skills` contains optional compatibility links. These developer guides are separate from application resources in `resources/skills` and `resources/code-cli-skills`.
 
-This directory is the single source of truth for repository skills.
+- `gh-pr-review`: current React/Tauri/Go review.
+- `find-simplifications`: evidence-backed cleanup proposals.
+- `docs-governance`: current documentation, decisions and requested translations.
+- `gh-create-pr`: authorized PR publication.
+- `vercel-react-best-practices`: selected React client references.
 
-## Add a New Skill
+The list is in `public-skills.txt`. Synchronization is optional and never part of build/install:
 
-1. Create a new folder under `.agents/skills/<skill-name>/`.
-2. Add a `SKILL.md` file with:
-   - `name` and `description` in YAML frontmatter
-   - concise workflow instructions in the body
-3. (Optional) Add `agents/openai.yaml` if Codex UI metadata is needed.
-4. If this skill should be shared in the repository, append `<skill-name>` to `.agents/skills/public-skills.txt`.
-
-## Naming Rules
-
-- Use lowercase letters, digits, and hyphens only.
-- Prefer short, action-oriented names (for example: `gh-create-pr`).
-
-## Claude Compatibility
-
-For each new public skill, run:
-
-```bash
+```powershell
 pnpm exec tsx scripts/skills-sync.ts
-# Inspect the dry run, then explicitly apply missing links and ignore lists:
 pnpm exec tsx scripts/skills-sync.ts --apply
-```
-
-`skills:sync` will create/update `.claude/skills/<skill-name>` as a symlink pointing to `../../.agents/skills/<skill-name>`.
-
-## Windows Compatibility
-
-This project uses symlinks to synchronize files such as AGENTS.md and skills. Windows developers must enable symlink support:
-
-1. **Enable Developer Mode** (Settings → Update & Security → For developers), or
-2. **Grant `SeCreateSymbolicLinkPrivilege`** via Local Security Policy (`secpol.msc`).
-3. **Configure Git** to create symlinks:
-   ```bash
-   git config --global core.symlinks true
-   ```
-4. Re-clone the repository (or run `pnpm exec tsx scripts/skills-sync.ts`) after enabling symlink support.
-
-## White-list Tracking Rules
-
-The public white-list is defined in `.agents/skills/public-skills.txt`.
-
-- Skills listed there are synced to both `.agents/skills/.gitignore` and `.claude/skills/.gitignore`.
-- Private/local-only skills should stay out of `public-skills.txt`.
-- Use one skill name per line. Comment lines must start with `#` and cannot be appended inline.
-
-After updating `public-skills.txt`, run:
-
-```bash
-pnpm exec tsx scripts/skills-sync.ts
-```
-
-Then validate:
-
-```bash
 pnpm exec tsx scripts/skills-check.ts
 ```
 
-The sync/check scripts manage and verify:
+The first command only previews. Apply creates missing links and updates managed ignore lists; it refuses ordinary files/directories and unexpected links before any mutation. Link creation failure rolls back newly created links. Resolve conflicts by preserving local content yourself; do not run recursive removal or change global Git/Windows settings to force synchronization. Without link permission, use the canonical source directly or maintain an explicitly chosen local copy.
 
-- `.agents/skills/.gitignore`
-- `.claude/skills/.gitignore`
-- `.claude/skills/<skill-name>` is a valid symlink to `.agents/skills/<skill-name>`
+Root project rules are in `CLAUDE.md`. Claude reads that entry; Codex users need a local standard `AGENTS.md` that tells the agent to read it, or an explicitly configured fallback. Preserve any existing local rules. `AGENTS-og.md` is a historical alias, not a default-discovery guarantee. Verify discovery in the actual client after a fresh checkout.
+
+The complete pre-cleanup skill/notes tree is recoverable at `3b84a66575dcb132f7c832957de67a2cffbd05fa`. Historical guides are outside the active skill index; application resources and feature migration decisions are preserved.

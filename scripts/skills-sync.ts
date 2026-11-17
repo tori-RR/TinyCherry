@@ -21,5 +21,7 @@ try {
     console.log('Review conflicts first; use --apply to create missing links and update ignore lists.')
 } catch (error) {
   console.error(error instanceof Error ? error.message : error)
+  if (error instanceof AggregateError)
+    for (const cause of error.errors) console.error(cause instanceof Error ? cause.message : cause)
   process.exitCode = 1
 }
