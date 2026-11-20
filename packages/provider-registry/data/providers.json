@@ -3008,7 +3008,29 @@
       },
       "name": "minimax-global",
       "presetProviderId": "minimax"
+    },
+    {
+      "authMethods": ["oauth"],
+      "availableInEditions": ["global", "cn"],
+      "defaultChatEndpoint": "openai-responses",
+      "description": "ChatGPT Sub - AI model provider",
+      "endpointConfigs": {
+        "openai-responses": {
+          "adapterFamily": "openai",
+          "baseUrl": "https://api.openai.com/v1"
+        }
+      },
+      "id": "chatgpt-sub",
+      "metadata": {
+        "website": {
+          "billing": "https://chatgpt.com/settings/usage",
+          "docs": "https://developers.openai.com/siwc/token-sharing-open-source",
+          "official": "https://chatgpt.com"
+        }
+      },
+      "modelListSource": "api",
+      "name": "ChatGPT Sub"
     }
   ],
-  "version": "4cf6ed57c5b4e2ae"
+  "version": "6a71b201afd33cb8"
 }

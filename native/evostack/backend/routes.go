@@ -68,8 +68,10 @@ func (s *server) invoke(channel string, args []any) (any, error, func()) {
 		request := obj(argument(args, 0))
 		method := text(request["method"])
 		previousNousBinding := ""
+		previousChatGPTOwner := ""
 		if method != "GET" && strings.HasPrefix(text(request["path"]), "/providers") {
 			previousNousBinding = s.currentNativeNousBindingLocked()
+			_, previousChatGPTOwner, _ = s.chatGPTProviderLocked()
 		}
 		var result any
 		var err error
@@ -125,6 +127,13 @@ func (s *server) invoke(channel string, args []any) (any, error, func()) {
 		} else if method != "GET" {
 			s.modelsChanged(modelIDs)
 			s.mutationChanged(method, text(request["path"]), obj(request["body"]))
+			if previousChatGPTOwner != "" {
+				_, owner, _ := s.chatGPTProviderLocked()
+				if owner != previousChatGPTOwner {
+					s.cancelChatGPTAttemptLocked()
+					s.invalidateChatGPTSessionLocked()
+				}
+			}
 		}
 		if err == nil && previousNousBinding != "" && previousNousBinding != s.currentNativeNousBindingLocked() {
 			// The owner has already changed transactionally. Cancel old network
@@ -430,6 +439,9 @@ func (s *server) data(method, path string, query object, body any) (any, error) 
 				clientID, err := nativeNousClientID(provider)
 				return object{"type": "oauth", "clientId": clientID}, err
 			}
+			if isNativeChatGPTProvider(provider) {
+				return nil, nil
+			}
 			return object{"type": "api-key"}, nil
 		case "preset":
 			return object{"endpointConfigs": provider["endpointConfigs"], "models": []any{}}, nil
@@ -547,6 +559,10 @@ func (s *server) data(method, path string, query object, body any) (any, error) 
 				}
 				if id == nativeNousProviderID {
 					initializeNativeNousProvider(row)
+					row["isEnabled"] = false
+				}
+				if id == nativeChatGPTProviderID && input["presetProviderId"] == nativeChatGPTProviderID {
+					initializeNativeChatGPTProvider(row)
 					row["isEnabled"] = false
 				}
 				if keys := array(input["apiKeys"]); len(keys) > 0 {
@@ -703,6 +719,12 @@ func (s *server) data(method, path string, query object, body any) (any, error) 
 }
 
 func (s *server) providerKeys(method string, provider object, path []string, query, input object) (any, error) {
+	if isNativeChatGPTProvider(provider) {
+		if method == "GET" {
+			return object{"keys": []object{}}, nil
+		}
+		return nil, errors.New("ChatGPT Sub credentials are managed through OAuth sign-in")
+	}
 	if isNativeNousOAuthProvider(provider) {
 		if method == "GET" {
 			return object{"keys": []object{}}, nil

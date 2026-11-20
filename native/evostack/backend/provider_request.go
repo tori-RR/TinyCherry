@@ -21,10 +21,17 @@ type providerRequestConfig struct {
 	oauthBinding    string
 	oauthClientID   string
 	oauthGeneration uint64
+	chatGPTOwner    string
 	resource        string
 }
 
 func (s *server) providerKey(provider object, override string) (string, error) {
+	if isNativeChatGPTProvider(provider) {
+		if override != "" {
+			return "", errors.New("ChatGPT Sub uses its signed-in account")
+		}
+		return "", nil
+	}
 	if isNativeNousOAuthProvider(provider) {
 		if override != "" {
 			return "", errors.New("Nous Portal uses its signed-in account, not an API key override")
@@ -45,6 +52,9 @@ func (s *server) providerKey(provider object, override string) (string, error) {
 
 // Called while the caller owns its short store/state access; network work happens later.
 func (s *server) resolveProviderRequest(provider object, base, key, resource string) (providerRequestConfig, error) {
+	if isNativeChatGPTProvider(provider) {
+		return s.resolveChatGPTRequestLocked(provider, base, resource)
+	}
 	nous := isNativeNousOAuthProvider(provider)
 	if nous && (strings.TrimRight(base, "/") != nousInferenceBaseURL || (resource != "models" && resource != "chat/completions")) {
 		return providerRequestConfig{}, errors.New("Nous OAuth requires its official inference endpoint")
@@ -119,6 +129,9 @@ func validHeaderName(name string) bool {
 func (config providerRequestConfig) request(ctx context.Context, method string, body io.Reader, stream bool) (*http.Request, error) {
 	if config.oauthBinding != "" && config.headers.Get("Authorization") == "" {
 		return nil, errors.New("Nous OAuth request has not been authorized")
+	}
+	if config.chatGPTOwner != "" && config.headers.Get("Authorization") == "" {
+		return nil, errors.New("ChatGPT plan request has not been authorized")
 	}
 	request, err := http.NewRequestWithContext(ctx, method, config.address, body)
 	if err != nil {

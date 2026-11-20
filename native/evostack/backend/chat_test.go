@@ -43,6 +43,9 @@ func testServer(t *testing.T) (*server, string) {
 		if err := s.nousOAuth.Wait(drainContext); err != nil {
 			t.Error("OAuth workers did not drain", err)
 		}
+		if err := s.waitChatGPTWorkers(drainContext); err != nil {
+			t.Error("ChatGPT authorization workers did not drain", err)
+		}
 		db.db.Close()
 	})
 	return s, directory

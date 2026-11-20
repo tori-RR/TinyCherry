@@ -5,6 +5,8 @@ import './generate-skills'
 import './generate-computer-tools'
 import { DefaultBootConfig } from '../../src/shared/data/bootConfig/bootConfigSchemas'
 import { DefaultPreferences } from '../../src/shared/data/preference/preferenceSchemas'
+import { CHATGPT_SUB_PROVIDER_ID } from '../../src/shared/data/presets/chatgptSub'
+import { NOUS_PORTAL_PROVIDER_ID } from '../../src/shared/data/presets/nousPortal'
 import { isExcludedProviderPreset } from '../../src/shared/data/presets/providerCatalog'
 import { isRetiredProvider } from '../../src/shared/data/presets/retiredProviders'
 import { DEFAULT_ASSISTANT_SETTINGS } from '../../src/shared/data/types/assistant'
@@ -31,8 +33,7 @@ const providers = catalog.providers
     websites: provider.metadata?.website,
     settings: {},
     apiKeys: [],
-    // Only Nous Portal has a native OAuth runtime in this migration slice.
-    authType: provider.id === 'nous-portal' ? 'oauth' : 'api-key',
+    authType: [NOUS_PORTAL_PROVIDER_ID, CHATGPT_SUB_PROVIDER_ID].includes(provider.id) ? 'oauth' : 'api-key',
     reportsActualCost: false,
     isEnabled: false
   }))

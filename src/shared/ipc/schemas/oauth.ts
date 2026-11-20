@@ -1,5 +1,7 @@
 import * as z from 'zod'
 
+import { CHATGPT_SUB_PROVIDER_ID } from '@shared/data/presets/chatgptSub'
+
 import { defineRoute } from '../define'
 
 /**
@@ -63,7 +65,38 @@ const deviceStatusSchema = z.discriminatedUnion('status', [
   z.strictObject({ status: z.literal('error'), code: z.string(), message: z.string() })
 ])
 
+const chatGPTInput = z.strictObject({ providerId: z.literal(CHATGPT_SUB_PROVIDER_ID) })
+const chatGPTAttemptInput = chatGPTInput.extend({ requestId: z.string().min(1).max(128) })
+const chatGPTAuthorizationUrl = z
+  .url()
+  .refine((value) => value.startsWith('https://auth.openai.com/api/accounts/authorize?') && !value.includes('#'))
+const chatGPTStatus = z.discriminatedUnion('status', [
+  z.strictObject({ status: z.enum(['pending', 'denied', 'cancelled', 'expired']) }),
+  z.strictObject({ status: z.literal('completed'), firstUse: z.boolean() }),
+  z.strictObject({ status: z.literal('error'), message: z.string() })
+])
+
 export const oauthRequestSchemas = {
+  'oauth.chatgpt.accounts': defineRoute({
+    input: chatGPTInput,
+    output: z.strictObject({
+      activeAccountId: z.string(),
+      accounts: z.array(
+        z.strictObject({
+          id: z.string(),
+          email: z.string(),
+          status: z.enum(['connected', 'identity-only', 'needs-sign-in', 'signed-out'])
+        })
+      )
+    })
+  }),
+  'oauth.chatgpt.start': defineRoute({
+    input: chatGPTAttemptInput.extend({ accountId: z.string().max(128).optional() }),
+    output: z.strictObject({ requestId: z.string(), authorizationUrl: chatGPTAuthorizationUrl })
+  }),
+  'oauth.chatgpt.status': defineRoute({ input: chatGPTAttemptInput, output: chatGPTStatus }),
+  'oauth.chatgpt.cancel': defineRoute({ input: chatGPTAttemptInput, output: z.void() }),
+  'oauth.chatgpt.logout': defineRoute({ input: chatGPTInput, output: z.strictObject({ revoked: z.boolean() }) }),
   'oauth.device.start': defineRoute({ input: deviceInput, output: deviceAuthorizationSchema }),
   'oauth.device.status': defineRoute({ input: deviceInput, output: deviceStatusSchema }),
   'oauth.device.cancel': defineRoute({ input: deviceInput, output: z.void() }),

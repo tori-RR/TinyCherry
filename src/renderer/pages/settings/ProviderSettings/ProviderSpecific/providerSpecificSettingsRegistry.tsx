@@ -1,5 +1,6 @@
 import { lazy, type ReactNode } from 'react'
 
+import { CHATGPT_SUB_PROVIDER_ID } from '@shared/data/presets/chatgptSub'
 import { isClaudeCodeProviderId } from '@shared/data/presets/claudeCode'
 import { isCodexProviderId } from '@shared/data/presets/codex'
 import { isGrokCliProviderId } from '@shared/data/presets/grokCli'
@@ -17,6 +18,7 @@ import type { useProviderMeta } from '../hooks/providerSetting/useProviderMeta'
 
 const AwsBedrockSettings = lazy(() => import('./AwsBedrockSettings'))
 const CherryInOauth = lazy(() => import('./CherryInOauth'))
+const ChatGPTOauthPanel = lazy(() => import('./ChatGPTOauthPanel'))
 const ClaudeCodeSettings = lazy(() => import('./ClaudeCodeSettings'))
 const DmxapiSettings = lazy(() => import('./DmxapiSettings'))
 const GithubCopilotSettings = lazy(() => import('./GithubCopilotSettings'))
@@ -83,6 +85,11 @@ export const PROVIDER_SPECIFIC_SETTINGS_REGISTRY: Record<ProviderSpecificPlaceme
       key: 'grok-cli-oauth',
       when: ({ provider }) => isGrokCliProviderId(provider.id),
       render: (providerId) => <LoginOauthPanel providerId={providerId} i18nNs="grok_cli" />
+    },
+    {
+      key: 'chatgpt-sub-oauth',
+      when: ({ provider }) => provider.id === CHATGPT_SUB_PROVIDER_ID && provider.authType === 'oauth',
+      render: () => <ChatGPTOauthPanel />
     },
     {
       key: 'nous-portal-oauth',

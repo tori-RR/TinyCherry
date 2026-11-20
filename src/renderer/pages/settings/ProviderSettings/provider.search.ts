@@ -31,6 +31,13 @@ export const entries: SettingsSearchEntry[] = [
     aliases: ['claude code', 'cli', 'oauth', '登录']
   },
   {
+    anchorId: 'auth-chatgpt-sub',
+    titleKey: 'provider.chatgpt-sub',
+    descriptionKey: 'settings.provider.chatgpt_sub.description',
+    providerId: 'chatgpt-sub',
+    aliases: ['chatgpt', 'subscription', 'sign in with chatgpt', '订阅', '訂閱']
+  },
+  {
     anchorId: 'auth-openai-codex',
     titleKey: 'provider.openai-codex',
     descriptionKey: 'settings.provider.codex.description',

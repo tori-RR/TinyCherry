@@ -74,6 +74,7 @@ type serverState struct {
 	nousOAuth               *nousOAuthRuntime
 	nousOAuthGenerations    map[string]uint64
 	nousOAuthRequests       map[string]map[string]context.CancelFunc
+	chatGPT                 chatGPTAuthState
 	mu                      sync.Mutex
 	interrupts              sync.Map
 	networkTransports       *transportPool
@@ -103,6 +104,7 @@ func (s *server) interruptGeneration(topicID string) {
 func newServer(repository *store, writer *wireWriter, ctx context.Context, cancel context.CancelFunc) *server {
 	s := &server{store: repository, serverState: &serverState{writer: writer, active: map[string]*generation{}, shared: object{}, context: ctx, cancel: cancel, computerEpoch: 1, networkTransports: newTransportPool(), nousOAuthGenerations: map[string]uint64{}, nousOAuthRequests: map[string]map[string]context.CancelFunc{}}}
 	s.nousOAuth = newNousOAuthRuntime(ctx, nativeNousOAuthStorage{server: s}, s.nativeNousHTTPClient)
+	s.chatGPT.requests = map[string]context.CancelFunc{}
 	return s
 }
 
@@ -276,4 +278,5 @@ readLoop:
 	drainContext, drainCancel := context.WithTimeout(context.Background(), time.Second)
 	defer drainCancel()
 	_ = s.nousOAuth.Wait(drainContext)
+	_ = s.waitChatGPTWorkers(drainContext)
 }

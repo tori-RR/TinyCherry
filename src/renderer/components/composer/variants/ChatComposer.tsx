@@ -50,6 +50,7 @@ import { useTopicMutations } from '@renderer/hooks/useTopic'
 import { useTopicAwaitingApproval, useTopicStreamStatus } from '@renderer/hooks/useTopicStreamStatus'
 import { EVENT_NAMES, EventEmitter } from '@renderer/services/EventService'
 import { toast } from '@renderer/services/toast'
+import { openExternalWebsite } from '@renderer/services/website'
 import { type Topic, TopicType } from '@renderer/types/topic'
 import { removeFileExtension, removeSpecialCharactersForFileName } from '@renderer/utils/file'
 import { buildFilePartsForAttachments, withComposerFilePartMeta } from '@renderer/utils/file/buildFileParts'
@@ -65,6 +66,7 @@ import {
   resolveReasoningEffortForModel
 } from '@renderer/utils/model'
 import type { ComposerChatTarget, ComposerQueuedMessagePayload } from '@shared/ai/transport'
+import { CHATGPT_SUB_PROVIDER_ID, CHATGPT_USAGE_URL } from '@shared/data/presets/chatgptSub'
 import type { KnowledgeBase } from '@shared/data/types/knowledge'
 import type { CherryMessagePart } from '@shared/data/types/message'
 import {
@@ -1797,6 +1799,19 @@ const ChatComposerInner = ({
   })
   const sendAccessory: ComposerSurfaceProps['sendAccessory'] = () => (
     <>
+      {(mentionedModels[0] ?? runtimeModel)?.providerId === CHATGPT_SUB_PROVIDER_ID && (
+        <button
+          type="button"
+          className="shrink-0 px-1 text-foreground-secondary text-xs underline-offset-2 hover:underline"
+          title={t('settings.provider.chatgpt_sub.manage_usage')}
+          onClick={() =>
+            void openExternalWebsite(CHATGPT_USAGE_URL).catch(() =>
+              toast.error(t('settings.provider.chatgpt_sub.browser_failed'))
+            )
+          }>
+          {t('settings.provider.chatgpt_sub.using_plan')}
+        </button>
+      )}
       {speedControlModel ? (
         <ModelSpeedControl
           model={speedControlModel}

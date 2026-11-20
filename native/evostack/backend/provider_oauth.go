@@ -244,6 +244,12 @@ func (s *server) nativeNousHTTPClient() (*http.Client, error) {
 }
 
 func (s *server) oauthCommand(route string, input object) (any, error) {
+	if strings.HasPrefix(route, "oauth.chatgpt.") {
+		if input["providerId"] != nativeChatGPTProviderID {
+			return nil, notMigrated("OAuth provider")
+		}
+		return s.chatGPTCommand(route, input)
+	}
 	switch route {
 	case "oauth.device.start", "oauth.device.status", "oauth.device.cancel", "oauth.has_token", "oauth.get_account", "oauth.logout":
 	default:
@@ -283,6 +289,9 @@ func (s *server) oauthCommand(route string, input object) (any, error) {
 // Runs outside s.mu immediately before a model/list request. Each distinct
 // model/tool step gets a current token; an already-sent POST is never replayed.
 func (s *server) authorizeProviderRequest(ctx context.Context, config providerRequestConfig) (providerRequestConfig, error) {
+	if config.chatGPTOwner != "" {
+		return s.authorizeChatGPTRequest(ctx, config)
+	}
 	if config.oauthBinding == "" {
 		return config, nil
 	}

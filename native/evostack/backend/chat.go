@@ -80,10 +80,11 @@ func (s *server) providerConfig(modelID string, requireEnabled bool, keyOverride
 		return nil, nil, "", "", errors.New("provider or model is disabled")
 	}
 	kind := text(provider["defaultChatEndpoint"])
-	if kind != "" && kind != "openai-chat-completions" {
+	endpoint := providerChatEndpoint(provider)
+	if kind != "" && kind != endpoint {
 		return nil, nil, "", "", notMigrated("provider endpoint " + kind)
 	}
-	config := obj(obj(provider["endpointConfigs"])["openai-chat-completions"])
+	config := obj(obj(provider["endpointConfigs"])[endpoint])
 	base := text(config["baseUrl"])
 	if base == "" {
 		return nil, nil, "", "", errors.New("provider base URL is missing")
@@ -169,10 +170,11 @@ func (s *server) openGeneration(input object) (any, error, func()) {
 	if err != nil {
 		return nil, err, nil
 	}
-	requestConfig, err := s.resolveProviderRequest(provider, base, key, "chat/completions")
+	requestConfig, err := s.resolveProviderRequest(provider, base, key, providerChatResource(provider))
 	if err != nil {
 		return nil, err, nil
 	}
+	computerEnabled = computerEnabled && requestConfig.chatGPTOwner == ""
 	parts := array(input["userMessageParts"])
 	for _, part := range parts {
 		if obj(part)["type"] != "text" && obj(part)["type"] != "data-knowledge-scope" {
@@ -267,6 +269,11 @@ func (s *server) openGeneration(input object) (any, error, func()) {
 	if modelName == "" {
 		modelName = strings.SplitN(modelID, "::", 2)[1]
 	}
+	result := object{"mode": "started", "activeExecutions": []object{g.execution()}, "reservedMessages": []object{toUIMessage(user), toUIMessage(reply)}}
+	if requestConfig.chatGPTOwner != "" {
+		payload := chatGPTPayload(modelName, messages)
+		return result, nil, func() { go s.generate(ctx, g, requestConfig, payload) }
+	}
 	payload := object{"model": modelName, "messages": messages, "stream": true}
 	if computerEnabled {
 		payload["tools"] = computerToolDefinitions
@@ -281,7 +288,7 @@ func (s *server) openGeneration(input object) (any, error, func()) {
 	if settings["enableMaxTokens"] == true {
 		payload["max_tokens"] = settings["maxTokens"]
 	}
-	return object{"mode": "started", "activeExecutions": []object{g.execution()}, "reservedMessages": []object{toUIMessage(user), toUIMessage(reply)}}, nil, func() { go s.generate(ctx, g, requestConfig, payload) }
+	return result, nil, func() { go s.generate(ctx, g, requestConfig, payload) }
 }
 
 func (s *server) abort(topicID string) error {
@@ -374,7 +381,11 @@ func (s *server) generate(ctx context.Context, g *generation, config providerReq
 			}
 		}
 	}()
-	generationErr, finishReason = s.generateComputerSteps(ctx, g, config, payload)
+	if config.chatGPTOwner != "" {
+		generationErr = s.generateChatGPTStep(ctx, g, config, payload)
+	} else {
+		generationErr, finishReason = s.generateComputerSteps(ctx, g, config, payload)
+	}
 }
 
 func (s *server) persistGeneration(g *generation, status string) error {
@@ -422,7 +433,7 @@ func (s *server) modelOperation(route string, input object) (any, error) {
 			s.mu.Unlock()
 			return nil, err
 		}
-		endpointConfig := obj(obj(provider["endpointConfigs"])["openai-chat-completions"])
+		endpointConfig := obj(obj(provider["endpointConfigs"])[providerChatEndpoint(provider)])
 		base := text(endpointConfig["baseUrl"])
 		key, err := s.providerKey(provider, "")
 		if err != nil {
@@ -436,7 +447,7 @@ func (s *server) modelOperation(route string, input object) (any, error) {
 		}
 		ctx, cancel := context.WithTimeout(s.context, 30*time.Second)
 		defer cancel()
-		ctx, releaseAuth, err := s.nativeNousRequestContext(ctx, config)
+		ctx, releaseAuth, err := s.providerRequestContext(ctx, config)
 		if err != nil {
 			return nil, err
 		}
@@ -456,7 +467,15 @@ func (s *server) modelOperation(route string, input object) (any, error) {
 		}
 		defer response.Body.Close()
 		if response.StatusCode != 200 {
+			if config.chatGPTOwner != "" {
+				body, _ := io.ReadAll(io.LimitReader(response.Body, 16*1024))
+				return nil, chatGPTProviderFailure(response.StatusCode, response.Header, body)
+			}
 			return nil, fmt.Errorf("provider returned HTTP %d", response.StatusCode)
+		}
+		if config.chatGPTOwner != "" {
+			models, err := decodeChatGPTModels(response.Body)
+			return object{"models": models}, err
 		}
 		var catalog struct {
 			Data []struct {
@@ -477,7 +496,7 @@ func (s *server) modelOperation(route string, input object) (any, error) {
 	provider, model, base, key, err := s.providerConfig(modelID, false, text(input["apiKeyOverride"]))
 	var config providerRequestConfig
 	if err == nil {
-		config, err = s.resolveProviderRequest(provider, base, key, "chat/completions")
+		config, err = s.resolveProviderRequest(provider, base, key, providerChatResource(provider))
 	}
 	s.mu.Unlock()
 	if err != nil {
@@ -485,6 +504,14 @@ func (s *server) modelOperation(route string, input object) (any, error) {
 	}
 	ctx, cancel := context.WithTimeout(s.context, probeTimeout(input["timeout"]))
 	defer cancel()
+	if config.chatGPTOwner != "" {
+		start := time.Now()
+		payload := chatGPTPayload(text(model["apiModelId"]), []object{{"role": "user", "content": "Reply with OK."}})
+		if err := s.sendChatGPTResponse(ctx, config, payload, func(string) error { return nil }); err != nil {
+			return nil, err
+		}
+		return object{"latency": time.Since(start).Milliseconds()}, nil
+	}
 	ctx, releaseAuth, err := s.nativeNousRequestContext(ctx, config)
 	if err != nil {
 		return nil, err

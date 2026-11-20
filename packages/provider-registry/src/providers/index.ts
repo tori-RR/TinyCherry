@@ -9,6 +9,7 @@ import p_baichuan from './baichuan'
 import p_baidu_cloud from './baidu-cloud'
 import p_burncloud from './burncloud'
 import p_cerebras from './cerebras'
+import p_chatgpt_sub from './chatgpt-sub'
 import p_cherryin from './cherryin'
 import p_claude_code from './claude-code'
 import p_comfyui from './comfyui'
@@ -141,5 +142,6 @@ export const PROVIDERS: Provider[] = [
   p_comfyui,
   p_mimo,
   p_zai,
-  p_minimax_global
+  p_minimax_global,
+  p_chatgpt_sub
 ]

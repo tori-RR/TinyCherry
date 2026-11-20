@@ -150,9 +150,39 @@ try {
     projectionBaseline: true
   })
   const journeys = await verifyChat({ evaluate, command, until, localeCatalogs })
-  assert.deepEqual(errors, [], 'Unexpected renderer error')
   const screenshot = await command('Page.captureScreenshot', { format: 'png' })
   writeFileSync(join(profile, 'workspace-chat.png'), Buffer.from(screenshot.data, 'base64'))
+  const settingsOpened = await evaluate(`(() => {
+    const event = new CustomEvent('cherry:open-main-route', {
+      cancelable: true, detail: { path: '/settings/provider?id=chatgpt-sub&filter=all' }
+    });
+    window.dispatchEvent(event);
+    return event.defaultPrevented;
+  })()`)
+  assert(settingsOpened, 'Main window did not open ChatGPT Sub settings')
+  const continueLabels = localeCatalogs
+    .map((locale) => locale['settings.provider.chatgpt_sub.continue'])
+    .filter(Boolean)
+  await until(`[...document.querySelectorAll('[data-testid="chatgpt-sub-auth"] button')].some(
+    button => !button.disabled && ${JSON.stringify(continueLabels)}.includes(button.textContent.trim())
+  )`)
+  const chatGPTSignIn = await evaluate(`(async () => {
+    const input = { providerId: 'chatgpt-sub', requestId: crypto.randomUUID() };
+    const start = await window.api.ipcApi.request('oauth.chatgpt.start', input);
+    if (!start.ok) return false;
+    try {
+      const authorization = new URL(start.data.authorizationUrl);
+      const callback = new URL(authorization.searchParams.get('redirect_uri'));
+      return authorization.origin === 'https://auth.openai.com' &&
+        authorization.searchParams.get('client_id') === 'dynamic_agent_client' &&
+        callback.hostname === '127.0.0.1' && callback.pathname === '/auth/callback';
+    } finally {
+      const cancelled = await window.api.ipcApi.request('oauth.chatgpt.cancel', input);
+      if (!cancelled.ok) throw Error('Could not close the synthetic ChatGPT sign-in');
+    }
+  })()`)
+  assert(chatGPTSignIn, 'ChatGPT Sub did not prepare an official browser authorization')
+  assert.deepEqual(errors, [], 'Unexpected renderer error')
   const result = {
     passed: true,
     revision,
@@ -163,6 +193,7 @@ try {
     before,
     after,
     workspaceVisible: true,
+    chatGPTSignIn,
     contracts,
     journeys
   }

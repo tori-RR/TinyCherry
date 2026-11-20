@@ -114,6 +114,9 @@ CREATE INDEX IF NOT EXISTS entity_knowledge_item ON entity(resource,json_extract
 		if err := s.ensureNativeNousProvider(); err != nil {
 			return err
 		}
+		if err := s.ensureNativeChatGPTProvider(); err != nil {
+			return err
+		}
 		if err := s.migrateHermesProvider(); err != nil {
 			return err
 		}
@@ -139,7 +142,14 @@ CREATE INDEX IF NOT EXISTS entity_knowledge_item ON entity(resource,json_extract
 // Add the newly introduced preset once, including to existing profiles. The
 // marker preserves a user's later deletion; saved providers are never reset.
 func (s *store) ensureNativeNousProvider() error {
-	const marker = "nous-portal-provider-v1"
+	return s.ensureNativeOAuthProvider(nativeNousProviderID, "nous-portal-provider-v1", initializeNativeNousProvider)
+}
+
+func (s *store) ensureNativeChatGPTProvider() error {
+	return s.ensureNativeOAuthProvider(nativeChatGPTProviderID, "chatgpt-sub-provider-v1", initializeNativeChatGPTProvider)
+}
+
+func (s *store) ensureNativeOAuthProvider(id, marker string, initialize func(object)) error {
 	if _, err := s.get("desktop-migrations", marker); err == nil {
 		return nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
@@ -147,7 +157,7 @@ func (s *store) ensureNativeNousProvider() error {
 	}
 	var preset object
 	for _, provider := range s.defaults.Providers {
-		if provider["id"] == nativeNousProviderID {
+		if provider["id"] == id {
 			preset = clone(provider)
 			break
 		}
@@ -155,15 +165,15 @@ func (s *store) ensureNativeNousProvider() error {
 	if preset == nil {
 		return nil
 	}
-	provider, err := s.get("providers", nativeNousProviderID)
+	provider, err := s.get("providers", id)
 	if errors.Is(err, sql.ErrNoRows) {
-		initializeNativeNousProvider(preset)
+		initialize(preset)
 		if err := s.put("providers", preset); err != nil {
 			return err
 		}
 	} else if err != nil {
 		return err
-	} else if isNativeNousOAuthProvider(provider) && nativeNousBinding(provider) == "" {
+	} else if provider["authType"] == "oauth" && (text(provider["oauthOwnerId"]) == "" || strings.Contains(text(provider["oauthOwnerId"]), ":")) {
 		// Fresh defaults have no per-profile owner until they enter this store.
 		provider["oauthOwnerId"] = newID()
 		if err := s.put("providers", provider); err != nil {
@@ -469,13 +479,16 @@ func (s *store) pruneUnusedSecrets() error {
 	if err != nil {
 		return err
 	}
-	retained := map[string]bool{}
+	retained := map[string]bool{chatGPTHostSecret: true}
 	for _, provider := range providers {
 		for _, value := range array(provider["apiKeys"]) {
 			retained[text(provider["id"])+":"+text(obj(value)["id"])] = true
 		}
 		if binding := nativeNousBinding(provider); binding != "" {
 			retained[nativeNousSecretID(binding)] = true
+		}
+		if owner := chatGPTProviderOwner(provider); owner != "" {
+			retained[chatGPTSecretID(owner)] = true
 		}
 	}
 	rows, err := s.connection().Query("SELECT id FROM secret")

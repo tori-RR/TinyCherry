@@ -30,6 +30,7 @@ const providerKeyMap = {
   'baidu-cloud': 'provider.baidu-cloud',
   burncloud: 'provider.burncloud',
   cherryai: 'provider.cherryai',
+  'chatgpt-sub': 'provider.chatgpt-sub',
   cherryin: 'provider.cherryin',
   'claude-code': 'provider.claude-code',
   copilot: 'provider.copilot',
