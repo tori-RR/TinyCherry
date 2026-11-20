@@ -78,6 +78,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         .request("backend.info", Value::Null)
         .map_err(std::io::Error::other)?;
     verify_backend_info(&info).map_err(std::io::Error::other)?;
+    backend
+        .diagnostics
+        .record("host: sidecar identity verified");
     let theme = backend
         .request(
             "ipc.invoke",
@@ -87,7 +90,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let theme = WindowTheme::from_preference(theme.as_ref().and_then(Value::as_str));
     let running = backend.clone();
     let shutdown_sender = sender.clone();
-    Application::new().run(move |cx: &mut App| {
+    backend.diagnostics.record("host: initializing GPUI");
+    let application = Application::new();
+    backend.diagnostics.record("host: GPUI initialized");
+    application.run(move |cx: &mut App| {
         cx.on_window_closed(|cx| {
             if cx.windows().is_empty() {
                 cx.quit();
@@ -100,6 +106,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         })
         .detach();
         let bounds = Bounds::centered(None, size(px(1280.), px(850.)), cx);
+        running.diagnostics.record("host: creating GPUI window");
         let result = cx.open_window(
             WindowOptions {
                 // Wry pumps Win32 messages while creating WebView2. Keep the
@@ -117,6 +124,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 ..Default::default()
             },
             move |window, cx| {
+                running.diagnostics.record("host: GPUI window created");
                 let view = cx.new(|cx| {
                     Desktop::new(
                         window,
@@ -136,6 +144,10 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 });
                 // GPUI schedules this activation after the current App borrow.
                 window.activate_window();
+                view.read(cx)
+                    .backend
+                    .diagnostics
+                    .record("host: window activation scheduled");
                 view
             },
         );
@@ -191,8 +203,15 @@ impl Desktop {
             pump: None,
             subscriptions: Vec::new(),
         };
+        desktop
+            .backend
+            .diagnostics
+            .record("host: creating WebView2");
         match desktop.build_webview(window, data_dir, smoke_arguments) {
-            Ok(webview) => desktop.webview = Some(webview),
+            Ok(webview) => {
+                desktop.webview = Some(webview);
+                desktop.backend.diagnostics.record("host: WebView2 created");
+            }
             Err(error) => {
                 desktop
                     .backend

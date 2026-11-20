@@ -48,7 +48,8 @@ jobs:
           "GOCACHE=$env:GOCACHE" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "CARGO_HOME=$env:CARGO_HOME" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "CARGO_TARGET_DIR=$env:CARGO_TARGET_DIR" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-      - uses: actions/cache@v5
+      - uses: actions/cache/restore@v5
+        id: desktop-cache
         with:
           path: |
             .pnpm-store
@@ -78,3 +79,24 @@ jobs:
           name: TinyCherry-Windows-${{ github.sha }}
           path: native/evostack/dist/*.zip
           if-no-files-found: error
+      - name: Upload isolated startup diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: TinyCherry-startup-diagnostics-${{ github.sha }}
+          path: native/evostack/.cache/package-smoke-*/diagnostics/**
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7
+      - name: Preserve build cache after verification
+        if: always() && !cancelled() && steps.desktop-cache.outputs.cache-primary-key != '' && steps.desktop-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            .pnpm-store
+            native/evostack/.cache/go/pkg/mod
+            native/evostack/.cache/go-build
+            native/evostack/.cache/cargo/registry
+            native/evostack/.cache/cargo/git
+            native/evostack/.cache/target
+          key: ${{ steps.desktop-cache.outputs.cache-primary-key }}

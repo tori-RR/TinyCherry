@@ -1,6 +1,7 @@
 param([Parameter(Mandatory)][string]$Directory, [Parameter(Mandatory)][string]$ExpectedVersion, [Parameter(Mandatory)][string]$ExpectedRevision)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'smoke-ownership.ps1')
+. (Join-Path $PSScriptRoot 'smoke-diagnostics.ps1')
 $EvoDirectory = (Resolve-Path -LiteralPath $Directory).Path
 $EvoIdentities = @()
 $EvoHostName = 'TinyCherry.exe'
@@ -31,6 +32,8 @@ $EvoPortProbe.Start()
 $EvoPort = $EvoPortProbe.LocalEndpoint.Port
 $EvoPortProbe.Stop()
 $EvoHost = $null
+$EvoDiagnostics = Join-Path $EvoSmoke 'diagnostics'
+New-Item -ItemType Directory -Path $EvoDiagnostics -Force | Out-Null
 try {
   $env:TINYCHERRY_EVOSTACK_DATA_DIR = $EvoSmoke
   $env:TINYCHERRY_EVOSTACK_SMOKE_TOKEN = $EvoToken
@@ -38,7 +41,9 @@ try {
   $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $EvoSmoke 'webview'
   # The host configures the validated port through Wry's WebView2 environment options.
   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--disable-background-timer-throttling'
-  $EvoHost = Start-Process -FilePath (Join-Path $EvoDirectory $EvoHostName) -WorkingDirectory $EvoDirectory -WindowStyle Hidden -PassThru
+  try { Save-EvoSmokeDiagnostics -Profile $EvoSmoke -Stage 'before-start' } catch { Write-Warning "Could not record smoke diagnostics: $($_.Exception.Message)" }
+  # Verify a visible main window using a normal launch, without a STARTUPINFO request to hide the GUI.
+  $EvoHost = Start-Process -FilePath (Join-Path $EvoDirectory $EvoHostName) -WorkingDirectory $EvoDirectory -WindowStyle Normal -RedirectStandardOutput (Join-Path $EvoDiagnostics 'host.stdout.log') -RedirectStandardError (Join-Path $EvoDiagnostics 'host.stderr.log') -PassThru
   $EvoDeadline = (Get-Date).AddSeconds(20)
   do {
     Start-Sleep -Milliseconds 200
@@ -94,6 +99,10 @@ try {
   if ($EvoRemaining.Count -ne 0) { throw 'Sidecar survived host shutdown' }
   [ordered]@{passed=$true;identities=$EvoIdentities;profile=$EvoSmoke;rendererReady=$true;uiInteraction='Set Up Later persisted and workspace rendered'} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath ($EvoSmoke + '.json') -Encoding utf8
   Write-Output 'Package identity, x64 startup, React interaction and graceful shutdown passed'
+} catch {
+  $EvoSmokeFailure = $_
+  try { Save-EvoSmokeDiagnostics -Profile $EvoSmoke -Stage 'failure' -Failure $EvoSmokeFailure.Exception.Message -HostProcess $EvoHost } catch { Write-Warning "Could not record smoke diagnostics: $($_.Exception.Message)" }
+  throw $EvoSmokeFailure
 } finally {
   if ($EvoHost -and -not $EvoHost.HasExited) { $EvoHost.Kill(); $EvoHost.WaitForExit() }
   $env:TINYCHERRY_EVOSTACK_DATA_DIR = $EvoPreviousProfile
