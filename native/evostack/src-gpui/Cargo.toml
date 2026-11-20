@@ -22,7 +22,7 @@ percent-encoding = "2"
 
 [target.'cfg(windows)'.dependencies]
 gpui = { version = "=0.2.2", default-features = false }
-wry = { version = "=0.53.5", default-features = false, features = ["protocol", "os-webview"] }
+wry = { version = "=0.57.3", default-features = false, features = ["os-webview"] }
 async-channel = "2"
 
 [features]

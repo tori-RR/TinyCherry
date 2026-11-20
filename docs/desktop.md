@@ -51,7 +51,9 @@ Automated checks use synthetic loopback providers and isolated SQLite profiles. 
 
 The active host is `native/evostack/src-gpui`; the active frontend bridge is `src/platform/gpui`. Tauri commands, Channels, configuration and CLI are removed from the active build. The Vite output is embedded in the release executable and served through the retained `tauri` custom protocol. The packaged Windows page uses `http://tauri.localhost/windows/evostack/index.html`; development uses only `http://127.0.0.1:17420`.
 
-Direct native dependencies are pinned to GPUI `0.2.2` and Wry `0.53.5`, with their resolved graph committed in `Cargo.lock`. Existing `evostack-data/evostack.sqlite3` and `evostack-data/webview` locations are retained. Windows build and packaged smoke must pass for the exact candidate before it is described as verified.
+Direct native dependencies are pinned to GPUI `0.2.2` and official Wry `0.57.3`, with their resolved graph committed in `Cargo.lock`. Existing `evostack-data/evostack.sqlite3` and `evostack-data/webview` locations are retained. Windows build and packaged smoke must pass for the exact candidate before it is described as verified.
+
+WebView2 construction is scheduled on GPUI's foreground UI executor after the native window and entity exist. The Wry builder runs outside GPUI App/entity update closures, so its nested Win32 message pump does not retain those borrows; a later update installs the completed view. Wry's builder remains synchronous, and WebView2 creation, callbacks and destruction stay on the same UI STA thread. Wry `0.57.3` also propagates environment/controller completion errors to its waiting caller.
 
 The old `tauri` scheme/`http://tauri.localhost` Windows origin is retained for browser-storage compatibility, not as a runtime dependency. Renderer `localStorage`, including `cs_cache_persist`, holds UI state such as open tabs, input history and pane widths separately from SQLite. Preserving both origin and WebView profile keeps that state addressable without a second origin or a storage importer.
 

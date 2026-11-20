@@ -16,7 +16,9 @@ flowchart LR
 
 The `tauri` scheme and Windows `http://tauri.localhost` origin are deliberately retained as browser-storage identifiers. Together with the existing `evostack-data/webview` profile, they let the renderer reuse its existing `localStorage`, including the `cs_cache_persist` UI state. The name does not enable a Tauri runtime, API or dependency. This migration does not introduce another origin or copy/import browser storage.
 
-The host pins `gpui = 0.2.2` and `wry = 0.53.5`, with transitive versions recorded in `src-gpui/Cargo.lock`. Development CSP is supplied by the Vite response headers, including only the fixed loopback HTTP/WebSocket origin for HMR. Production CSP is supplied by the embedded asset protocol.
+The host pins `gpui = 0.2.2` and official `wry = 0.57.3`, with transitive versions recorded in `src-gpui/Cargo.lock`. Development CSP is supplied by the Vite response headers, including only the fixed loopback HTTP/WebSocket origin for HMR. Production CSP is supplied by the embedded asset protocol.
+
+Startup first establishes the GPUI window and entity, then schedules WebView2 construction on the foreground UI executor. Construction runs outside GPUI App/entity update closures using the live native window handle; the finished view is installed in a subsequent update. The official Wry builder is synchronous and pumps Win32 messages internally, so it must not retain a GPUI borrow while waiting. WebView2 remains on the same UI STA thread throughout its lifetime; this is not a background-thread browser.
 
 The renderer adapter lives in `src/platform/gpui/`. Requests carry an ID and a document session; replies and events are correlated before they reach the retained desktop API. Page teardown rejects pending requests, stale-document replies are discarded, and mutations are never automatically retried. The host accepts IPC only from the configured application origin, keeps desktop operations separate from Go requests, and retains the existing sidecar handshake and private helper lifecycle.
 

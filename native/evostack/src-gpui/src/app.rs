@@ -109,8 +109,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         running.diagnostics.record("host: creating GPUI window");
         let result = cx.open_window(
             WindowOptions {
-                // Wry pumps Win32 messages while creating WebView2. Keep the
-                // parent hidden until callbacks and child ownership are ready.
+                // Activation is queued after the root and close handler exist.
+                // WebView2 is created in a later foreground task.
                 show: false,
                 focus: false,
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
@@ -125,22 +125,15 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             },
             move |window, cx| {
                 running.diagnostics.record("host: GPUI window created");
-                let view = cx.new(|cx| {
-                    Desktop::new(
-                        window,
-                        cx,
-                        running,
-                        data_dir,
-                        theme,
-                        smoke_arguments,
-                        sender,
-                        receiver,
-                    )
-                });
+                let view = cx.new(|cx| Desktop::new(window, cx, running, theme, sender));
                 let weak = view.downgrade();
                 window.on_window_should_close(cx, move |_, cx| {
-                    let _ = weak.update(cx, |view, _| view.close());
-                    true
+                    weak.update(cx, |view, cx| {
+                        let should_close = view.request_close();
+                        cx.notify();
+                        should_close
+                    })
+                    .unwrap_or(true)
                 });
                 // GPUI schedules this activation after the current App borrow.
                 window.activate_window();
@@ -148,6 +141,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     .backend
                     .diagnostics
                     .record("host: window activation scheduled");
+                view.update(cx, |view, cx| {
+                    view.initialize(window, cx, data_dir, smoke_arguments, receiver);
+                });
                 view
             },
         );
@@ -175,21 +171,20 @@ struct Desktop {
     fullscreen_transition: Option<bool>,
     theme: WindowTheme,
     startup_error: Option<String>,
+    initializing: bool,
+    close_requested: bool,
+    initialization: Option<Task<()>>,
     pump: Option<Task<()>>,
     subscriptions: Vec<Subscription>,
 }
 
 impl Desktop {
-    #[allow(clippy::too_many_arguments)]
     fn new(
         window: &mut Window,
         cx: &mut Context<Self>,
         backend: Arc<Backend>,
-        data_dir: PathBuf,
         theme: WindowTheme,
-        smoke_arguments: Option<String>,
         sender: Sender<UiMessage>,
-        receiver: Receiver<UiMessage>,
     ) -> Self {
         let mut desktop = Self {
             webview: None,
@@ -200,50 +195,12 @@ impl Desktop {
             fullscreen_transition: None,
             theme,
             startup_error: None,
+            initializing: true,
+            close_requested: false,
+            initialization: None,
             pump: None,
             subscriptions: Vec::new(),
         };
-        desktop
-            .backend
-            .diagnostics
-            .record("host: creating WebView2");
-        match desktop.build_webview(window, data_dir, smoke_arguments) {
-            Ok(webview) => {
-                desktop.webview = Some(webview);
-                desktop.backend.diagnostics.record("host: WebView2 created");
-            }
-            Err(error) => {
-                desktop
-                    .backend
-                    .diagnostics
-                    .record("host: WebView2 initialization failed");
-                desktop.startup_error = Some(format!("TinyCherry could not initialize WebView2. Verify that the Microsoft Edge WebView2 Runtime is installed.\n\n{error}"));
-                return desktop;
-            }
-        }
-        let pump_diagnostics = desktop.backend.diagnostics.clone();
-        desktop.pump = Some(cx.spawn_in(window, async move |view, cx| {
-            pump_diagnostics.record("host: renderer dispatch started");
-            let mut processed = 0_u8;
-            while let Ok(message) = receiver.recv().await {
-                if view
-                    .update_in(cx, |view, window, cx| view.receive(message, window, cx))
-                    .is_err()
-                {
-                    pump_diagnostics.record("host: renderer dispatch lost its window");
-                    break;
-                }
-                processed += 1;
-                if processed == 32 {
-                    // An always-ready stream must not starve the native Windows
-                    // message pump, input, paints, or WebView2's own callbacks.
-                    cx.background_executor()
-                        .timer(Duration::from_millis(1))
-                        .await;
-                    processed = 0;
-                }
-            }
-        }));
         desktop
             .subscriptions
             .push(cx.observe_window_bounds(window, |view, window, _| {
@@ -279,25 +236,149 @@ impl Desktop {
         desktop
     }
 
-    fn build_webview(
-        &self,
+    fn initialize(
+        &mut self,
         window: &Window,
+        cx: &mut Context<Self>,
         data_dir: PathBuf,
+        smoke_arguments: Option<String>,
+        receiver: Receiver<UiMessage>,
+    ) {
+        self.initialization = Some(cx.spawn_in(window, async move |view, cx| {
+            let startup = view.update_in(cx, |view, window, _| {
+                if view.close_requested {
+                    view.initializing = false;
+                    view.close();
+                    window.remove_window();
+                    return None;
+                }
+                // SAFETY: this foreground task stays on the HWND's UI thread.
+                // request_close defers parent destruction while initializing;
+                // build_webview consumes the snapshot before that gate opens.
+                let parent = unsafe { native_window::StartupParent::capture(window) };
+                Some((
+                    parent,
+                    view.backend.clone(),
+                    view.sender.clone(),
+                    webview_bounds(window),
+                    view.theme.color(is_dark(window)),
+                ))
+            });
+            let Ok(Some((parent, backend, sender, bounds, color))) = startup else {
+                return;
+            };
+            backend.diagnostics.record("host: creating WebView2");
+            // Wry runs a nested Win32 message pump here. No GPUI App, Window,
+            // or entity borrow may span this call: its callbacks need all three.
+            let webview = parent.and_then(|parent| {
+                Self::build_webview(
+                    parent,
+                    &backend,
+                    sender,
+                    data_dir,
+                    bounds,
+                    color,
+                    smoke_arguments,
+                )
+            });
+            let _ = view.update_in(cx, move |view, window, cx| {
+                view.initializing = false;
+                if view.close_requested {
+                    // The snapshot is gone; destroy any child before its parent.
+                    drop(webview);
+                    view.close();
+                    window.remove_window();
+                    return;
+                }
+                let webview = webview.and_then(|webview| {
+                    // Resize and appearance can change during the native pump.
+                    webview
+                        .set_bounds(webview_bounds(window))
+                        .map_err(|error| error.to_string())?;
+                    webview
+                        .set_background_color(view.theme.color(is_dark(window)))
+                        .map_err(|error| error.to_string())?;
+                    webview
+                        .set_visible(true)
+                        .map_err(|error| error.to_string())?;
+                    Ok(webview)
+                });
+                match webview {
+                    Ok(webview) => {
+                        if window.is_window_active() {
+                            let _ = webview.focus();
+                        }
+                        view.webview = Some(webview);
+                        view.backend.diagnostics.record("host: WebView2 created");
+                        // Initial navigation and subscribe messages remain queued
+                        // until the child exists and can receive their replies.
+                        view.start_pump(window, cx, receiver);
+                    }
+                    Err(error) => {
+                        view.backend
+                            .diagnostics
+                            .record("host: WebView2 initialization failed");
+                        view.startup_error = Some(format!("TinyCherry could not initialize WebView2. Verify that the Microsoft Edge WebView2 Runtime is installed.\n\n{error}"));
+                    }
+                }
+                cx.notify();
+            });
+        }));
+    }
+
+    fn start_pump(
+        &mut self,
+        window: &Window,
+        cx: &mut Context<Self>,
+        receiver: Receiver<UiMessage>,
+    ) {
+        let diagnostics = self.backend.diagnostics.clone();
+        self.pump = Some(cx.spawn_in(window, async move |view, cx| {
+            diagnostics.record("host: renderer dispatch started");
+            let mut processed = 0_u8;
+            while let Ok(message) = receiver.recv().await {
+                if view
+                    .update_in(cx, |view, window, cx| view.receive(message, window, cx))
+                    .is_err()
+                {
+                    diagnostics.record("host: renderer dispatch lost its window");
+                    break;
+                }
+                processed += 1;
+                if processed == 32 {
+                    // An always-ready stream must not starve the native Windows
+                    // message pump, input, paints, or WebView2's own callbacks.
+                    cx.background_executor()
+                        .timer(Duration::from_millis(1))
+                        .await;
+                    processed = 0;
+                }
+            }
+        }));
+    }
+
+    fn build_webview(
+        parent: native_window::StartupParent,
+        backend: &Arc<Backend>,
+        sender: Sender<UiMessage>,
+        data_dir: PathBuf,
+        bounds: wry::Rect,
+        color: (u8, u8, u8, u8),
         smoke_arguments: Option<String>,
     ) -> Result<Rc<WebView>, String> {
         let mut context = wry::WebContext::new(Some(data_dir.join("webview")));
         let budget = RequestBudget::default();
-        let sender = self.sender.clone();
-        let diagnostics = self.backend.diagnostics.clone();
-        let asset_diagnostics = self.backend.diagnostics.clone();
+        let diagnostics = backend.diagnostics.clone();
+        let asset_diagnostics = backend.diagnostics.clone();
         let weak_view = Rc::new(RefCell::new(Weak::<WebView>::new()));
         let ipc_view = weak_view.clone();
-        let page_sender = self.sender.clone();
+        let page_sender = sender.clone();
         let mut builder = WebViewBuilder::new_with_web_context(&mut context)
             .with_url(frontend_url())
-            .with_bounds(webview_bounds(window))
+            .with_bounds(bounds)
+            .with_visible(false)
             .with_focused(false)
-            .with_background_color(self.theme.color(is_dark(window)))
+            .with_background_color(color)
             .with_clipboard(true)
             .with_devtools(cfg!(any(debug_assertions, feature = "inspection")))
             .with_custom_protocol("tauri".into(), move |_, request| {
@@ -364,7 +445,7 @@ impl Desktop {
         }
         let webview = Rc::new(
             builder
-                .build_as_child(window)
+                .build_as_child(&parent)
                 .map_err(|error| error.to_string())?,
         );
         *weak_view.borrow_mut() = Rc::downgrade(&webview);
@@ -597,6 +678,14 @@ impl Desktop {
             let _ = webview.set_background_color(self.theme.color(is_dark(window)));
         }
     }
+    fn request_close(&mut self) -> bool {
+        if self.initializing {
+            self.close_requested = true;
+            return false;
+        }
+        self.close();
+        true
+    }
     fn close(&mut self) {
         self.sender.close();
         self.backend.events.lock().unwrap().take();
@@ -618,6 +707,15 @@ impl Render for Desktop {
             .bg(rgb((u32::from(r) << 16)
                 | (u32::from(g) << 8)
                 | u32::from(b)))
+            .when(self.initializing, |view| {
+                view.p_8()
+                    .text_color(rgb(0x808080))
+                    .child(if self.close_requested {
+                        "Closing TinyCherry…"
+                    } else {
+                        "Starting TinyCherry…"
+                    })
+            })
             .when_some(self.startup_error.clone(), |view, error| {
                 view.p_8().text_color(rgb(0xb00020)).child(error)
             })

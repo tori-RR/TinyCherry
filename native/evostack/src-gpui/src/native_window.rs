@@ -5,8 +5,8 @@
 
 #![cfg(target_os = "windows")]
 
-use std::ffi::c_void;
-use wry::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use std::{ffi::c_void, marker::PhantomData, rc::Rc};
+use wry::raw_window_handle::{HandleError, HasWindowHandle, RawWindowHandle, WindowHandle};
 
 type Hwnd = *mut c_void;
 type SubclassProc = unsafe extern "system" fn(Hwnd, u32, usize, isize, usize, usize) -> isize;
@@ -83,6 +83,45 @@ unsafe extern "system" {
     fn GetWindowSubclass(hwnd: Hwnd, callback: SubclassProc, id: usize, data: *mut usize) -> i32;
     fn RemoveWindowSubclass(hwnd: Hwnd, callback: SubclassProc, id: usize) -> i32;
     fn DefSubclassProc(hwnd: Hwnd, message: u32, wparam: usize, lparam: isize) -> isize;
+}
+
+/// A UI-thread-only parent handle for creating Wry outside a GPUI window borrow.
+///
+/// This snapshot does not own or destroy the native window. Its creator must
+/// keep the parent alive until startup has finished and this snapshot is dropped.
+pub struct StartupParent {
+    raw: RawWindowHandle,
+    _ui_thread: PhantomData<Rc<()>>,
+}
+
+impl StartupParent {
+    /// Capture the HWND without keeping a GPUI `Window` borrow during startup.
+    ///
+    /// # Safety
+    ///
+    /// Call on the window's UI thread and keep the parent HWND alive until this
+    /// snapshot is dropped. In particular, close requests during Wry's native
+    /// message pump must defer parent destruction until the constructor returns.
+    /// Drop this snapshot before allowing the deferred close to destroy the parent.
+    pub unsafe fn capture(window: &gpui::Window) -> Result<Self, String> {
+        let handle = HasWindowHandle::window_handle(window).map_err(|error| error.to_string())?;
+        let raw = handle.as_raw();
+        if !matches!(raw, RawWindowHandle::Win32(_)) {
+            return Err("DESKTOP_WINDOW_HANDLE_UNAVAILABLE".into());
+        }
+        Ok(Self {
+            raw,
+            _ui_thread: PhantomData,
+        })
+    }
+}
+
+impl HasWindowHandle for StartupParent {
+    fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
+        // SAFETY: capture requires the parent to outlive this snapshot, and the
+        // Rc marker prevents using the snapshot from another thread.
+        Ok(unsafe { WindowHandle::borrow_raw(self.raw) })
+    }
 }
 
 fn hwnd(window: &gpui::Window) -> Result<Hwnd, String> {
