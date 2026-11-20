@@ -5,6 +5,7 @@ mod host;
 mod platform;
 mod rpc_writer;
 mod smoke;
+mod window_background;
 
 use host::{
     build_info, capture_stderr, request_timeout, trusted_origin, verify_backend_info, Diagnostics,
@@ -55,7 +56,10 @@ struct Backend {
 }
 
 impl Backend {
-    fn start(data_dir: PathBuf) -> Result<Self, Box<dyn std::error::Error>> {
+    fn start(
+        data_dir: PathBuf,
+        on_event: impl Fn(&Value) + Send + 'static,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let diagnostics = Arc::new(Diagnostics::open(&data_dir)?);
         diagnostics.record("host: starting sidecar");
         let executable =
@@ -79,13 +83,14 @@ impl Backend {
                 "EVOSTACK_BACKEND_START_FAILED: {error}; see backend-stderr.log"
             ))
         })?;
-        Self::connect(child, data_dir, diagnostics)
+        Self::connect(child, data_dir, diagnostics, on_event)
     }
 
     fn connect(
         mut child: Child,
         data_dir: PathBuf,
         diagnostics: Arc<Diagnostics>,
+        on_event: impl Fn(&Value) + Send + 'static,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let input = PipeWriter::start(child.stdin.take().ok_or("backend stdin missing")?);
         let reverse_input = input.clone();
@@ -192,9 +197,11 @@ impl Backend {
                 } else if let Some(id) = frame["id"].as_u64() {
                     deliver_response(&pending_reader, id, &frame, Some(&reader_controls));
                 } else if frame["method"] == "event" {
+                    let event = &frame["params"];
+                    on_event(event);
                     let channel = event_reader.lock().unwrap().clone();
                     if let Some(channel) = channel {
-                        let _ = channel.send(frame["params"].clone());
+                        let _ = channel.send(event.clone());
                     }
                 }
             };
@@ -750,30 +757,44 @@ fn main() {
             )
             .map_err(std::io::Error::other)?;
             std::fs::create_dir_all(&data_dir)?;
-            let backend = Arc::new(Backend::start(data_dir.clone())?);
+            let app_handle = app.handle().clone();
+            let backend = Arc::new(Backend::start(data_dir.clone(), move |event| {
+                window_background::preference_changed(&app_handle, event);
+            })?);
             let info = backend
                 .request("backend.info", Value::Null)
                 .map_err(std::io::Error::other)?;
             verify_backend_info(&info).map_err(std::io::Error::other)?;
+            let theme = backend
+                .request(
+                    "ipc.invoke",
+                    json!({"channel":"preference:get","args":[window_background::THEME_PREFERENCE]}),
+                )
+                .ok();
+            app.manage(Mutex::new(window_background::WindowTheme::from_preference(
+                theme.as_ref().and_then(Value::as_str),
+            )));
             app.manage(backend);
-            let mut window_builder = WebviewWindowBuilder::new(
-                app,
-                "main",
-                frontend_url(),
-            )
-            .title(app.package_info().name.as_str())
-            .inner_size(1280.0, 850.0)
-            .min_inner_size(900.0, 600.0)
-            .decorations(false)
-            .data_directory(data_dir.join("webview"))
-            .on_navigation(trusted_origin);
+            let mut window_builder = WebviewWindowBuilder::new(app, "main", frontend_url())
+                .title(app.package_info().name.as_str())
+                .inner_size(1280.0, 850.0)
+                .min_inner_size(900.0, 600.0)
+                .decorations(false)
+                .visible(false)
+                .data_directory(data_dir.join("webview"))
+                .on_navigation(trusted_origin);
             if let Some(arguments) = smoke_arguments {
                 window_builder = window_builder.additional_browser_args(&arguments);
             }
             let window = window_builder.build()?;
+            window_background::apply(&window, window.theme().ok());
+            let app_handle = app.handle().clone();
             let backend = app.state::<Arc<Backend>>().inner().clone();
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::ThemeChanged(theme) = event {
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        window_background::apply(&window, Some(*theme));
+                    }
                     let channel = backend.events.lock().unwrap().clone();
                     if let Some(channel) = channel {
                         let _ = channel.send(json!({
@@ -783,6 +804,7 @@ fn main() {
                     }
                 }
             });
+            window.show()?;
             #[cfg(any(debug_assertions, feature = "inspection"))]
             if std::env::var_os("TINYCHERRY_EVOSTACK_DEVTOOLS").is_some() {
                 window.open_devtools();
@@ -840,7 +862,7 @@ mod tests {
         ));
         std::fs::create_dir_all(&directory).unwrap();
         let diagnostics = Arc::new(Diagnostics::open(&directory).unwrap());
-        Backend::connect(child, directory, diagnostics).unwrap()
+        Backend::connect(child, directory, diagnostics, |_| {}).unwrap()
     }
 
     #[cfg(windows)]
