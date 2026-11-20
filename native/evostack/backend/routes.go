@@ -25,6 +25,10 @@ func (s *server) invoke(channel string, args []any) (any, error, func()) {
 	if channel == "ipc-api:request" {
 		route := text(argument(args, 0))
 		input := obj(argument(args, 1))
+		if strings.HasPrefix(route, "oauth.") {
+			result, err := s.oauthCommand(route, input)
+			return ipcResult(result, err), nil, nil
+		}
 		if route == "ai.provider.model.list" || route == "ai.provider.model.check" {
 			result, err := s.modelOperation(route, input)
 			return ipcResult(result, err), nil, nil
@@ -63,6 +67,10 @@ func (s *server) invoke(channel string, args []any) (any, error, func()) {
 	case "data-api:request":
 		request := obj(argument(args, 0))
 		method := text(request["method"])
+		previousNousBinding := ""
+		if method != "GET" && strings.HasPrefix(text(request["path"]), "/providers") {
+			previousNousBinding = s.currentNativeNousBindingLocked()
+		}
 		var result any
 		var err error
 		operation := func(s *server) error {
@@ -117,6 +125,11 @@ func (s *server) invoke(channel string, args []any) (any, error, func()) {
 		} else if method != "GET" {
 			s.modelsChanged(modelIDs)
 			s.mutationChanged(method, text(request["path"]), obj(request["body"]))
+		}
+		if err == nil && previousNousBinding != "" && previousNousBinding != s.currentNativeNousBindingLocked() {
+			// The owner has already changed transactionally. Cancel old network
+			// work after releasing the repository lock; stale saves cannot commit.
+			return response, nil, func() { s.invalidateNativeNous(previousNousBinding) }
 		}
 		return response, nil, nil
 	case "preference:get-all":
@@ -413,6 +426,10 @@ func (s *server) data(method, path string, query object, body any) (any, error) 
 		case "api-keys":
 			return s.providerKeys(method, provider, segments[3:], query, input)
 		case "auth-config":
+			if isNativeNousOAuthProvider(provider) {
+				clientID, err := nativeNousClientID(provider)
+				return object{"type": "oauth", "clientId": clientID}, err
+			}
 			return object{"type": "api-key"}, nil
 		case "preset":
 			return object{"endpointConfigs": provider["endpointConfigs"], "models": []any{}}, nil
@@ -528,6 +545,10 @@ func (s *server) data(method, path string, query object, body any) (any, error) 
 						row[key] = value
 					}
 				}
+				if id == nativeNousProviderID {
+					initializeNativeNousProvider(row)
+					row["isEnabled"] = false
+				}
 				if keys := array(input["apiKeys"]); len(keys) > 0 {
 					if _, err := s.providerKeys("PUT", row, nil, object{}, object{"keys": keys}); err != nil {
 						return nil, err
@@ -599,6 +620,13 @@ func (s *server) data(method, path string, query object, body any) (any, error) 
 		}
 		switch resource {
 		case "providers":
+			previousClientID := ""
+			if isNativeNousOAuthProvider(row) {
+				previousClientID, err = nativeNousClientID(row)
+				if err != nil {
+					return nil, err
+				}
+			}
 			for _, key := range []string{"name", "isEnabled", "endpointConfigs", "defaultChatEndpoint"} {
 				if value, ok := input[key]; ok {
 					row[key] = value
@@ -608,6 +636,20 @@ func (s *server) data(method, path string, query object, body any) (any, error) 
 				row["settings"], err = mergeProviderSettings(obj(row["settings"]), obj(settings))
 				if err != nil {
 					return nil, err
+				}
+			}
+			if isNativeNousOAuthProvider(row) {
+				clientID, err := nativeNousClientID(row)
+				if err != nil {
+					return nil, err
+				}
+				if clientID != previousClientID {
+					oldBinding := nativeNousBinding(row)
+					row["oauthOwnerId"] = newID()
+					row["isEnabled"] = false
+					if _, err := s.store.connection().Exec("DELETE FROM secret WHERE id=?", nativeNousSecretID(oldBinding)); err != nil {
+						return nil, err
+					}
 				}
 			}
 		case "assistants":
@@ -657,6 +699,12 @@ func (s *server) data(method, path string, query object, body any) (any, error) 
 }
 
 func (s *server) providerKeys(method string, provider object, path []string, query, input object) (any, error) {
+	if isNativeNousOAuthProvider(provider) {
+		if method == "GET" {
+			return object{"keys": []object{}}, nil
+		}
+		return nil, errors.New("Nous Portal credentials are managed through OAuth sign-in")
+	}
 	providerID := text(provider["id"])
 	if strings.Contains(providerID, ":") {
 		return nil, errors.New("provider identity must not contain a colon")

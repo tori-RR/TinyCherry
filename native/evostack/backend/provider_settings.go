@@ -9,6 +9,10 @@ import (
 // and remove tombstones from persistence, rather than only hiding them on send.
 func mergeProviderSettings(current, patch object) (object, error) {
 	for key, value := range patch {
+		if key == "oauthClientId" && value == nil {
+			delete(current, key)
+			continue
+		}
 		if key != "extraHeaders" {
 			current[key] = value
 			continue

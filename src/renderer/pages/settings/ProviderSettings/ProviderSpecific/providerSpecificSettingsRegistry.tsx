@@ -3,6 +3,7 @@ import { lazy, type ReactNode } from 'react'
 import { isClaudeCodeProviderId } from '@shared/data/presets/claudeCode'
 import { isCodexProviderId } from '@shared/data/presets/codex'
 import { isGrokCliProviderId } from '@shared/data/presets/grokCli'
+import { isNousPortalProviderId } from '@shared/data/presets/nousPortal'
 import type { Provider } from '@shared/data/types/provider'
 import {
   hasApiKeys,
@@ -22,6 +23,7 @@ const GithubCopilotSettings = lazy(() => import('./GithubCopilotSettings'))
 const GpuStackSettings = lazy(() => import('./GpuStackSettings'))
 const LmStudioSettings = lazy(() => import('./LmStudioSettings'))
 const LoginOauthPanel = lazy(() => import('./LoginOauthPanel'))
+const NousOauthPanel = lazy(() => import('./NousOauthPanel'))
 const OvmsSettings = lazy(() => import('./OvmsSettings'))
 const ProviderOauth = lazy(() => import('./ProviderOauth'))
 const VertexAiSettings = lazy(() => import('./VertexAiSettings'))
@@ -81,6 +83,11 @@ export const PROVIDER_SPECIFIC_SETTINGS_REGISTRY: Record<ProviderSpecificPlaceme
       key: 'grok-cli-oauth',
       when: ({ provider }) => isGrokCliProviderId(provider.id),
       render: (providerId) => <LoginOauthPanel providerId={providerId} i18nNs="grok_cli" />
+    },
+    {
+      key: 'nous-portal-oauth',
+      when: ({ provider }) => isNousPortalProviderId(provider.id),
+      render: () => <NousOauthPanel />
     }
   ],
   afterAuth: [

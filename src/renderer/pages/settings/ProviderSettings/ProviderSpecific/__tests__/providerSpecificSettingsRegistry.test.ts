@@ -11,6 +11,13 @@ const showsAccountPanel = (provider: Pick<Provider, 'id' | 'apiKeys'>) => {
 }
 
 describe('API key provider account panels', () => {
+  it('selects the Nous device-code panel only for the canonical Nous provider', () => {
+    const entry = PROVIDER_SPECIFIC_SETTINGS_REGISTRY.beforeAuth.find(({ key }) => key === 'nous-portal-oauth')!
+    expect(entry.when({ provider: { id: 'nous-portal' } } as ProviderSpecificContext)).toBe(true)
+    expect(entry.when({ provider: { id: 'grok-cli' } } as ProviderSpecificContext)).toBe(false)
+    expect(showsAccountPanel({ id: 'nous-portal', apiKeys: [] })).toBe(false)
+  })
+
   it('requires manual SiliconFlow credentials and retains billing after a key is enabled', () => {
     expect(isProviderSupportAuth({ id: 'silicon' })).toBe(false)
     expect(showsAccountPanel({ id: 'silicon', apiKeys: [] })).toBe(false)

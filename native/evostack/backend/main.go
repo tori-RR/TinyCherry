@@ -71,6 +71,9 @@ type serverState struct {
 	computerEpoch           uint64
 	computerApprovals       *computerApprovalState
 	skills                  *skillRuntime
+	nousOAuth               *nousOAuthRuntime
+	nousOAuthGenerations    map[string]uint64
+	nousOAuthRequests       map[string]map[string]context.CancelFunc
 	mu                      sync.Mutex
 	interrupts              sync.Map
 	networkTransports       *transportPool
@@ -98,7 +101,9 @@ func (s *server) interruptGeneration(topicID string) {
 }
 
 func newServer(repository *store, writer *wireWriter, ctx context.Context, cancel context.CancelFunc) *server {
-	return &server{store: repository, serverState: &serverState{writer: writer, active: map[string]*generation{}, shared: object{}, context: ctx, cancel: cancel, computerEpoch: 1, networkTransports: newTransportPool()}}
+	s := &server{store: repository, serverState: &serverState{writer: writer, active: map[string]*generation{}, shared: object{}, context: ctx, cancel: cancel, computerEpoch: 1, networkTransports: newTransportPool(), nousOAuthGenerations: map[string]uint64{}, nousOAuthRequests: map[string]map[string]context.CancelFunc{}}}
+	s.nousOAuth = newNousOAuthRuntime(ctx, nativeNousOAuthStorage{server: s}, s.nativeNousHTTPClient)
+	return s
 }
 
 func (s *server) transaction(operation func(*server) error) error {
@@ -266,4 +271,9 @@ readLoop:
 		case <-time.After(5 * time.Second):
 		}
 	}
+	// Cancelled refreshes still have to persist rotated or uncertain token state
+	// before the deferred database close. No incoming IPC worker remains here.
+	drainContext, drainCancel := context.WithTimeout(context.Background(), time.Second)
+	defer drainCancel()
+	_ = s.nousOAuth.Wait(drainContext)
 }

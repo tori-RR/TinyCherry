@@ -85,7 +85,8 @@ const ProviderSettingsMergePatchSchema = z.object({
   notes: ProviderSettingsSchema.shape.notes.nullable().optional(),
   isAuthed: ProviderSettingsSchema.shape.isAuthed.nullable().optional(),
   oauthUsername: ProviderSettingsSchema.shape.oauthUsername.nullable().optional(),
-  oauthAvatar: ProviderSettingsSchema.shape.oauthAvatar.nullable().optional()
+  oauthAvatar: ProviderSettingsSchema.shape.oauthAvatar.nullable().optional(),
+  oauthClientId: ProviderSettingsSchema.shape.oauthClientId.nullable().optional()
 })
 
 // ============================================================================

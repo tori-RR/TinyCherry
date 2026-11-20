@@ -363,6 +363,15 @@ func (s *server) readComputerModelStep(ctx context.Context, g *generation, confi
 		return step, err
 	}
 	config.network = network
+	ctx, releaseAuth, err := s.nativeNousRequestContext(ctx, config)
+	if err != nil {
+		return step, err
+	}
+	defer releaseAuth()
+	config, err = s.authorizeProviderRequest(ctx, config)
+	if err != nil {
+		return step, err
+	}
 	request, err := config.request(ctx, http.MethodPost, bytes.NewReader(encoded), true)
 	if err != nil {
 		return step, err

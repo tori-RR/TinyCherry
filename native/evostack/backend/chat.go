@@ -436,6 +436,15 @@ func (s *server) modelOperation(route string, input object) (any, error) {
 		}
 		ctx, cancel := context.WithTimeout(s.context, 30*time.Second)
 		defer cancel()
+		ctx, releaseAuth, err := s.nativeNousRequestContext(ctx, config)
+		if err != nil {
+			return nil, err
+		}
+		defer releaseAuth()
+		config, err = s.authorizeProviderRequest(ctx, config)
+		if err != nil {
+			return nil, err
+		}
 		request, err := config.request(ctx, http.MethodGet, nil, false)
 		if err != nil {
 			return nil, err
@@ -476,6 +485,15 @@ func (s *server) modelOperation(route string, input object) (any, error) {
 	}
 	ctx, cancel := context.WithTimeout(s.context, probeTimeout(input["timeout"]))
 	defer cancel()
+	ctx, releaseAuth, err := s.nativeNousRequestContext(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+	defer releaseAuth()
+	config, err = s.authorizeProviderRequest(ctx, config)
+	if err != nil {
+		return nil, err
+	}
 	encoded, _ := json.Marshal(object{"model": model["apiModelId"], "messages": []object{{"role": "user", "content": "Hi"}}, "max_tokens": 1, "stream": false})
 	request, err := config.request(ctx, http.MethodPost, bytes.NewReader(encoded), false)
 	if err != nil {

@@ -194,7 +194,16 @@ export const ProviderSettingsSchema = z.object({
   // GitHub Copilot auth state (stored here because v2 Provider has no isAuthed column)
   isAuthed: z.boolean().optional(),
   oauthUsername: z.string().optional(),
-  oauthAvatar: z.string().optional()
+  oauthAvatar: z.string().optional(),
+  /** Public OAuth application id; never an access token, refresh token or client secret. */
+  oauthClientId: z
+    .string()
+    .trim()
+    .min(1)
+    .max(256)
+    // Match the native validator: printable, non-space ASCII only.
+    .regex(/^[\x21-\x7e]+$/)
+    .optional()
 })
 
 export type ProviderSettings = z.infer<typeof ProviderSettingsSchema>

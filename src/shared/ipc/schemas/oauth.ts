@@ -3,21 +3,21 @@ import * as z from 'zod'
 import { defineRoute } from '../define'
 
 /**
- * OAuth IPC schemas — sign-in / token-state / logout for the login-based
- * providers, driven by the main process through the shared `OAuthRuntimeService`
- * + its provider definitions (`providers/<id>.ts`).
+ * OAuth IPC schemas — sign-in / token-state / logout for login-based providers.
+ * Nous Portal's native device flow uses short start/status/cancel requests;
+ * network polling, persistence and refresh remain owned by the Go backend.
  *
  * The base operations are provider-generic: a fixed set carries the target
  * `providerId`, and the handler drives providers through the shared runtime.
  * Providers with custom inputs or results keep those contracts in their own
  * domain instead of widening this surface.
  *
- * Codex and Grok CLI use an HTTP loopback callback through `sign_in`. CherryIN
- * shares the runtime but keeps its provider-specific IPC contract under
- * `cherryin.sign_in`.
+ * The older loopback `sign_in` contracts remain for Codex and Grok CLI while
+ * those runtimes await native migration. CherryIN keeps its own contract under
+ * `cherryin.sign_in`; declaring a contract does not enable an unsupported route.
  *
  * `sign_in` and `get_account` return only the account id; OAuth tokens stay in
- * main. Providers without an account concept resolve `{ accountId: null }`.
+ * the backend. Providers without an account concept resolve `{ accountId: null }`.
  *
  * `check_external_login` covers the other login shape — providers whose
  * credential lives in an external CLI's store (`authMethods` includes
@@ -37,7 +37,36 @@ const signInAttachResultSchema = z.discriminatedUnion('status', [
 const providerInput = z.object({ providerId: z.string() })
 const signInObservationInput = providerInput.extend({ requestId: z.string().min(1) })
 
+// Device authorization waits in the native backend, outside the 15-second IPC
+// request budget. Only the human-facing code and login status cross this boundary.
+const deviceInput = z.strictObject({
+  providerId: z.literal('nous-portal'),
+  requestId: z.string().min(1).max(128)
+})
+
+const deviceAuthorizationSchema = z.strictObject({
+  requestId: z.string().min(1).max(128),
+  userCode: z.string().min(1).max(256),
+  verificationUri: z.url(),
+  verificationUriComplete: z.url().optional(),
+  /** Unix milliseconds, unlike OAuth's expires_in (seconds). */
+  expiresAt: z.number().int().positive(),
+  /** The server's token polling interval in seconds; polling is backend-owned. */
+  interval: z.number().int().positive()
+})
+
+const deviceStatusSchema = z.discriminatedUnion('status', [
+  z.strictObject({ status: z.literal('pending') }),
+  z.strictObject({ status: z.literal('completed'), accountId: z.string().nullable() }),
+  z.strictObject({ status: z.literal('cancelled') }),
+  z.strictObject({ status: z.literal('expired') }),
+  z.strictObject({ status: z.literal('error'), code: z.string(), message: z.string() })
+])
+
 export const oauthRequestSchemas = {
+  'oauth.device.start': defineRoute({ input: deviceInput, output: deviceAuthorizationSchema }),
+  'oauth.device.status': defineRoute({ input: deviceInput, output: deviceStatusSchema }),
+  'oauth.device.cancel': defineRoute({ input: deviceInput, output: z.void() }),
   'oauth.sign_in': defineRoute({ input: signInObservationInput, output: oauthAccountSchema }),
   'oauth.sign_in.attach': defineRoute({ input: signInObservationInput, output: signInAttachResultSchema }),
   'oauth.cancel_sign_in': defineRoute({ input: signInObservationInput, output: z.void() }),

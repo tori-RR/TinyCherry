@@ -1101,6 +1101,28 @@
       "name": "Grok CLI"
     },
     {
+      "authMethods": ["oauth"],
+      "availableInEditions": ["global", "cn"],
+      "defaultChatEndpoint": "openai-chat-completions",
+      "description": "Nous Portal - AI model provider",
+      "endpointConfigs": {
+        "openai-chat-completions": {
+          "adapterFamily": "openai-compatible",
+          "baseUrl": "https://inference-api.nousresearch.com/v1"
+        }
+      },
+      "id": "nous-portal",
+      "metadata": {
+        "website": {
+          "billing": "https://portal.nousresearch.com/manage-subscription",
+          "docs": "https://hermes-agent.nousresearch.com/docs/integrations/nous-portal",
+          "official": "https://portal.nousresearch.com"
+        }
+      },
+      "modelListSource": "api",
+      "name": "Nous Portal"
+    },
+    {
       "authOptional": true,
       "availableInEditions": ["global", "cn"],
       "defaultChatEndpoint": "openai-responses",
@@ -2968,5 +2990,5 @@
       "presetProviderId": "minimax"
     }
   ],
-  "version": "a6291a3a00ded246"
+  "version": "8907b1d0538ec67b"
 }

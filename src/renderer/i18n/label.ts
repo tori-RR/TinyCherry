@@ -57,6 +57,7 @@ const providerKeyMap = {
   modelscope: 'provider.modelscope',
   moonshot: 'provider.moonshot',
   'new-api': 'provider.new-api',
+  'nous-portal': 'provider.nous-portal',
   nvidia: 'provider.nvidia',
   o3: 'provider.o3',
   ocoolai: 'provider.ocoolai',

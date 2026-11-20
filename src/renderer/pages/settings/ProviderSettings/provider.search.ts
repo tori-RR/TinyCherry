@@ -48,5 +48,12 @@ export const entries: SettingsSearchEntry[] = [
     titleKey: 'provider.grok-cli',
     providerId: 'grok-cli',
     aliases: ['grok', 'cli', 'oauth', '登录']
+  },
+  {
+    anchorId: 'auth-nous-portal',
+    titleKey: 'provider.nous-portal',
+    descriptionKey: 'settings.provider.nous_portal.description',
+    providerId: 'nous-portal',
+    aliases: ['nous', 'nousresearch', 'hermes', 'oauth', '登录']
   }
 ]

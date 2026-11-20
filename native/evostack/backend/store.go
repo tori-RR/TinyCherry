@@ -111,6 +111,9 @@ CREATE INDEX IF NOT EXISTS entity_knowledge_item ON entity(resource,json_extract
 				}
 			}
 		}
+		if err := s.ensureNativeNousProvider(); err != nil {
+			return err
+		}
 		if version == 1 {
 			return s.pruneUnusedSecrets()
 		}
@@ -128,6 +131,43 @@ CREATE INDEX IF NOT EXISTS entity_knowledge_item ON entity(resource,json_extract
 		return fail(err)
 	}
 	return s, nil
+}
+
+// Add the newly introduced preset once, including to existing profiles. The
+// marker preserves a user's later deletion; saved providers are never reset.
+func (s *store) ensureNativeNousProvider() error {
+	const marker = "nous-portal-provider-v1"
+	if _, err := s.get("desktop-migrations", marker); err == nil {
+		return nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	var preset object
+	for _, provider := range s.defaults.Providers {
+		if provider["id"] == nativeNousProviderID {
+			preset = clone(provider)
+			break
+		}
+	}
+	if preset == nil {
+		return nil
+	}
+	provider, err := s.get("providers", nativeNousProviderID)
+	if errors.Is(err, sql.ErrNoRows) {
+		initializeNativeNousProvider(preset)
+		if err := s.put("providers", preset); err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	} else if isNativeNousOAuthProvider(provider) && nativeNousBinding(provider) == "" {
+		// Fresh defaults have no per-profile owner until they enter this store.
+		provider["oauthOwnerId"] = newID()
+		if err := s.put("providers", provider); err != nil {
+			return err
+		}
+	}
+	return s.put("desktop-migrations", object{"id": marker})
 }
 
 func (s *store) recoverInterruptedMessages() error {
@@ -283,6 +323,9 @@ func (s *store) put(resource string, value object) error {
 	if err := s.validateRelations(resource, value); err != nil {
 		return err
 	}
+	if resource == "providers" && isNativeNousOAuthProvider(value) && nativeNousBinding(value) == "" {
+		value["oauthOwnerId"] = newID()
+	}
 	if s.temporary != nil && s.temporary.put(resource, value) {
 		return nil
 	}
@@ -391,6 +434,9 @@ func (s *store) pruneUnusedSecrets() error {
 	for _, provider := range providers {
 		for _, value := range array(provider["apiKeys"]) {
 			retained[text(provider["id"])+":"+text(obj(value)["id"])] = true
+		}
+		if binding := nativeNousBinding(provider); binding != "" {
+			retained[nativeNousSecretID(binding)] = true
 		}
 	}
 	rows, err := s.connection().Query("SELECT id FROM secret")

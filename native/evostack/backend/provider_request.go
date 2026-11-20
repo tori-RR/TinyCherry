@@ -15,12 +15,22 @@ import (
 )
 
 type providerRequestConfig struct {
-	address string
-	headers http.Header
-	network networkSettings
+	address         string
+	headers         http.Header
+	network         networkSettings
+	oauthBinding    string
+	oauthClientID   string
+	oauthGeneration uint64
+	resource        string
 }
 
 func (s *server) providerKey(provider object, override string) (string, error) {
+	if isNativeNousOAuthProvider(provider) {
+		if override != "" {
+			return "", errors.New("Nous Portal uses its signed-in account, not an API key override")
+		}
+		return "", nil
+	}
 	if override != "" {
 		return override, nil
 	}
@@ -35,6 +45,10 @@ func (s *server) providerKey(provider object, override string) (string, error) {
 
 // Called while the caller owns its short store/state access; network work happens later.
 func (s *server) resolveProviderRequest(provider object, base, key, resource string) (providerRequestConfig, error) {
+	nous := isNativeNousOAuthProvider(provider)
+	if nous && (strings.TrimRight(base, "/") != nousInferenceBaseURL || (resource != "models" && resource != "chat/completions")) {
+		return providerRequestConfig{}, errors.New("Nous OAuth requires its official inference endpoint")
+	}
 	address, err := providerEndpoint(provider, base, resource)
 	if err != nil {
 		return providerRequestConfig{}, err
@@ -58,6 +72,9 @@ func (s *server) resolveProviderRequest(provider object, base, key, resource str
 			return providerRequestConfig{}, errors.New("invalid provider custom headers")
 		}
 		seen[canonical] = true
+		if nous && canonical == "Authorization" {
+			return providerRequestConfig{}, errors.New("Nous OAuth authorization is managed by the signed-in account")
+		}
 		switch canonical {
 		case "Host", "Content-Length", "Transfer-Encoding", "Connection", "Proxy-Authorization":
 			return providerRequestConfig{}, errors.New("provider custom headers cannot override HTTP transport headers")
@@ -65,10 +82,22 @@ func (s *server) resolveProviderRequest(provider object, base, key, resource str
 		// Match the original case-insensitive, explicit-custom-value precedence.
 		headers.Set(canonical, value)
 	}
-	if key == "" && headers.Get("Authorization") == "" && provider["authOptional"] != true {
+	if !nous && key == "" && headers.Get("Authorization") == "" && provider["authOptional"] != true {
 		return providerRequestConfig{}, errors.New("provider API key is missing")
 	}
-	return providerRequestConfig{address: address, headers: headers, network: network}, nil
+	config := providerRequestConfig{address: address, headers: headers, network: network, resource: resource}
+	if nous {
+		config.oauthBinding = nativeNousBinding(provider)
+		if config.oauthBinding == "" {
+			return providerRequestConfig{}, errors.New("Nous OAuth provider is not initialized")
+		}
+		config.oauthClientID, err = nativeNousClientID(provider)
+		if err != nil {
+			return providerRequestConfig{}, err
+		}
+		config.oauthGeneration = s.nousOAuthGenerations[config.oauthBinding]
+	}
+	return config, nil
 }
 
 func validHeaderName(name string) bool {
@@ -84,6 +113,9 @@ func validHeaderName(name string) bool {
 }
 
 func (config providerRequestConfig) request(ctx context.Context, method string, body io.Reader, stream bool) (*http.Request, error) {
+	if config.oauthBinding != "" && config.headers.Get("Authorization") == "" {
+		return nil, errors.New("Nous OAuth request has not been authorized")
+	}
 	request, err := http.NewRequestWithContext(ctx, method, config.address, body)
 	if err != nil {
 		return nil, errors.New("invalid provider request")

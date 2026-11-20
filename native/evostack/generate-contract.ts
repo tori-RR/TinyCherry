@@ -31,7 +31,8 @@ const providers = catalog.providers
     websites: provider.metadata?.website,
     settings: {},
     apiKeys: [],
-    authType: 'api-key',
+    // Only Nous Portal has a native OAuth runtime in this migration slice.
+    authType: provider.id === 'nous-portal' ? 'oauth' : 'api-key',
     reportsActualCost: false,
     isEnabled: false
   }))

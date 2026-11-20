@@ -38,6 +38,11 @@ func testServer(t *testing.T) (*server, string) {
 		for _, g := range running {
 			<-g.done
 		}
+		drainContext, drainCancel := context.WithTimeout(context.Background(), time.Second)
+		defer drainCancel()
+		if err := s.nousOAuth.Wait(drainContext); err != nil {
+			t.Error("OAuth workers did not drain", err)
+		}
 		db.db.Close()
 	})
 	return s, directory

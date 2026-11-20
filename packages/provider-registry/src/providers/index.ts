@@ -38,6 +38,7 @@ import p_modelscope from './modelscope'
 import p_moonshot from './moonshot'
 import p_moonshot_global from './moonshot-global'
 import p_new_api from './new-api'
+import p_nous_portal from './nous-portal'
 import p_nvidia from './nvidia'
 import p_ocoolai from './ocoolai'
 import p_ollama from './ollama'
@@ -98,6 +99,7 @@ export const PROVIDERS: Provider[] = [
   p_claude_code,
   p_openai_codex,
   p_grok_cli,
+  p_nous_portal,
   p_omlx,
   p_rapid_mlx,
   p_openai,

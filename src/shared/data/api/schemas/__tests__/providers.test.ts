@@ -79,4 +79,20 @@ describe('Provider DTO logo validation', () => {
     ).toEqual({ ttl: '1h' })
     expect(UpdateProviderSchema.safeParse({ providerSettings: { cacheControl: { ttl: '30m' } } }).success).toBe(false)
   })
+
+  it('accepts a public OAuth client id override and null to restore its default', () => {
+    expect(
+      UpdateProviderSchema.parse({ providerSettings: { oauthClientId: ' tinycherry-test ' } }).providerSettings
+    ).toEqual({ oauthClientId: 'tinycherry-test' })
+    expect(UpdateProviderSchema.parse({ providerSettings: { oauthClientId: null } }).providerSettings).toEqual({
+      oauthClientId: null
+    })
+  })
+
+  it.each(['', 'a'.repeat(257), 'client\nsecret', 'client id', 'client\u0000id', 'tinycherry-客户端', 'café'])(
+    'rejects an invalid OAuth client id override',
+    (oauthClientId) => {
+      expect(UpdateProviderSchema.safeParse({ providerSettings: { oauthClientId } }).success).toBe(false)
+    }
+  )
 })

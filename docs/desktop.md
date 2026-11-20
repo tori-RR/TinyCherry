@@ -7,6 +7,7 @@ The supported target is Windows x64. React and TypeScript retain the existing la
 | Area | Current implementation |
 | --- | --- |
 | Chat and models | Provider configuration, compatible Chat Completions, model checks, message branches, context boundaries, streaming, stop and reconnectable projections |
+| Nous Portal authentication | Browser device-code sign-in, backend-owned encrypted credentials, token refresh, cancellation and logout; see [Nous Portal sign-in](nous-oauth.md) for client identity and live-service verification limits |
 | Knowledge | SQLite FTS5/BM25 for text, Markdown, CSV, JSON, HTML, notes and URLs |
 | Prompt and skill management | Persistent prompts and bindings; built-in/local skill catalog, files and enablement |
 | Local history | Conversation/assistant archive, restore, permanent deletion and Undo |
