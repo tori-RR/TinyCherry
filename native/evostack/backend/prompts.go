@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 	"net/url"
@@ -78,7 +77,7 @@ func promptRowsInOrder(rows []object) []object {
 
 func (s *server) reindexPromptRows(resource string, rows []object) error {
 	for i, row := range rows {
-		row["orderKey"] = fmt.Sprintf("%020d", i+1)
+		row["orderKey"] = orderKeyAt(i)
 		if err := s.store.put(resource, row); err != nil {
 			return err
 		}
@@ -433,70 +432,13 @@ func (s *server) promptBindingRoute(method string, parts []string, body any) (an
 }
 
 func (s *server) reorderPromptRows(resource string, rows []object, body any) error {
-	input := obj(body)
-	if err := promptFields(input, "moves"); err != nil {
-		return err
-	}
-	moves, ok := input["moves"].([]any)
-	if !ok || len(moves) == 0 {
-		return errors.New("prompt moves must be a non-empty array")
-	}
 	idField := "id"
 	if resource == "prompt-bindings" {
 		idField = "promptId"
 	}
-	for _, value := range moves {
-		move := obj(value)
-		if len(move) != 2 {
-			return errors.New("invalid prompt move")
-		}
-		id := text(move["id"])
-		anchor := obj(move["anchor"])
-		if len(anchor) != 1 {
-			return errors.New("prompt move needs one anchor")
-		}
-		from := -1
-		for i, row := range rows {
-			if row[idField] == id {
-				from = i
-				break
-			}
-		}
-		if from < 0 {
-			return sql.ErrNoRows
-		}
-		moving := rows[from]
-		next := append(append([]object{}, rows[:from]...), rows[from+1:]...)
-		to := -1
-		if position, ok := anchor["position"]; ok {
-			switch position {
-			case "first":
-				to = 0
-			case "last":
-				to = len(next)
-			default:
-				return errors.New("invalid prompt move position")
-			}
-		} else {
-			for _, key := range []string{"before", "after"} {
-				anchorID := text(anchor[key])
-				if anchorID == "" {
-					continue
-				}
-				for i, row := range next {
-					if row[idField] == anchorID {
-						to = i
-						if key == "after" {
-							to++
-						}
-					}
-				}
-			}
-		}
-		if to < 0 {
-			return errors.New("prompt anchor is missing or references itself")
-		}
-		rows = append(next[:to], append([]object{moving}, next[to:]...)...)
+	ordered, err := applyOrderMoves(rows, idField, body)
+	if err != nil {
+		return err
 	}
-	return s.reindexPromptRows(resource, rows)
+	return s.reindexPromptRows(resource, ordered)
 }

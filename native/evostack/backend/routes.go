@@ -426,6 +426,14 @@ func (s *server) data(method, path string, query object, body any) (any, error) 
 		}
 		return nil, notMigrated(method + " " + path)
 	}
+	if resource == "providers" && method == "PATCH" {
+		switch {
+		case path == "/providers/order:batch":
+			return nil, s.reorderProviders(body)
+		case len(segments) == 3 && segments[2] == "order":
+			return nil, s.reorderProviders(object{"moves": []any{object{"id": segments[1], "anchor": input}}})
+		}
+	}
 	if resource == "providers" && len(segments) >= 3 {
 		provider, err := s.store.get("providers", segments[1])
 		if err != nil {
@@ -716,6 +724,28 @@ func (s *server) data(method, path string, query object, body any) (any, error) 
 		return nil, s.deleteEntity(resource, id)
 	}
 	return nil, notMigrated(method + " " + path)
+}
+
+func (s *server) reorderProviders(body any) error {
+	rows, err := s.store.list("providers")
+	if err != nil {
+		return err
+	}
+	ordered, err := applyOrderMoves(filter(rows, object{}), "id", body)
+	if err != nil {
+		return err
+	}
+	for i, provider := range ordered {
+		key := orderKeyAt(i)
+		if provider["orderKey"] == key {
+			continue
+		}
+		// Only update order metadata so legacy IDs and the OAuth owner remain valid.
+		if _, err := s.store.connection().Exec("UPDATE entity SET body=json_set(body,'$.orderKey',?) WHERE resource='providers' AND id=?", key, provider["id"]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *server) providerKeys(method string, provider object, path []string, query, input object) (any, error) {

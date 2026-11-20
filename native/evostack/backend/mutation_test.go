@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"slices"
 	"testing"
 )
 
@@ -123,5 +124,77 @@ func TestDeleteModelsCollection(t *testing.T) {
 	}
 	if response := deleteModels("test::local"); response["status"] != 200 {
 		t.Fatalf("single string ID was rejected: %v", response)
+	}
+}
+
+func TestProviderReorderPersistsThroughRestart(t *testing.T) {
+	s, directory := testServer(t)
+	const legacyID = "test:legacy-provider"
+	if _, err := s.store.connection().Exec(
+		"INSERT INTO entity(resource,id,body) VALUES('providers',?,json_object('id',?,'name','Legacy fixture'))", legacyID, legacyID,
+	); err != nil {
+		t.Fatal(err)
+	}
+	nous := nativeNousFixture(t, s)
+	binding := nativeNousBinding(nous)
+	putSyntheticSealedSecret(t, s, nativeNousSecretID(binding))
+	getIDs := func() []string {
+		rows := dataOK(t, s, "GET", "/providers", nil).([]object)
+		ids := make([]string, 0, len(rows))
+		for _, row := range rows {
+			ids = append(ids, text(row["id"]))
+		}
+		return ids
+	}
+	original := getIDs()
+	var output bytes.Buffer
+	s.writer = &wireWriter{output: &output}
+
+	dataOK(t, s, "PATCH", "/providers/"+nativeNousProviderID+"/order", object{"before": original[0]})
+	wantSingle := append([]string{nativeNousProviderID}, slices.DeleteFunc(slices.Clone(original), func(id string) bool {
+		return id == nativeNousProviderID
+	})...)
+	if ids := getIDs(); !slices.Equal(ids, wantSingle) {
+		t.Fatalf("single reorder persisted %v, want %v", ids, wantSingle)
+	}
+	if endpoints := changedEndpoints(t, output.Bytes()); len(endpoints) != 1 || !endpoints["/providers"] {
+		t.Fatalf("unexpected reorder invalidation: %v", endpoints)
+	}
+
+	dataOK(t, s, "PATCH", "/providers/order:batch", object{"moves": []any{
+		object{"id": nativeHermesProviderID, "anchor": object{"position": "first"}},
+		object{"id": legacyID, "anchor": object{"after": nativeHermesProviderID}},
+	}})
+	wantBatch := append([]string{nativeHermesProviderID, legacyID}, slices.DeleteFunc(slices.Clone(wantSingle), func(id string) bool {
+		return id == nativeHermesProviderID || id == legacyID
+	})...)
+	if ids := getIDs(); !slices.Equal(ids, wantBatch) {
+		t.Fatalf("batch reorder persisted %v, want %v", ids, wantBatch)
+	}
+	output.Reset()
+	failed := dataResponse(t, s, "PATCH", "/providers/order:batch", object{"moves": []any{
+		object{"id": nativeHermesProviderID, "anchor": object{"position": "last"}},
+		object{"id": legacyID, "anchor": object{"after": "missing-provider"}},
+	}})
+	if failed["status"] != 400 || output.Len() != 0 || !slices.Equal(getIDs(), wantBatch) {
+		t.Fatalf("invalid batch did not roll back: %v", failed)
+	}
+
+	if err := s.store.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := openStore(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.db.Close()
+	s.store = reopened
+	if ids := getIDs(); !slices.Equal(ids, wantBatch) {
+		t.Fatalf("restarted provider order: %v, want %v", ids, wantBatch)
+	}
+	var sealed []byte
+	if err := reopened.connection().QueryRow("SELECT sealed FROM secret WHERE id=?", nativeNousSecretID(binding)).Scan(&sealed); err != nil ||
+		string(sealed) != "synthetic-sealed-fixture" || nativeNousBinding(nativeNousFixture(t, s)) != binding {
+		t.Fatal("reordering changed the Nous OAuth binding or credential", err)
 	}
 }
