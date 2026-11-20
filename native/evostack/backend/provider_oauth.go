@@ -307,9 +307,5 @@ func (s *server) authorizeProviderRequest(ctx context.Context, config providerRe
 	}
 	config.headers = config.headers.Clone()
 	config.headers.Set("Authorization", "Bearer "+credential.AccessToken)
-	if config.headers.Get("User-Agent") == "" {
-		// Identify TinyCherry explicitly; Nous rejects Go's default User-Agent.
-		config.headers.Set("User-Agent", "TinyCherry/"+appVersion)
-	}
 	return config, nil
 }

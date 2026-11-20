@@ -54,6 +54,12 @@ export const entries: SettingsSearchEntry[] = [
     titleKey: 'provider.nous-portal',
     descriptionKey: 'settings.provider.nous_portal.description',
     providerId: 'nous-portal',
-    aliases: ['nous', 'nousresearch', 'hermes', 'oauth', '登录']
+    aliases: ['nous', 'nousresearch', 'nous portal', 'oauth', '登录']
+  },
+  {
+    anchorId: 'auth-hermes',
+    titleKey: 'provider.hermes',
+    providerId: 'hermes',
+    aliases: ['hermes agent', 'subscription proxy', '订阅代理', '訂閱代理']
   }
 ]

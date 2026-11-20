@@ -286,6 +286,7 @@ const PROVIDER_ID_ALIASES: Record<string, string> = {
   // Grok CLI is an xAI product; reuse the Grok mark.
   'grok-cli': 'grok',
   'nous-portal': 'nousresearch',
+  hermes: 'nousresearch',
   'azure-openai': 'azureai',
   'new-api': 'newapi',
   'tencent-cloud-ti': 'tencent-cloud-ti',

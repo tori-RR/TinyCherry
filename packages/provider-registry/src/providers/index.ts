@@ -24,6 +24,7 @@ import p_gpustack from './gpustack'
 import p_grok from './grok'
 import p_grok_cli from './grok-cli'
 import p_groq from './groq'
+import p_hermes from './hermes'
 import p_huggingface from './huggingface'
 import p_jina from './jina'
 import p_lanyun from './lanyun'
@@ -100,6 +101,7 @@ export const PROVIDERS: Provider[] = [
   p_openai_codex,
   p_grok_cli,
   p_nous_portal,
+  p_hermes,
   p_omlx,
   p_rapid_mlx,
   p_openai,

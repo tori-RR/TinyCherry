@@ -7,7 +7,7 @@ import { defineProvider } from './types'
  */
 export default defineProvider({
   id: 'nous-portal',
-  name: 'Nous Portal',
+  name: 'NousResearch',
   availableInEditions: ['global', 'cn'],
   defaultChatEndpoint: 'openai-chat-completions',
   modelListSource: 'api',

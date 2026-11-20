@@ -82,6 +82,10 @@ func (s *server) resolveProviderRequest(provider object, base, key, resource str
 		// Match the original case-insensitive, explicit-custom-value precedence.
 		headers.Set(canonical, value)
 	}
+	if (nous || provider["id"] == nativeHermesProviderID) && headers.Get("User-Agent") == "" {
+		// Hermes forwards this header upstream, where Nous rejects Go's default.
+		headers.Set("User-Agent", "TinyCherry/"+appVersion)
+	}
 	if !nous && key == "" && headers.Get("Authorization") == "" && provider["authOptional"] != true {
 		return providerRequestConfig{}, errors.New("provider API key is missing")
 	}

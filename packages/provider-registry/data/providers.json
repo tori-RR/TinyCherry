@@ -1104,7 +1104,7 @@
       "authMethods": ["oauth"],
       "availableInEditions": ["global", "cn"],
       "defaultChatEndpoint": "openai-chat-completions",
-      "description": "Nous Portal - AI model provider",
+      "description": "NousResearch - AI model provider",
       "endpointConfigs": {
         "openai-chat-completions": {
           "adapterFamily": "openai-compatible",
@@ -1120,7 +1120,27 @@
         }
       },
       "modelListSource": "api",
-      "name": "Nous Portal"
+      "name": "NousResearch"
+    },
+    {
+      "authOptional": true,
+      "availableInEditions": ["global", "cn"],
+      "defaultChatEndpoint": "openai-chat-completions",
+      "description": "Hermes - AI model provider",
+      "endpointConfigs": {
+        "openai-chat-completions": {
+          "adapterFamily": "openai-compatible",
+          "baseUrl": "http://127.0.0.1:8645/v1"
+        }
+      },
+      "id": "hermes",
+      "metadata": {
+        "website": {
+          "docs": "https://hermes-agent.nousresearch.com/docs/user-guide/features/subscription-proxy",
+          "official": "https://hermes-agent.nousresearch.com"
+        }
+      },
+      "name": "Hermes"
     },
     {
       "authOptional": true,
@@ -2990,5 +3010,5 @@
       "presetProviderId": "minimax"
     }
   ],
-  "version": "8907b1d0538ec67b"
+  "version": "4cf6ed57c5b4e2ae"
 }

@@ -45,6 +45,7 @@ const providerKeyMap = {
   grok: 'provider.grok',
   'grok-cli': 'provider.grok-cli',
   groq: 'provider.groq',
+  hermes: 'provider.hermes',
   hunyuan: 'provider.hunyuan',
   hyperbolic: 'provider.hyperbolic',
   infini: 'provider.infini',

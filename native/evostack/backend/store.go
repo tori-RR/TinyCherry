@@ -114,6 +114,9 @@ CREATE INDEX IF NOT EXISTS entity_knowledge_item ON entity(resource,json_extract
 		if err := s.ensureNativeNousProvider(); err != nil {
 			return err
 		}
+		if err := s.migrateHermesProvider(); err != nil {
+			return err
+		}
 		if version == 1 {
 			return s.pruneUnusedSecrets()
 		}
@@ -164,6 +167,42 @@ func (s *store) ensureNativeNousProvider() error {
 		// Fresh defaults have no per-profile owner until they enter this store.
 		provider["oauthOwnerId"] = newID()
 		if err := s.put("providers", provider); err != nil {
+			return err
+		}
+	}
+	return s.put("desktop-migrations", object{"id": marker})
+}
+
+const nativeHermesProviderID = "hermes"
+
+// Upgrade existing profiles once. A saved provider keeps its identity and
+// settings, and a deleted preset stays deleted after the migration.
+func (s *store) migrateHermesProvider() error {
+	const marker = "hermes-subscription-provider-v1"
+	if _, err := s.get("desktop-migrations", marker); err == nil {
+		return nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if _, err := s.get("providers", nativeHermesProviderID); errors.Is(err, sql.ErrNoRows) {
+		for _, preset := range s.defaults.Providers {
+			if preset["id"] == nativeHermesProviderID {
+				if err := s.put("providers", clone(preset)); err != nil {
+					return err
+				}
+				break
+			}
+		}
+	} else if err != nil {
+		return err
+	}
+	nous, err := s.get("providers", nativeNousProviderID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if isNativeNousOAuthProvider(nous) && nous["name"] == "Nous Portal" {
+		nous["name"] = "NousResearch"
+		if err := s.put("providers", nous); err != nil {
 			return err
 		}
 	}

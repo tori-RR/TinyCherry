@@ -22,6 +22,29 @@ const catalog = (): RegistryCatalog => ({
 })
 
 describe('portable registry', () => {
+  it('ships independent NousResearch OAuth and Hermes Subscription Proxy presets', () => {
+    const registry = createRegistry(bundledCatalog)
+
+    expect(registry.findProvider('nous-portal')).toMatchObject({
+      name: 'NousResearch',
+      authMethods: ['oauth'],
+      authOptional: false
+    })
+    expect(registry.findProvider('hermes')).toMatchObject({
+      name: 'Hermes',
+      authOptional: true,
+      modelListSource: 'api',
+      defaultChatEndpoint: 'openai-chat-completions',
+      endpointConfigs: {
+        'openai-chat-completions': {
+          adapterFamily: 'openai-compatible',
+          baseUrl: 'http://127.0.0.1:8645/v1'
+        }
+      }
+    })
+    expect(registry.findProvider('hermes')?.authMethods).toBeUndefined()
+  })
+
   it('ships Rapid-MLX as a keyless local provider with all three chat protocols', () => {
     const provider = createRegistry(bundledCatalog).findProvider('rapid-mlx')
 

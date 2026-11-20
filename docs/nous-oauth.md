@@ -1,13 +1,13 @@
-# Nous Portal sign-in
+# NousResearch and Hermes providers
 
-Nous Portal is a login-based provider for the native Windows desktop. It uses
+**NousResearch** signs in to Nous Portal from the native Windows desktop. It uses
 device authorization in the system browser, then sends OpenAI-compatible Chat
 Completions requests from the Go backend. The renderer never receives an access
 token, refresh token or device token.
 
 ## Use
 
-1. Open the Nous Portal provider in Settings. If the provider list is filtered
+1. Open the **NousResearch** provider in Settings. If the provider list is filtered
    to enabled entries, switch it to **All** first: the new preset starts disabled.
 2. Choose **Sign in**, complete the Nous authorization page in your browser, and
    confirm the displayed user code when requested. Keep the settings page open
@@ -82,25 +82,25 @@ old credential on disk; uninterrupted session recovery is not guaranteed in
 those cases. Logout and a fresh independent sign-in recover access without
 copying another application's token.
 
-## Existing Hermes subscription proxy
+## Hermes Subscription Proxy
 
-The official [Hermes Subscription Proxy](https://hermes-agent.nousresearch.com/docs/user-guide/features/subscription-proxy)
-is an alternative when Hermes should continue owning the login:
+The built-in **Hermes** preset connects to the local subscription proxy at
+`http://127.0.0.1:8645/v1`. Sign in with `hermes portal` if Hermes needs a Nous
+session, then keep the proxy running:
 
 ```sh
-hermes portal
 hermes proxy start
 ```
 
-Create a custom OpenAI-compatible provider with base URL
-`http://127.0.0.1:8645/v1` and a non-empty placeholder key such as `sk-unused`.
-Select a model returned by that proxy's model list. This custom provider uses
-the normal API Key request path; the proxy attaches the real Nous credential.
+In TinyCherry, open **Settings → Providers → Hermes**, leave the API Key field
+empty and sync models. Enable the provider and select a model from that list.
+Hermes attaches and refreshes its own upstream credential. The Hermes API Server
+listens on `8642` by default and exposes the Agent through a separate endpoint.
+See the official [Subscription Proxy guide](https://hermes-agent.nousresearch.com/docs/user-guide/features/subscription-proxy).
 
 If Hermes runs on another machine, map its loopback port to the desktop through
-an authenticated tunnel. The proxy accepts placeholder credentials and should
-remain on a trusted local path, rather than being exposed as an authenticated
-public endpoint.
+an authenticated tunnel. Keep the proxy on a trusted local path because its
+loopback endpoint accepts requests without a client API key.
 
 ## Verification
 

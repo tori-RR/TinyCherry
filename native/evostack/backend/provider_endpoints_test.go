@@ -18,6 +18,7 @@ func TestAllChatCompletionsPresetEndpoints(t *testing.T) {
 		"deepseek":        "https://api.deepseek.com/v1/chat/completions",
 		"openrouter":      "https://openrouter.ai/api/v1/chat/completions",
 		"nous-portal":     "https://inference-api.nousresearch.com/v1/chat/completions",
+		"hermes":          "http://127.0.0.1:8645/v1/chat/completions",
 		"radeon-cloud":    "https://developer.amd.com.cn/radeon/v1/chat/completions",
 		"lmstudio":        "http://localhost:1234/v1/chat/completions",
 		"rapid-mlx":       "http://localhost:8000/v1/chat/completions",
