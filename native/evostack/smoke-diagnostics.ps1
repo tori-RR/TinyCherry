@@ -117,7 +117,7 @@ function Save-EvoSmokeDiagnostics {
       try {
         $EvoLogLines = @(Get-Content -LiteralPath $EvoLogPath -Tail 200 | ForEach-Object { $_.Substring(0, [Math]::Min($_.Length, 4096)) })
         $EvoLogLines | Set-Content -LiteralPath (Join-Path $EvoDiagnosticsDirectory $EvoLogName) -Encoding utf8
-        $EvoLifecycle += @($EvoLogLines | Where-Object { $_ -match '^\d+ host: (starting sidecar|sidecar spawn failed|sidecar identity verified|initializing GPUI|GPUI initialized|creating GPUI window|GPUI window created|creating WebView2|WebView2 created|WebView2 initialization failed|window activation scheduled|React renderer ready \(GPUI \+ Wry\)|shutdown requested)$' })
+        $EvoLifecycle += @($EvoLogLines | Where-Object { $_ -match '^\d+ host: (starting sidecar|sidecar spawn failed|sidecar identity verified|initializing GPUI|GPUI initialized|creating GPUI window|GPUI window created|creating WebView2|WebView2 created|WebView2 initialization failed|window activation scheduled|frontend document served|frontend asset response status [1-5]\d\d|renderer dispatch started|renderer dispatch lost its window|renderer navigation started|renderer subscribed|React renderer ready \(GPUI \+ Wry\)|shutdown requested)$' })
       } catch { $EvoCollectorErrors += "Filtered log: $($_.Exception.Message)" }
     }
   }

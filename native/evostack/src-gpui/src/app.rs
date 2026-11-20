@@ -221,13 +221,16 @@ impl Desktop {
                 return desktop;
             }
         }
+        let pump_diagnostics = desktop.backend.diagnostics.clone();
         desktop.pump = Some(cx.spawn_in(window, async move |view, cx| {
+            pump_diagnostics.record("host: renderer dispatch started");
             let mut processed = 0_u8;
             while let Ok(message) = receiver.recv().await {
                 if view
                     .update_in(cx, |view, window, cx| view.receive(message, window, cx))
                     .is_err()
                 {
+                    pump_diagnostics.record("host: renderer dispatch lost its window");
                     break;
                 }
                 processed += 1;
@@ -286,6 +289,7 @@ impl Desktop {
         let budget = RequestBudget::default();
         let sender = self.sender.clone();
         let diagnostics = self.backend.diagnostics.clone();
+        let asset_diagnostics = self.backend.diagnostics.clone();
         let weak_view = Rc::new(RefCell::new(Weak::<WebView>::new()));
         let ipc_view = weak_view.clone();
         let page_sender = self.sender.clone();
@@ -296,9 +300,17 @@ impl Desktop {
             .with_background_color(self.theme.color(is_dark(window)))
             .with_clipboard(true)
             .with_devtools(cfg!(any(debug_assertions, feature = "inspection")))
-            .with_custom_protocol("tauri".into(), |_, request| {
+            .with_custom_protocol("tauri".into(), move |_, request| {
                 let response =
                     assets::respond(request.method().as_str(), &request.uri().to_string());
+                if response.status != 200 {
+                    asset_diagnostics.record(&format!(
+                        "host: frontend asset response status {}",
+                        response.status
+                    ));
+                } else if response.content_type.starts_with("text/html") {
+                    asset_diagnostics.record("host: frontend document served");
+                }
                 wry::http::Response::builder()
                     .status(response.status)
                     .header("Content-Type", response.content_type)
@@ -379,6 +391,9 @@ impl Desktop {
                 cx.notify();
             }
             UiMessage::NavigationStarted => {
+                self.backend
+                    .diagnostics
+                    .record("host: renderer navigation started");
                 self.session = None;
                 self.backend.events.lock().unwrap().take();
             }
@@ -394,6 +409,7 @@ impl Desktop {
         cx: &mut Context<Self>,
     ) {
         if request.command == "subscribe" {
+            self.backend.diagnostics.record("host: renderer subscribed");
             self.session = Some(request.session.clone());
             let sender = self.sender.clone();
             let session = request.session.clone();

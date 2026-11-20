@@ -102,6 +102,18 @@ try {
 } catch {
   $EvoSmokeFailure = $_
   try { Save-EvoSmokeDiagnostics -Profile $EvoSmoke -Stage 'failure' -Failure $EvoSmokeFailure.Exception.Message -HostProcess $EvoHost } catch { Write-Warning "Could not record smoke diagnostics: $($_.Exception.Message)" }
+  try {
+    if ($EvoHost -and -not $EvoHost.HasExited) {
+      $EvoFailureListeners = @(Get-NetTCPConnection -LocalPort $EvoPort -State Listen -ErrorAction SilentlyContinue)
+      $EvoFailureProcesses = @(Get-CimInstance Win32_Process)
+      $EvoFailureBrowser = Get-EvoSmokeBrowser -Processes $EvoFailureProcesses -Listeners $EvoFailureListeners -HostProcessId $EvoHost.Id -Profile $EvoSmoke -Port $EvoPort
+      if ($EvoFailureBrowser) {
+        # Diagnosis is allowed before renderer-ready only after the same strict ownership checks.
+        & node (Join-Path $PSScriptRoot 'diagnose-renderer.mjs') $EvoPort $EvoSmoke
+        if ($LASTEXITCODE -ne 0) { Write-Warning 'Owned page diagnostics were incomplete; see diagnostics/page.json' }
+      } else { Write-Warning 'No owned smoke CDP listener was available for page diagnostics' }
+    }
+  } catch { Write-Warning "Could not collect owned page diagnostics: $($_.Exception.Message)" }
   throw $EvoSmokeFailure
 } finally {
   if ($EvoHost -and -not $EvoHost.HasExited) { $EvoHost.Kill(); $EvoHost.WaitForExit() }
