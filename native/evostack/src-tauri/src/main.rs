@@ -761,7 +761,7 @@ fn main() {
                 "main",
                 frontend_url(),
             )
-            .title("TinyCherry EvoStack")
+            .title(app.package_info().name.as_str())
             .inner_size(1280.0, 850.0)
             .min_inner_size(900.0, 600.0)
             .decorations(false)
@@ -790,7 +790,7 @@ fn main() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("Failed to start TinyCherry EvoStack");
+        .expect("Failed to start TinyCherry");
     app.run(|app, event| {
         if let tauri::RunEvent::Exit = event {
             app.state::<Arc<Backend>>().shutdown();

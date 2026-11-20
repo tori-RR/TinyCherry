@@ -29,7 +29,7 @@ try {
     Invoke-DesktopStep { go build -trimpath -ldflags $DesktopFlags -o (Join-Path $DesktopCandidate 'tinycherry-evostack-backend.exe') . }
   } finally { Pop-Location }
   Invoke-DesktopStep { cargo build --release --locked --manifest-path native/evostack/src-tauri/Cargo.toml }
-  Copy-Item -LiteralPath (Join-Path $env:CARGO_TARGET_DIR 'release\tinycherry-evostack.exe') -Destination (Join-Path $DesktopCandidate 'TinyCherry-EvoStack.exe')
+  Copy-Item -LiteralPath (Join-Path $env:CARGO_TARGET_DIR 'release\TinyCherry.exe') -Destination $DesktopCandidate
   Copy-Item -LiteralPath LICENSE -Destination (Join-Path $DesktopCandidate 'LICENSE.txt')
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'README.md') -Destination (Join-Path $DesktopCandidate 'README.md')
   Copy-Item -LiteralPath (Join-Path $DesktopHelper 'runtime\open-computer-use.exe') -Destination (Join-Path $DesktopCandidate 'open-computer-use.exe')

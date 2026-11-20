@@ -15,9 +15,11 @@ import { isAbsolute, relative, resolve } from 'node:path'
 
 import { root, native } from './process.mjs'
 
-export const productFiles = [
-  'TinyCherry-EvoStack.exe',
-  'tinycherry-evostack-backend.exe',
+const currentHostExecutable = 'TinyCherry.exe'
+const legacyHostExecutable = 'TinyCherry-EvoStack.exe'
+const backendExecutable = 'tinycherry-evostack-backend.exe'
+const companionFiles = [
+  backendExecutable,
   'open-computer-use.exe',
   'README.md',
   'LICENSE.txt',
@@ -25,6 +27,13 @@ export const productFiles = [
   'computer-use-THIRD-PARTY-NOTICES.md',
   'SHA256.json'
 ]
+export const productFiles = [currentHostExecutable, ...companionFiles]
+export function getHostExecutable(manifest) {
+  // Older complete candidates still support pnpm start and rollback.
+  return manifest.files.some(({ name }) => name === currentHostExecutable)
+    ? currentHostExecutable
+    : legacyHostExecutable
+}
 export const hash = (file) => createHash('sha256').update(readFileSync(file)).digest('hex')
 export function writeBinaryHashes(directory) {
   const files = productFiles
@@ -105,12 +114,13 @@ export function validateCandidate(directory, expected) {
   if (expected && ['version', 'revision', 'sourceHash'].some((key) => manifest[key] !== expected[key]))
     throw new Error('Candidate belongs to different source; run pnpm build')
   const names = manifest.files.map((file) => file.name)
-  if (JSON.stringify([...names].sort()) !== JSON.stringify([...productFiles].sort()))
+  const allowed = [getHostExecutable(manifest), ...companionFiles]
+  if (JSON.stringify([...names].sort()) !== JSON.stringify([...allowed].sort()))
     throw new Error('Unexpected candidate file list')
-  if (JSON.stringify(readdirSync(directory).sort()) !== JSON.stringify([...productFiles, 'candidate.json'].sort()))
+  if (JSON.stringify(readdirSync(directory).sort()) !== JSON.stringify([...allowed, 'candidate.json'].sort()))
     throw new Error('Candidate contains unexpected files; never package user data')
   for (const file of manifest.files) {
-    if (!productFiles.includes(file.name)) throw new Error('Candidate path is not allowed')
+    if (!allowed.includes(file.name)) throw new Error('Candidate path is not allowed')
     const path = resolve(directory, file.name)
     const entry = lstatSync(path)
     if (!entry.isFile() || entry.isSymbolicLink() || hash(path) !== file.sha256 || entry.size !== file.bytes)
@@ -120,7 +130,7 @@ export function validateCandidate(directory, expected) {
 }
 
 export function checkIdentities(directory, manifest) {
-  for (const name of ['TinyCherry-EvoStack.exe', 'tinycherry-evostack-backend.exe']) {
+  for (const name of [getHostExecutable(manifest), backendExecutable]) {
     const info = JSON.parse(
       execFileSync(resolve(directory, name), ['--evostack-build-info'], {
         encoding: 'utf8',

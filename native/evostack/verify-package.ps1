@@ -3,15 +3,17 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'smoke-ownership.ps1')
 $EvoDirectory = (Resolve-Path -LiteralPath $Directory).Path
 $EvoIdentities = @()
-foreach ($EvoName in @('TinyCherry-EvoStack.exe','tinycherry-evostack-backend.exe','open-computer-use.exe')) {
+$EvoHostName = 'TinyCherry.exe'
+foreach ($EvoName in @($EvoHostName,'tinycherry-evostack-backend.exe','open-computer-use.exe')) {
   $EvoExecutable = Join-Path $EvoDirectory $EvoName
   $EvoBytes = [IO.File]::ReadAllBytes($EvoExecutable)
   $EvoOffset = [BitConverter]::ToInt32($EvoBytes, 0x3c)
   if ([BitConverter]::ToUInt16($EvoBytes, $EvoOffset + 4) -ne 0x8664) { throw "Expected x64: $EvoName" }
   if ($EvoName -eq 'open-computer-use.exe') { continue }
-  if ($EvoName -eq 'TinyCherry-EvoStack.exe') {
-    $EvoProductVersion = (Get-Item -LiteralPath $EvoExecutable).VersionInfo.ProductVersion
-    if ($EvoProductVersion -notmatch ('^' + [Regex]::Escape($ExpectedVersion) + '(?:\.0)?$')) { throw 'Host executable product version mismatch' }
+  if ($EvoName -eq $EvoHostName) {
+    $EvoProduct = (Get-Item -LiteralPath $EvoExecutable).VersionInfo
+    if ($EvoProduct.ProductName -cne 'TinyCherry') { throw 'Host executable product name mismatch' }
+    if ($EvoProduct.ProductVersion -notmatch ('^' + [Regex]::Escape($ExpectedVersion) + '(?:\.0)?$')) { throw 'Host executable product version mismatch' }
   }
   $EvoIdentity = & $EvoExecutable --evostack-build-info | ConvertFrom-Json
   if ($LASTEXITCODE -ne 0 -or $EvoIdentity.version -ne $ExpectedVersion -or $EvoIdentity.revision -ne $ExpectedRevision -or $EvoIdentity.protocol -ne 1) { throw "Package identity mismatch: $EvoName" }
@@ -36,7 +38,7 @@ try {
   $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $EvoSmoke 'webview'
   # The host configures the validated port through Tauri's environment options.
   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--disable-background-timer-throttling'
-  $EvoHost = Start-Process -FilePath (Join-Path $EvoDirectory 'TinyCherry-EvoStack.exe') -WorkingDirectory $EvoDirectory -WindowStyle Hidden -PassThru
+  $EvoHost = Start-Process -FilePath (Join-Path $EvoDirectory $EvoHostName) -WorkingDirectory $EvoDirectory -WindowStyle Hidden -PassThru
   $EvoDeadline = (Get-Date).AddSeconds(20)
   do {
     Start-Sleep -Milliseconds 200
@@ -56,6 +58,8 @@ try {
     Start-Sleep -Milliseconds 100
   } while ((Get-Date) -lt $EvoDeadline)
   if (-not $EvoReady -or $EvoReady.token -ne $EvoToken -or $EvoReady.pid -ne $EvoHost.Id -or $EvoReady.phase -ne 'onboarding' -or $EvoReady.build.revision -ne $ExpectedRevision) { throw 'The packaged React renderer did not acknowledge the expected fresh profile' }
+  $EvoHost.Refresh()
+  if ($EvoHost.MainWindowTitle -cne 'TinyCherry') { throw 'Packaged window title mismatch' }
   $EvoDeadline = (Get-Date).AddSeconds(15)
   $EvoBrowser = $null
   do {

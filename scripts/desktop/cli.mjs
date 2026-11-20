@@ -3,7 +3,14 @@ import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
 import { changedFiles, createPlan, testProjects, validatePlan } from '../validation/plan.mjs'
-import { checkIdentities, hash, loadCandidate, sourceIdentity, validateCandidate } from './candidate.mjs'
+import {
+  checkIdentities,
+  getHostExecutable,
+  hash,
+  loadCandidate,
+  sourceIdentity,
+  validateCandidate
+} from './candidate.mjs'
 import { runSelectedChecks } from './checks.mjs'
 import { dev } from './dev.mjs'
 import { checkDocs } from './docs.mjs'
@@ -178,7 +185,7 @@ async function start() {
   // Stable across candidate changes; preserves the previous local portable profile.
   const profile = resolve(native, 'dist/portable/evostack-data')
   mkdirSync(profile, { recursive: true })
-  await run(resolve(directory, 'TinyCherry-EvoStack.exe'), [], {
+  await run(resolve(directory, getHostExecutable(manifest)), [], {
     env: { ...process.env, TINYCHERRY_EVOSTACK_DATA_DIR: profile }
   })
 }

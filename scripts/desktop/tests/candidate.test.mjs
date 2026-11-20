@@ -1,11 +1,21 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs'
 import { resolve, sep } from 'node:path'
 import test from 'node:test'
 
 import {
   currentCandidate,
+  getHostExecutable,
   hash,
   isBuildInput,
   loadCandidate,
@@ -48,9 +58,21 @@ function fixture(action) {
 await test('candidate manifest binds every allowed file to source and exact bytes', () =>
   fixture((directory, manifest) => {
     assert.equal(validateCandidate(directory, manifest).revision, 'fixture')
+    assert.equal(getHostExecutable(manifest), 'TinyCherry.exe')
     assert.throws(() => validateCandidate(directory, { ...manifest, revision: 'other' }))
     writeFileSync(resolve(directory, 'open-computer-use.exe'), 'tampered')
     assert.throws(() => validateCandidate(directory, manifest), /changed/)
+  }))
+await test('older candidates launch through their verified host filename', () =>
+  fixture((directory, manifest) => {
+    const currentName = 'TinyCherry.exe'
+    const legacyName = 'TinyCherry-EvoStack.exe'
+    renameSync(resolve(directory, currentName), resolve(directory, legacyName))
+    manifest.files.find((file) => file.name === currentName).name = legacyName
+    writeFileSync(resolve(directory, 'candidate.json'), JSON.stringify(manifest))
+    assert.equal(getHostExecutable(validateCandidate(directory)), legacyName)
+    writeFileSync(resolve(directory, currentName), 'unexpected second host')
+    assert.throws(() => validateCandidate(directory), /unexpected files/)
   }))
 await test('profiles and unexpected files cannot enter a candidate or ZIP allowlist', () =>
   fixture((directory) => {

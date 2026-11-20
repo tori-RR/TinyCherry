@@ -1,4 +1,4 @@
-# TinyCherry EvoStack
+# TinyCherry
 
 Windows x64 desktop host using TinyCherry's React UI and the Cherry Studio v2.2.2 shared contracts. This is the only desktop target.
 
@@ -35,7 +35,7 @@ This is a working migration slice, not feature parity. Agent runtimes (Claude Co
 
 ## Data and provider setup
 
-The default profile is `evostack-data` next to `TinyCherry-EvoStack.exe`. It contains `evostack.sqlite3`, WebView2 data and a process-owned lock. A second backend cannot acquire that profile. `TINYCHERRY_EVOSTACK_DATA_DIR` overrides it with an **absolute** path for isolated verification.
+The default profile is `evostack-data` next to `TinyCherry.exe`. It contains `evostack.sqlite3`, WebView2 data and a process-owned lock. A second backend cannot acquire that profile. `TINYCHERRY_EVOSTACK_DATA_DIR` overrides it with an **absolute** path for isolated verification.
 
 The database is a new, versioned EvoStack schema storing the existing UI DTOs. It is **not** a Drizzle-compatible replacement. Do not point this trial at an Electron profile or copy a production database into it. An importer for existing Electron conversation/provider/knowledge data requires separate work. This trial does not read or migrate the user's existing Electron data. Native schema v3 adds the knowledge full-text index; v4 preserves the disabled Computer Use default of older profiles when no explicit choice was saved. Explicit enable/disable choices are retained. Back up a profile before upgrading: older v3 binaries cannot open v4 databases. Knowledge snapshots and managed skill files remain inside the selected native profile.
 

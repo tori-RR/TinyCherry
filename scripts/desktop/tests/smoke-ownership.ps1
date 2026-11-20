@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot '../../../native/evostack/smoke-ownership.ps1')
 $EvoProfile = 'C:\synthetic\package smoke'
-$EvoHostFixture = [pscustomobject]@{ProcessId=100;ParentProcessId=1;CreationDate=[datetime]'2026-01-01T00:00:00Z';Name='TinyCherry-EvoStack.exe';CommandLine=''}
+$EvoHostFixture = [pscustomobject]@{ProcessId=100;ParentProcessId=1;CreationDate=[datetime]'2026-01-01T00:00:00Z';Name='TinyCherry.exe';CommandLine=''}
 function New-EvoBrowser([int]$Id = 200, [int]$Parent = 100, [string]$Folder = 'C:\synthetic\package smoke\webview\EBWebView') {
   return [pscustomobject]@{ProcessId=$Id;ParentProcessId=$Parent;CreationDate=[datetime]'2026-01-01T00:00:01Z';Name='msedgewebview2.exe';CommandLine=('"C:\runtime\msedgewebview2.exe" --embedded-browser-webview=1 --user-data-dir="' + $Folder + '" --remote-debugging-port=51337')}
 }

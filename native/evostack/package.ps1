@@ -14,7 +14,7 @@ try {
   $DesktopManifestBytes = [System.IO.File]::ReadAllBytes((Join-Path $DesktopSource 'candidate.json'))
   if ((Get-DesktopBufferHash $DesktopManifestBytes) -ne $ExpectedManifestHash) { throw 'Verified manifest changed before packaging' }
   $DesktopManifest = [System.Text.Encoding]::UTF8.GetString($DesktopManifestBytes) | ConvertFrom-Json
-  $DesktopZip = Join-Path $PSScriptRoot ('dist/TinyCherry-EvoStack-win-x64-' + [Guid]::NewGuid().ToString('N') + '.zip')
+  $DesktopZip = Join-Path $PSScriptRoot ('dist/TinyCherry-win-x64-' + [Guid]::NewGuid().ToString('N') + '.zip')
   $DesktopOutput = [System.IO.File]::Open($DesktopZip, [System.IO.FileMode]::CreateNew)
   $DesktopArchive = $null
   $DesktopFinished = $false
