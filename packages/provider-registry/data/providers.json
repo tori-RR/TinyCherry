@@ -1104,7 +1104,7 @@
       "authMethods": ["oauth"],
       "availableInEditions": ["global", "cn"],
       "defaultChatEndpoint": "openai-chat-completions",
-      "description": "NousResearch - AI model provider",
+      "description": "Nous Portal - AI model provider",
       "endpointConfigs": {
         "openai-chat-completions": {
           "adapterFamily": "openai-compatible",
@@ -1120,7 +1120,7 @@
         }
       },
       "modelListSource": "api",
-      "name": "NousResearch"
+      "name": "Nous Portal"
     },
     {
       "authOptional": true,
@@ -3032,5 +3032,5 @@
       "name": "ChatGPT Sub"
     }
   ],
-  "version": "6a71b201afd33cb8"
+  "version": "58698c51ace7c209"
 }

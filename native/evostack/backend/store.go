@@ -120,6 +120,9 @@ CREATE INDEX IF NOT EXISTS entity_knowledge_item ON entity(resource,json_extract
 		if err := s.migrateHermesProvider(); err != nil {
 			return err
 		}
+		if err := s.migrateNousPortalName(); err != nil {
+			return err
+		}
 		if version == 1 {
 			return s.pruneUnusedSecrets()
 		}
@@ -206,12 +209,22 @@ func (s *store) migrateHermesProvider() error {
 	} else if err != nil {
 		return err
 	}
+	return s.put("desktop-migrations", object{"id": marker})
+}
+
+func (s *store) migrateNousPortalName() error {
+	const marker = "nous-portal-display-name-v1"
+	if _, err := s.get("desktop-migrations", marker); err == nil {
+		return nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
 	nous, err := s.get("providers", nativeNousProviderID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	if isNativeNousOAuthProvider(nous) && nous["name"] == "Nous Portal" {
-		nous["name"] = "NousResearch"
+	if isNativeNousOAuthProvider(nous) && nous["name"] == "NousResearch" {
+		nous["name"] = "Nous Portal"
 		if err := s.put("providers", nous); err != nil {
 			return err
 		}

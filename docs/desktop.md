@@ -7,7 +7,7 @@ The supported target is Windows x64. React and TypeScript retain the existing la
 | Area | Current implementation |
 | --- | --- |
 | Chat and models | Provider configuration, compatible Chat Completions, model checks, message branches, context boundaries, streaming, stop and reconnectable projections |
-| NousResearch and Hermes | Browser device-code sign-in with encrypted credentials and token refresh, plus a separate preset for Hermes Subscription Proxy. See [provider setup](nous-oauth.md) for connection details. |
+| Nous Portal and Hermes | Browser device-code sign-in with encrypted credentials and token refresh, plus a separate preset for Hermes Subscription Proxy. See [provider setup](nous-oauth.md) for connection details. |
 | ChatGPT Sub | [Sign in with ChatGPT](https://developers.openai.com/siwc/token-sharing-open-source) with account-specific models and multi-turn streaming text through the official Responses API. |
 | Knowledge | SQLite FTS5/BM25 for text, Markdown, CSV, JSON, HTML, notes and URLs |
 | Prompt and skill management | Persistent prompts and bindings; built-in/local skill catalog, files and enablement |

@@ -10,23 +10,35 @@ import (
 	"testing"
 )
 
-func TestHermesProviderUpgradePreservesNousSession(t *testing.T) {
-	for oldName, want := range map[string]string{"Nous Portal": "NousResearch", "My Nous": "My Nous"} {
-		t.Run(oldName, func(t *testing.T) {
+func TestProviderUpgradesPreserveNousSession(t *testing.T) {
+	for _, scenario := range []struct {
+		oldName, wantName  string
+		beforeHermesPreset bool
+	}{
+		{oldName: "NousResearch", wantName: "Nous Portal"},
+		{oldName: "Nous Portal", wantName: "Nous Portal", beforeHermesPreset: true},
+		{oldName: "My Nous", wantName: "My Nous"},
+	} {
+		t.Run(scenario.oldName, func(t *testing.T) {
 			s, directory := testServer(t)
 			nous := nativeNousFixture(t, s)
-			nous["name"], nous["isEnabled"] = oldName, true
+			nous["name"], nous["isEnabled"] = scenario.oldName, true
 			obj(nous["settings"])["oauthClientId"] = "local-fixture-client"
 			binding := nativeNousBinding(nous)
 			if err := s.store.put("providers", nous); err != nil {
 				t.Fatal(err)
 			}
 			putSyntheticSealedSecret(t, s, nativeNousSecretID(binding))
-			if err := s.store.delete("providers", nativeHermesProviderID); err != nil {
+			if err := s.store.delete("desktop-migrations", "nous-portal-display-name-v1"); err != nil {
 				t.Fatal(err)
 			}
-			if err := s.store.delete("desktop-migrations", "hermes-subscription-provider-v1"); err != nil {
-				t.Fatal(err)
+			if scenario.beforeHermesPreset {
+				if err := s.store.delete("providers", nativeHermesProviderID); err != nil {
+					t.Fatal(err)
+				}
+				if err := s.store.delete("desktop-migrations", "hermes-subscription-provider-v1"); err != nil {
+					t.Fatal(err)
+				}
 			}
 			if err := s.store.db.Close(); err != nil {
 				t.Fatal(err)
@@ -37,7 +49,7 @@ func TestHermesProviderUpgradePreservesNousSession(t *testing.T) {
 			}
 			defer upgraded.db.Close()
 			preserved, err := upgraded.get("providers", nativeNousProviderID)
-			if err != nil || preserved["name"] != want || preserved["isEnabled"] != true || nativeNousBinding(preserved) != binding || obj(preserved["settings"])["oauthClientId"] != "local-fixture-client" {
+			if err != nil || preserved["name"] != scenario.wantName || preserved["isEnabled"] != true || nativeNousBinding(preserved) != binding || obj(preserved["settings"])["oauthClientId"] != "local-fixture-client" {
 				t.Fatal("upgrading changed the saved Nous provider identity or settings", err)
 			}
 			var count int
@@ -56,6 +68,17 @@ func TestHermesProviderUpgradePreservesNousSession(t *testing.T) {
 			}
 			if _, err := upgraded.get("providers", nativeHermesProviderID); !errors.Is(err, sql.ErrNoRows) {
 				t.Fatal("upgrading recreated a deliberately deleted Hermes preset", err)
+			}
+			preserved["name"] = "NousResearch"
+			if err := upgraded.put("providers", preserved); err != nil {
+				t.Fatal(err)
+			}
+			if err := upgraded.transaction(func(tx *store) error { return tx.migrateNousPortalName() }); err != nil {
+				t.Fatal(err)
+			}
+			renamed, err := upgraded.get("providers", nativeNousProviderID)
+			if err != nil || renamed["name"] != "NousResearch" {
+				t.Fatal("migration ran again after a user rename", err)
 			}
 		})
 	}

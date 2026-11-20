@@ -22,11 +22,11 @@ const catalog = (): RegistryCatalog => ({
 })
 
 describe('portable registry', () => {
-  it('ships independent NousResearch OAuth and Hermes Subscription Proxy presets', () => {
+  it('ships independent Nous Portal OAuth and Hermes Subscription Proxy presets', () => {
     const registry = createRegistry(bundledCatalog)
 
     expect(registry.findProvider('nous-portal')).toMatchObject({
-      name: 'NousResearch',
+      name: 'Nous Portal',
       authMethods: ['oauth'],
       authOptional: false
     })

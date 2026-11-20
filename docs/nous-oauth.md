@@ -1,13 +1,13 @@
-# NousResearch and Hermes providers
+# Nous Portal and Hermes providers
 
-**NousResearch** signs in to Nous Portal from the native Windows desktop. It uses
+The **Nous Portal** provider signs in from the native Windows desktop. It uses
 device authorization in the system browser, then sends OpenAI-compatible Chat
 Completions requests from the Go backend. The renderer never receives an access
 token, refresh token or device token.
 
 ## Use
 
-1. Open the **NousResearch** provider in Settings. If the provider list is filtered
+1. Open the **Nous Portal** provider in Settings. If the provider list is filtered
    to enabled entries, switch it to **All** first: the new preset starts disabled.
 2. Choose **Sign in**, complete the Nous authorization page in your browser, and
    confirm the displayed user code when requested. Keep the settings page open
