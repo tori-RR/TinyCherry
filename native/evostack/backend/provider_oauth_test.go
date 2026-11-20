@@ -377,7 +377,7 @@ func TestNativeNousAuthenticatedListCheckAndChatShareTheCredentialResolver(t *te
 		_ = json.NewDecoder(request.Body).Decode(&body)
 		if body["stream"] == true {
 			w.Header().Set("Content-Type", "text/event-stream")
-			fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"authorized\"}}]}\n\ndata: [DONE]\n\n")
+			fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"authorized\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n")
 		} else {
 			fmt.Fprint(w, `{"choices":[{"message":{"role":"assistant","content":"authorized"}}]}`)
 		}
@@ -425,8 +425,8 @@ func TestNativeNousAuthenticatedListCheckAndChatShareTheCredentialResolver(t *te
 	}
 	generation := launch(t, s, topic)
 	waitDone(t, generation)
-	if generation.answer != "authorized" {
-		t.Fatal("chat did not use the OAuth credential resolver")
+	if generation.answer != "authorized" || generation.row["status"] != "success" {
+		t.Fatal("Nous chat did not complete on the explicit finish reason and clean EOF")
 	}
 	reject.Store(true)
 	if _, err := s.modelOperation("ai.provider.model.check", object{"uniqueModelId": modelID}); err == nil {

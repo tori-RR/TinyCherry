@@ -418,6 +418,7 @@ func (s *server) readComputerModelStep(ctx context.Context, g *generation, confi
 	dataBytes := 0
 	eventType := ""
 	done := false
+	terminalTextFinish := false
 	lastSave := time.Now()
 	indexed := map[int]*computerModelCall{}
 	consume := func() error {
@@ -540,6 +541,7 @@ func (s *server) readComputerModelStep(ctx context.Context, g *generation, confi
 			if step.Finish == "function_call" {
 				return notMigrated("legacy provider function calls")
 			}
+			terminalTextFinish = step.Finish == "stop" || step.Finish == "length" || step.Finish == "content_filter"
 		}
 		return nil
 	}
@@ -568,7 +570,10 @@ func (s *server) readComputerModelStep(ctx context.Context, g *generation, confi
 	if scanner.Err() != nil {
 		return step, errors.New("provider stream interrupted")
 	}
-	if !done {
+	// Nous can close a text stream on a framed finish_reason without sending [DONE].
+	// A partial event or a tool call still requires the normal completion sentinel.
+	closedNousText := config.oauthBinding != "" && terminalTextFinish && len(data) == 0 && len(indexed) == 0
+	if !done && !closedNousText {
 		return step, invalidProviderResponse("Invalid response: provider stream ended without a completion marker. Retry the turn.")
 	}
 	for _, call := range indexed {
