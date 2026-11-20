@@ -1,15 +1,20 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[cfg(windows)]
+mod app;
+mod assets;
+mod bridge;
 mod computer_use;
 mod host;
+#[cfg(windows)]
+mod native_window;
 mod platform;
 mod rpc_writer;
 mod smoke;
 mod window_background;
 
-use host::{
-    build_info, capture_stderr, request_timeout, trusted_origin, verify_backend_info, Diagnostics,
-};
+use bridge::EventChannel;
+use host::{build_info, capture_stderr, request_timeout, Diagnostics};
 use rpc_writer::{PipeWriter, WriteError};
 use serde_json::{json, Value};
 use std::{
@@ -23,7 +28,6 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use tauri::{ipc::Channel, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 type Reply = Result<Value, String>;
 struct PendingRequest {
@@ -47,7 +51,7 @@ struct Backend {
     terminate_transport: Arc<dyn Fn() + Send + Sync>,
     controls: Arc<computer_use::Controller>,
     pending: Pending,
-    events: Arc<Mutex<Option<Channel<Value>>>>,
+    events: Arc<Mutex<Option<EventChannel>>>,
     next_id: AtomicU64,
     alive: Arc<AtomicBool>,
     shutting_down: Arc<AtomicBool>,
@@ -108,7 +112,7 @@ impl Backend {
         let reader_diagnostics = diagnostics.clone();
         let pending: Pending = Arc::new(Mutex::new(HashMap::new()));
         let pending_reader = pending.clone();
-        let events: Arc<Mutex<Option<Channel<Value>>>> = Arc::new(Mutex::new(None));
+        let events: Arc<Mutex<Option<EventChannel>>> = Arc::new(Mutex::new(None));
         let event_reader = events.clone();
         let control_events = events.clone();
         controls.set_control_events(Arc::new(move |controls| {
@@ -418,187 +422,6 @@ fn fail_pending(pending: &Pending) {
     }
 }
 
-fn trusted(window: &WebviewWindow) -> Result<(), String> {
-    let url = window.url().map_err(|e| e.to_string())?;
-    if window.label() != "main" || !trusted_origin(&url) {
-        return Err("EVOSTACK_FORBIDDEN_WINDOW".into());
-    }
-    Ok(())
-}
-
-#[tauri::command]
-fn desktop_info(window: WebviewWindow) -> Result<Value, String> {
-    trusted(&window)?;
-    Ok(platform::info())
-}
-
-#[tauri::command]
-fn subscribe(
-    window: WebviewWindow,
-    backend: State<'_, Arc<Backend>>,
-    events: Channel<Value>,
-) -> Result<(), String> {
-    trusted(&window)?;
-    *backend.events.lock().unwrap() = Some(events);
-    if !backend.alive.load(Ordering::Acquire) {
-        let channel = backend.events.lock().unwrap().clone();
-        if let Some(channel) = channel {
-            let _ = channel.send(json!({"channel":"evostack:backend-exited", "args":[]}));
-        }
-    }
-    Ok(())
-}
-
-#[tauri::command]
-fn start_dragging(window: WebviewWindow) -> Result<(), String> {
-    trusted(&window)?;
-    window.start_dragging().map_err(|e| e.to_string())
-}
-
-fn desktop_request(
-    window: &WebviewWindow,
-    route: &str,
-    input: &Value,
-    backend: &Backend,
-) -> Option<Reply> {
-    if matches!(route, "computer_use.stop_all" | "computer_use.stop_app") {
-        let cancelled = backend.request_with_timeout(
-            "ipc.invoke",
-            json!({"channel":"ipc-api:request","args":[route,input]}),
-            Duration::from_secs(5),
-        );
-        let native = backend.controls.request(route, input)?;
-        return Some(match (cancelled, native) {
-            (Ok(reply), Ok(value)) if reply["ok"] == true => Ok(value),
-            (_, Err(error)) => Err(error),
-            _ => Err("EVOSTACK_APPROVAL_REVOCATION_UNCONFIRMED".into()),
-        });
-    }
-    if let Some(result) = backend.controls.request(route, input) {
-        return Some(result);
-    }
-    let operation: Reply = match route {
-        "skill.folder.open" => (|| {
-            let resolved = backend.request(
-                "ipc.invoke",
-                json!({"channel":"ipc-api:request","args":["skill.folder.resolve",input]}),
-            )?;
-            if resolved["ok"] != true {
-                return Err("EVOSTACK_SKILL_FOLDER_UNAVAILABLE".into());
-            }
-            let root = resolved["data"]["rootPath"]
-                .as_str()
-                .ok_or("EVOSTACK_SKILL_FOLDER_UNAVAILABLE")?;
-            let path = std::path::Path::new(root);
-            if !path.is_absolute() || !path.is_dir() {
-                return Err("EVOSTACK_SKILL_FOLDER_UNAVAILABLE".into());
-            }
-            Command::new("explorer.exe")
-                .arg(path)
-                .spawn()
-                .map(|_| Value::Null)
-                .map_err(|_| "EVOSTACK_SKILL_FOLDER_OPEN_FAILED".into())
-        })(),
-        "window.get_init_data" => Ok(Value::Null),
-        "window.is_maximized" => window
-            .is_maximized()
-            .map(Value::Bool)
-            .map_err(|e| e.to_string()),
-        "window.is_full_screen" => window
-            .is_fullscreen()
-            .map(Value::Bool)
-            .map_err(|e| e.to_string()),
-        "window.close" => window
-            .close()
-            .map(|_| Value::Null)
-            .map_err(|e| e.to_string()),
-        "window.minimize" => window
-            .minimize()
-            .map(|_| Value::Null)
-            .map_err(|e| e.to_string()),
-        "window.maximize" => window
-            .maximize()
-            .map(|_| Value::Null)
-            .map_err(|e| e.to_string()),
-        "window.unmaximize" => window
-            .unmaximize()
-            .map(|_| Value::Null)
-            .map_err(|e| e.to_string()),
-        "window.set_full_screen" => window
-            .set_fullscreen(input.as_bool().unwrap_or(false))
-            .map(|_| Value::Null)
-            .map_err(|e| e.to_string()),
-        "window.main.reset_minimum_size" => window
-            .set_min_size(Some(tauri::LogicalSize::new(900.0, 600.0)))
-            .map(|_| Value::Null)
-            .map_err(|e| e.to_string()),
-        "window.main.set_minimum_size" => window
-            .set_min_size(Some(tauri::LogicalSize::new(
-                input["width"].as_f64().unwrap_or(900.0),
-                input["height"].as_f64().unwrap_or(600.0),
-            )))
-            .map(|_| Value::Null)
-            .map_err(|e| e.to_string()),
-        "window.main.reload" => window
-            .reload()
-            .map(|_| Value::Null)
-            .map_err(|e| e.to_string()),
-        "system.get_native_theme" => {
-            Ok(json!(if window.theme().ok() == Some(tauri::Theme::Dark) {
-                "dark"
-            } else {
-                "light"
-            }))
-        }
-        "system.get_device_type" => Ok(json!("desktop")),
-        "system.toggle_dev_tools" => {
-            #[cfg(any(debug_assertions, feature = "inspection"))]
-            {
-                if window.is_devtools_open() {
-                    window.close_devtools();
-                } else {
-                    window.open_devtools();
-                }
-                Ok(Value::Null)
-            }
-            #[cfg(not(any(debug_assertions, feature = "inspection")))]
-            {
-                Err("DESKTOP_UNAVAILABLE: developer tools".into())
-            }
-        }
-        "system.shell.open_external_website" | "system.shell.open_website" => {
-            let raw = input
-                .as_str()
-                .or_else(|| input["url"].as_str())
-                .unwrap_or("");
-            match url::Url::parse(raw) {
-                Ok(url)
-                    if matches!(url.scheme(), "http" | "https")
-                        && url.username().is_empty()
-                        && url.password().is_none() =>
-                {
-                    Command::new("rundll32.exe")
-                        .args(["url.dll,FileProtocolHandler", url.as_str()])
-                        .spawn()
-                        .map(|_| Value::Null)
-                        .map_err(|e| e.to_string())
-                }
-                _ => Err("EVOSTACK_UNSAFE_EXTERNAL_URL".into()),
-            }
-        }
-        "app.get_info" => Ok(json!({
-            "version":build_info()["version"], "platform":platform::name(), "arch":platform::info()["arch"], "isPackaged":!cfg!(debug_assertions),
-            "appPath":std::env::current_exe().ok().and_then(|p|p.parent().map(|p|p.to_path_buf())),
-            "resourcesPath": backend.data_dir, "userDataPath": backend.data_dir, "logsPath": backend.data_dir,
-            "homePath": backend.data_dir, "notesPath": backend.data_dir, "configPath": backend.data_dir,
-            "appDataPath": backend.data_dir, "isPortable":true, "canCheckForUpdates":false,
-            "installPath":std::env::current_exe().ok().and_then(|p|p.parent().map(|p|p.to_path_buf()))
-        })),
-        _ => return None,
-    };
-    Some(operation)
-}
-
 fn desktop_response(result: Reply) -> Value {
     match result {
         Ok(value) if value.is_null() => json!({"ok":true}),
@@ -607,217 +430,22 @@ fn desktop_response(result: Reply) -> Value {
     }
 }
 
-#[tauri::command]
-async fn ipc_request(
-    window: WebviewWindow,
-    backend: State<'_, Arc<Backend>>,
-    channel: String,
-    args: Vec<Value>,
-) -> Reply {
-    trusted(&window)?;
-    // Existing user controls bypass the backend queue before its authoritative preference update.
-    if channel == "preference:set"
-        && args.first().and_then(Value::as_str) == Some("app.computer_use.agent_control.enabled")
-    {
-        if let Some(enabled) = args.get(1).and_then(Value::as_bool) {
-            backend.controls.user_enabled(enabled);
-        }
-    } else if channel == "preference:set-multiple" {
-        if let Some(enabled) = args
-            .first()
-            .and_then(|v| v["app.computer_use.agent_control.enabled"].as_bool())
-        {
-            backend.controls.user_enabled(enabled);
-        }
-    } else if channel == "ipc-api:request"
-        && args.first().and_then(Value::as_str) == Some("ai.stream.abort")
-    {
-        if let Some(owner) = args.get(1).and_then(|v| v["topicId"].as_str()) {
-            backend.controls.stop_owner(owner);
-        }
-    }
-    if channel == "ipc-api:request" {
-        let route = args
-            .first()
-            .and_then(Value::as_str)
-            .ok_or("Missing route")?;
-        if (route.starts_with("computer_use.")
-            && !matches!(
-                route,
-                "computer_use.get_approvals"
-                    | "computer_use.respond_approval"
-                    | "computer_use.revoke_approval"
-            ))
-            || route == "skill.folder.open"
-        {
-            let window = window.clone();
-            let backend = backend.inner().clone();
-            let route = route.to_owned();
-            let input = args.get(1).cloned().unwrap_or(Value::Null);
-            let result = tauri::async_runtime::spawn_blocking(move || {
-                desktop_request(&window, &route, &input, &backend)
-            })
-            .await
-            .map_err(|_| "EVOSTACK_DESKTOP_REQUEST_FAILED")?
-            .ok_or("EVOSTACK_DESKTOP_ROUTE_MISSING")?;
-            return Ok(desktop_response(result));
-        }
-        if let Some(result) = desktop_request(
-            &window,
-            route,
-            args.get(1).unwrap_or(&Value::Null),
-            &backend,
-        ) {
-            return Ok(desktop_response(result));
-        }
-    }
-    if channel == "evostack:zoom" {
-        window
-            .set_zoom(
-                args.first()
-                    .and_then(Value::as_f64)
-                    .unwrap_or(1.0)
-                    .clamp(0.5, 2.0),
-            )
-            .map_err(|e| e.to_string())?;
-        return Ok(Value::Null);
-    }
-    if channel == "evostack:renderer-ready" {
-        let phase = args
-            .first()
-            .and_then(Value::as_str)
-            .ok_or("Missing renderer phase")?;
-        if !matches!(phase, "onboarding" | "workspace") {
-            return Err("EVOSTACK_INVALID_RENDERER_PHASE".into());
-        }
-        backend.diagnostics.record("host: React renderer ready");
-        // Only the isolated package verifier requests an on-disk handshake.
-        if let Ok(token) = std::env::var("TINYCHERRY_EVOSTACK_SMOKE_TOKEN") {
-            std::fs::write(
-                backend.data_dir.join("renderer-ready.json"),
-                serde_json::to_vec(&json!({"token":token,"pid":std::process::id(),"phase":phase,"build":build_info()}))
-                    .map_err(|_| "EVOSTACK_RENDERER_HANDSHAKE_FAILED")?,
-            ).map_err(|_| "EVOSTACK_RENDERER_HANDSHAKE_FAILED")?;
-        }
-        return Ok(Value::Null);
-    }
-    let backend = backend.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        backend.request("ipc.invoke", json!({"channel":channel,"args":args}))
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-fn frontend_url() -> WebviewUrl {
-    #[cfg(debug_assertions)]
-    {
-        WebviewUrl::External(
-            url::Url::parse("http://127.0.0.1:17420/windows/evostack/index.html")
-                .expect("fixed dev origin"),
-        )
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        WebviewUrl::App("windows/evostack/index.html".into())
-    }
-}
-
 fn main() {
     if std::env::args_os().any(|argument| argument == "--evostack-build-info") {
         println!("{}", build_info());
         return;
     }
-    let app = tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![
-            desktop_info,
-            ipc_request,
-            subscribe,
-            start_dragging
-        ])
-        .setup(|app| {
-            let data_dir = match std::env::var_os("TINYCHERRY_EVOSTACK_DATA_DIR") {
-                Some(path) => PathBuf::from(path),
-                None => std::env::current_exe()?
-                    .parent()
-                    .ok_or("Executable parent missing")?
-                    .join("evostack-data"),
-            };
-            if !data_dir.is_absolute() {
-                return Err("EvoStack data directory must be absolute".into());
-            }
-            let smoke_arguments = smoke::browser_arguments(
-                std::env::var("TINYCHERRY_EVOSTACK_SMOKE_TOKEN")
-                    .ok()
-                    .as_deref(),
-                std::env::var("TINYCHERRY_EVOSTACK_SMOKE_PORT")
-                    .ok()
-                    .as_deref(),
-                std::env::var_os("TINYCHERRY_EVOSTACK_DATA_DIR").is_some(),
-            )
-            .map_err(std::io::Error::other)?;
-            std::fs::create_dir_all(&data_dir)?;
-            let app_handle = app.handle().clone();
-            let backend = Arc::new(Backend::start(data_dir.clone(), move |event| {
-                window_background::preference_changed(&app_handle, event);
-            })?);
-            let info = backend
-                .request("backend.info", Value::Null)
-                .map_err(std::io::Error::other)?;
-            verify_backend_info(&info).map_err(std::io::Error::other)?;
-            let theme = backend
-                .request(
-                    "ipc.invoke",
-                    json!({"channel":"preference:get","args":[window_background::THEME_PREFERENCE]}),
-                )
-                .ok();
-            app.manage(Mutex::new(window_background::WindowTheme::from_preference(
-                theme.as_ref().and_then(Value::as_str),
-            )));
-            app.manage(backend);
-            let mut window_builder = WebviewWindowBuilder::new(app, "main", frontend_url())
-                .title(app.package_info().name.as_str())
-                .inner_size(1280.0, 850.0)
-                .min_inner_size(900.0, 600.0)
-                .decorations(false)
-                .visible(false)
-                .data_directory(data_dir.join("webview"))
-                .on_navigation(trusted_origin);
-            if let Some(arguments) = smoke_arguments {
-                window_builder = window_builder.additional_browser_args(&arguments);
-            }
-            let window = window_builder.build()?;
-            window_background::apply(&window, window.theme().ok());
-            let app_handle = app.handle().clone();
-            let backend = app.state::<Arc<Backend>>().inner().clone();
-            window.on_window_event(move |event| {
-                if let tauri::WindowEvent::ThemeChanged(theme) = event {
-                    if let Some(window) = app_handle.get_webview_window("main") {
-                        window_background::apply(&window, Some(*theme));
-                    }
-                    let channel = backend.events.lock().unwrap().clone();
-                    if let Some(channel) = channel {
-                        let _ = channel.send(json!({
-                            "channel":"ipc-api:event",
-                            "args":["system.native_theme_updated", if *theme == tauri::Theme::Dark {"dark"} else {"light"}]
-                        }));
-                    }
-                }
-            });
-            window.show()?;
-            #[cfg(any(debug_assertions, feature = "inspection"))]
-            if std::env::var_os("TINYCHERRY_EVOSTACK_DEVTOOLS").is_some() {
-                window.open_devtools();
-            }
-            Ok(())
-        })
-        .build(tauri::generate_context!())
-        .expect("Failed to start TinyCherry");
-    app.run(|app, event| {
-        if let tauri::RunEvent::Exit = event {
-            app.state::<Arc<Backend>>().shutdown();
-        }
-    });
+    #[cfg(windows)]
+    if let Err(error) = app::run() {
+        eprintln!("TinyCherry failed to start: {error}");
+        native_window::show_startup_error(&error.to_string());
+        std::process::exit(1);
+    }
+    #[cfg(not(windows))]
+    {
+        eprintln!("TinyCherry GPUI + Wry currently supports Windows x64 only");
+        std::process::exit(1);
+    }
 }
 
 #[cfg(test)]

@@ -36,7 +36,7 @@ try {
   $env:TINYCHERRY_EVOSTACK_SMOKE_TOKEN = $EvoToken
   $env:TINYCHERRY_EVOSTACK_SMOKE_PORT = [string]$EvoPort
   $env:WEBVIEW2_USER_DATA_FOLDER = Join-Path $EvoSmoke 'webview'
-  # The host configures the validated port through Tauri's environment options.
+  # The host configures the validated port through Wry's WebView2 environment options.
   $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--disable-background-timer-throttling'
   $EvoHost = Start-Process -FilePath (Join-Path $EvoDirectory $EvoHostName) -WorkingDirectory $EvoDirectory -WindowStyle Hidden -PassThru
   $EvoDeadline = (Get-Date).AddSeconds(20)

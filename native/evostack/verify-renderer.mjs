@@ -52,6 +52,7 @@ await new Promise((resolve, reject) => {
   )
 })
 let next = 0
+let pageLoads = 0
 const pending = new Map()
 const errors = []
 socket.addEventListener('message', ({ data }) => {
@@ -63,6 +64,8 @@ socket.addEventListener('message', ({ data }) => {
     pending.delete(message.id)
     if (message.error) reply.reject(new Error(message.error.message))
     else reply.resolve(message.result)
+  } else if (message.method === 'Page.loadEventFired') {
+    pageLoads++
   } else if (message.method === 'Runtime.exceptionThrown') {
     const details = message.params.exceptionDetails
     const text = details.exception?.description ?? details.text
@@ -97,7 +100,14 @@ const until = async (expression) => {
 }
 try {
   await command('Runtime.enable', {})
+  await command('Page.enable', {})
   await until('Boolean(window.api?.ipcApi?.request && document.querySelector("#root h1"))')
+  const bridge = await evaluate(`({
+    nativePostMessage: typeof window.ipc?.postMessage === 'function',
+    receiver: typeof window.__TINYCHERRY_RECEIVE__ === 'function',
+    retiredBridgeAbsent: typeof window.__TAURI__ === 'undefined'
+  })`)
+  assert.deepEqual(bridge, { nativePostMessage: true, receiver: true, retiredBridgeAbsent: true })
   const info = await evaluate(
     `(async()=>{const r=await window.api.ipcApi.request('app.get_info');if(!r.ok)throw Error('App info failed');return r.data})()`
   )
@@ -109,6 +119,17 @@ try {
   assert.equal(info.version, expectedVersion, 'Packaged renderer is connected to another app version')
   assert.equal(info.platform, 'win32')
   assert.equal(info.arch, 'x64')
+  const windowOperation = async (route) =>
+    evaluate(`(async () => {
+      const result = await window.api.ipcApi.request(${JSON.stringify(route)});
+      if (!result.ok) throw Error(result.error?.message ?? 'Native window operation failed');
+      return result.data ?? null;
+    })()`)
+  assert.equal(await windowOperation('window.is_maximized'), false, 'Fresh window should be restored')
+  await windowOperation('window.maximize')
+  await until(`window.api.ipcApi.request('window.is_maximized').then(result => result.ok && result.data === true)`)
+  await windowOperation('window.unmaximize')
+  await until(`window.api.ipcApi.request('window.is_maximized').then(result => result.ok && result.data === false)`)
   const locales = resolve(dirname(fileURLToPath(import.meta.url)), '../../src/renderer/i18n/locales')
   const localeCatalogs = readdirSync(locales)
     .filter((file) => file.endsWith('.json'))
@@ -182,6 +203,28 @@ try {
     }
   })()`)
   assert(chatGPTSignIn, 'ChatGPT Sub did not prepare an official browser authorization')
+  const storageKey = '__tinycherry_gpui_reload_probe__'
+  const storageOrigin = await evaluate(`(() => {
+    localStorage.setItem(${JSON.stringify(storageKey)}, ${JSON.stringify(revision)});
+    return location.origin;
+  })()`)
+  assert.equal(storageOrigin, 'http://tauri.localhost', 'Browser storage must retain the preceding host origin')
+  const previousLoads = pageLoads
+  await command('Page.reload', {})
+  while (pageLoads === previousLoads && Date.now() < deadline) await pause()
+  assert(pageLoads > previousLoads, 'The packaged page did not finish reloading')
+  await until('Boolean(window.api?.ipcApi?.request && document.querySelector(\'[data-ui~="app.content"]\'))')
+  assert.equal(
+    await evaluate(`window.api.preference.get('app.onboarding.provider_setup.status')`),
+    'skipped',
+    'Reloaded renderer did not reconnect to the persisted profile'
+  )
+  const stored = await evaluate(`(() => {
+    const value = localStorage.getItem(${JSON.stringify(storageKey)});
+    localStorage.removeItem(${JSON.stringify(storageKey)});
+    return value;
+  })()`)
+  assert.equal(stored, revision, 'Renderer reload did not retain origin-scoped browser storage')
   assert.deepEqual(errors, [], 'Unexpected renderer error')
   const result = {
     passed: true,
@@ -193,6 +236,10 @@ try {
     before,
     after,
     workspaceVisible: true,
+    nativeBridge: bridge,
+    maximizeRestore: true,
+    rendererReload: true,
+    browserStorageRetained: true,
     chatGPTSignIn,
     contracts,
     journeys

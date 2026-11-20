@@ -13,10 +13,10 @@ await test('documentation alone does not select native compilation or tests', ()
 })
 await test('contracts, native code and build inputs require an actual packaged startup', () => {
   for (const file of [
-    'src/platform/tauri/transport.ts',
+    'src/platform/gpui/transport.ts',
     'src/shared/ipc/schemas/ai.ts',
     'native/evostack/backend/chat.go',
-    'native/evostack/src-tauri/src/host.rs',
+    'native/evostack/src-gpui/src/host.rs',
     'package.json'
   ]) {
     const plan = createPlan([file])
@@ -47,7 +47,7 @@ await test('runtime text and provider catalog select their generated Go consumer
   assert.deepEqual(createPlan(['.agents/skills/fixture/SKILL.md']).tasks, ['format', 'docs'])
 })
 await test('native-only plans execute their selected desktop tests between build and final verification', async () => {
-  for (const file of ['native/evostack/backend/chat.go', 'native/evostack/src-tauri/src/host.rs']) {
+  for (const file of ['native/evostack/backend/chat.go', 'native/evostack/src-gpui/src/host.rs']) {
     const calls = []
     const plan = createPlan([file])
     await runSelectedChecks(plan, {

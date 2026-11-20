@@ -1,11 +1,12 @@
 import { installBusinessApi } from '../desktop-api/api'
 import { desktopInfoSchema } from '../desktop-api/capabilities'
 import type { DesktopInfo } from '../desktop-api/contracts'
+import { invokeHost } from './bridge'
 import { nativeTransport, installHostTransport } from './transport'
 
 export async function installDesktopApi(): Promise<void> {
   await installHostTransport()
-  const info: DesktopInfo = desktopInfoSchema.parse(await window.__TAURI__!.core.invoke<unknown>('desktop_info'))
+  const info: DesktopInfo = desktopInfoSchema.parse(await invokeHost<unknown>('desktop_info'))
   window.desktop = {
     info,
     environment: { NODE_ENV: import.meta.env.MODE },

@@ -17,7 +17,7 @@ await test('every desktop type-check resolves protocol entries from this checkou
   }
   for (const config of [
     'tsconfig.web.json',
-    'tsconfig.tauri.json',
+    'tsconfig.gpui.json',
     'src/renderer/tsconfig.json',
     'src/shared/tsconfig.json'
   ]) {

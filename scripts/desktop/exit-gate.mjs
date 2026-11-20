@@ -8,7 +8,7 @@ import { parseAllDocuments } from 'yaml'
 import { root } from './process.mjs'
 
 const retiredDependency =
-  /^(?:electron(?:$|-)|@electron(?:\/|-)|@electron-toolkit\/|@paymoapp\/electron|@sentry\/electron|app-builder-lib$|builder-util(?:-runtime)?$|@earendil-works\/pi-|@anthropic-ai\/claude-agent-sdk$)/
+  /^(?:electron(?:$|-)|@electron(?:\/|-)|@electron-toolkit\/|@paymoapp\/electron|@sentry\/electron|@tauri-apps\/|app-builder-lib$|builder-util(?:-runtime)?$|@earendil-works\/pi-|@anthropic-ai\/claude-agent-sdk$)/
 const retired = (name) => name !== 'electron-to-chromium' && retiredDependency.test(name)
 const packageName = (key) => key.slice(0, key.indexOf('@', key.startsWith('@') ? 1 : 0))
 const dependencyGroups = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']
@@ -18,7 +18,11 @@ export function hasRetiredRuntimeSurface(text, file = 'source.ts') {
   if (
     imports.some(
       ({ fileName }) =>
-        fileName === 'electron' || fileName.startsWith('electron/') || fileName.startsWith('@electron-toolkit/')
+        fileName === 'electron' ||
+        fileName.startsWith('electron/') ||
+        fileName.startsWith('@electron-toolkit/') ||
+        fileName.startsWith('@tauri-apps/') ||
+        /(?:^@?|\/)platform\/tauri(?:\/|$)/.test(fileName)
     )
   )
     return true
@@ -28,7 +32,8 @@ export function hasRetiredRuntimeSurface(text, file = 'source.ts') {
     if (
       ts.isPropertyAccessExpression(node) &&
       ts.isIdentifier(node.expression) &&
-      ((node.expression.text === 'window' && node.name.text === 'electron') || node.expression.text === 'Electron')
+      ((node.expression.text === 'window' && ['electron', '__TAURI__'].includes(node.name.text)) ||
+        node.expression.text === 'Electron')
     )
       found = true
     if (
@@ -36,7 +41,7 @@ export function hasRetiredRuntimeSurface(text, file = 'source.ts') {
       ts.isIdentifier(node.expression) &&
       node.expression.text === 'window' &&
       ts.isStringLiteral(node.argumentExpression) &&
-      node.argumentExpression.text === 'electron'
+      ['electron', '__TAURI__'].includes(node.argumentExpression.text)
     )
       found = true
     if (ts.isQualifiedName(node) && ts.isIdentifier(node.left) && node.left.text === 'Electron') found = true
@@ -97,7 +102,7 @@ export function checkExit(directory = root) {
     problems.push(...checkInstalledStore(directory, modules.toJS().virtualStoreDir))
   }
   for (const [name, script] of Object.entries(pkg.scripts))
-    if (/legacy:|electron|pre-commit|install-hooks|postinstall/.test(`${name} ${script}`))
+    if (/legacy:|electron|tauri|pre-commit|install-hooks|postinstall/.test(`${name} ${script}`))
       problems.push(`Retired command: ${name}`)
   for (const name of [
     'src/main',
@@ -105,7 +110,10 @@ export function checkExit(directory = root) {
     'src/utility',
     'electron.vite.config.ts',
     'electron.vite.entries.config.ts',
-    'electron-builder.yml'
+    'electron-builder.yml',
+    'src/platform/tauri',
+    'native/evostack/src-tauri',
+    'tsconfig.tauri.json'
   ])
     if (existsSync(resolve(directory, name))) problems.push(`Retired active tree: ${name}`)
   const files = execFileSync(
@@ -144,7 +152,15 @@ export function checkExit(directory = root) {
     if (/\.[cm]?[jt]sx?$/.test(file) && hasRetiredRuntimeSurface(source, file))
       problems.push(`Retired runtime surface: ${file}`)
   }
+  for (const file of ['native/evostack/src-gpui/Cargo.toml', 'native/evostack/src-gpui/Cargo.lock']) {
+    if (!existsSync(resolve(directory, file))) {
+      problems.push(`Missing GPUI host build input: ${file}`)
+      continue
+    }
+    if (/^\s*(?:name\s*=\s*"tauri(?:-[^"]*)?"|tauri(?:-[\w-]+)?\s*=)/m.test(read(file)))
+      problems.push(`Retired Tauri host dependency: ${file}`)
+  }
   if (problems.length) throw new Error(problems.join('\n'))
-  console.log('Tauri-only exit gate passed')
+  console.log('GPUI + Wry exit gate passed')
 }
 if (process.argv[1]?.endsWith('exit-gate.mjs')) checkExit()

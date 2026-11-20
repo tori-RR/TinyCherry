@@ -70,7 +70,7 @@ const build = () =>
   })
 async function types() {
   await execPnpm(['exec', 'tsc', '--noEmit', '-p', 'tsconfig.web.json', '--composite', 'false'])
-  await execPnpm(['exec', 'tsc', '--noEmit', '-p', 'tsconfig.tauri.json', '--composite', 'false'])
+  await execPnpm(['exec', 'tsc', '--noEmit', '-p', 'tsconfig.gpui.json', '--composite', 'false'])
 }
 async function tsTests(projects) {
   const names = values.project ?? projects
@@ -114,7 +114,7 @@ async function runChecks(plan) {
                 'src/renderer/windows/evostack/README.md',
                 'scripts/desktop/README.md',
                 'scripts/validation/README.md',
-                'src/platform/tauri/README.md',
+                'src/platform/gpui/README.md',
                 'src/platform/desktop-api/README.md'
               ]
             : files

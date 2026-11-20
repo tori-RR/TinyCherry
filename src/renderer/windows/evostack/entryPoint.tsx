@@ -1,4 +1,4 @@
-import { installDesktopApi } from '../../../platform/tauri/install'
+import { installDesktopApi } from '../../../platform/gpui/install'
 import { reportRendererReady } from './rendererReady'
 
 await installDesktopApi()

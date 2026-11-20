@@ -1,6 +1,6 @@
 import { IpcChannel } from '@shared/IpcChannel'
 
-import { nativeTransport } from '../tauri/transport'
+import { nativeTransport } from '../gpui/transport'
 import type { DesktopEvent } from './contracts'
 
 /**

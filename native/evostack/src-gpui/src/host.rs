@@ -30,6 +30,9 @@ pub fn verify_backend_info(info: &Value) -> Result<(), String> {
 }
 
 pub fn trusted_origin(url: &url::Url) -> bool {
+    // This is the existing WebView2 storage origin, not a Tauri dependency.
+    // Renaming it would strand cs_cache_persist (tabs, input history, layout)
+    // in the old origin even though the browser profile directory is retained.
     #[cfg(debug_assertions)]
     if url.origin().ascii_serialization() == "http://127.0.0.1:17420"
         && url.username().is_empty()

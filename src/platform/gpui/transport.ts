@@ -7,25 +7,15 @@ import {
 import { IpcChannel } from '@shared/IpcChannel'
 
 import type { DesktopEvent } from '../desktop-api/contracts'
+import { invokeHost, isTrustedHostUrl, onHostEvent } from './bridge'
+
+export { isTrustedHostUrl } from './bridge'
 
 type Listener = (event: DesktopEvent, ...args: unknown[]) => void
 interface EventMessage {
   channel: string
   args: unknown[]
 }
-interface Channel<T> {
-  onmessage: (message: T) => void
-}
-interface TauriCore {
-  invoke<T>(command: string, args?: Record<string, unknown>): Promise<T>
-  Channel: new <T>() => Channel<T>
-}
-declare global {
-  interface Window {
-    __TAURI__?: { core: TauriCore }
-  }
-}
-
 const listeners = new Map<string, Array<{ listener: Listener; once: boolean }>>()
 const activeTopics = new Set<string>()
 interface ProjectionLease {
@@ -38,11 +28,6 @@ const backendLostMessage = 'EVOSTACK_BACKEND_EXITED: reopen the application to c
 let backendLost = false
 let closed = false
 let installation: Promise<void> | undefined
-
-function core(): TauriCore {
-  if (!window.__TAURI__) throw new Error('EVOSTACK_HOST_UNAVAILABLE')
-  return window.__TAURI__.core
-}
 
 function dispatch(message: EventMessage): void {
   if (closed) return
@@ -229,7 +214,7 @@ export const nativeTransport = {
     }
     let value: unknown
     try {
-      value = await core().invoke<unknown>('ipc_request', { channel, args })
+      value = await invokeHost<unknown>('ipc_request', { channel, args })
       if (closed) throw new Error('EVOSTACK_RENDERER_CLOSED')
       if (backendLost && !localWindowRequest(channel, route)) throw new Error(backendLostMessage)
     } catch (error) {
@@ -293,21 +278,6 @@ export const nativeTransport = {
   }
 }
 
-export function isTrustedHostUrl(raw: string): boolean {
-  const url = new URL(raw)
-  return (
-    (typeof __DESKTOP_DEV_ORIGIN__ !== 'undefined' &&
-      __DESKTOP_DEV_ORIGIN__ === url.origin &&
-      !url.username &&
-      !url.password) ||
-    (!url.username &&
-      !url.password &&
-      !url.port &&
-      ((url.protocol === 'http:' && url.hostname === 'tauri.localhost') ||
-        (url.protocol === 'tauri:' && url.hostname === 'localhost')))
-  )
-}
-
 export function installHostTransport(): Promise<void> {
   installation ??= installTransportOnce()
   return installation
@@ -320,9 +290,8 @@ async function installTransportOnce(): Promise<void> {
   const root = document.getElementById('root')
   if (!root) throw new Error('EVOSTACK_RENDERER_ROOT_MISSING')
   Object.defineProperty(window, 'root', { value: root, configurable: true })
-  const events = new (core().Channel)<EventMessage>()
-  events.onmessage = dispatch
-  const subscribed = core().invoke('subscribe', { events })
+  const unsubscribe = onHostEvent(dispatch)
+  const subscribed = invokeHost('subscribe')
   const handleMouseDown = (event: MouseEvent) => {
     const target = event.target instanceof Element ? event.target : null
     if (
@@ -334,7 +303,7 @@ async function installTransportOnce(): Promise<void> {
     )
       return
     if (target.closest('.drag,[class*="-webkit-app-region:drag"],[style*="-webkit-app-region: drag"]')) {
-      void core().invoke('start_dragging')
+      void invokeHost('start_dragging').catch((error) => globalThis.reportError(error))
     }
   }
   document.addEventListener('mousedown', handleMouseDown)
@@ -343,6 +312,7 @@ async function installTransportOnce(): Promise<void> {
     () => {
       document.removeEventListener('mousedown', handleMouseDown)
       closed = true
+      unsubscribe()
       listeners.clear()
       activeTopics.clear()
       projectionLeases.clear()

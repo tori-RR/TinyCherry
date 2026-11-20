@@ -96,8 +96,8 @@ await test('generated caches and profiles are not source identity inputs on clea
   ])
     assert.equal(isBuildInput(file), false, file)
   for (const file of [
-    'src/platform/tauri/install.ts',
-    'native/evostack/src-tauri/Cargo.lock',
+    'src/platform/gpui/install.ts',
+    'native/evostack/src-gpui/Cargo.lock',
     'native/evostack/backend/go.mod',
     'pnpm-lock.yaml',
     'build/renderer.config.ts'

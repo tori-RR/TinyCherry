@@ -26,7 +26,7 @@ import type { ShortcutPreferenceKey } from '@shared/types/shortcut'
 import type { CommandId } from '@shared/utils/command'
 import { resolveSafeExternalUrl } from '@shared/utils/externalUrlSafety'
 
-import { nativeTransport } from '../tauri/transport'
+import { nativeTransport } from '../gpui/transport'
 import type { OpenDialogOptions, OpenExternalOptions, DesktopEvent } from './contracts'
 import { ipcApi } from './ipc'
 

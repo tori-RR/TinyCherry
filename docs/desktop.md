@@ -1,6 +1,6 @@
 # Desktop architecture and migration status
 
-The supported target is Windows x64. React and TypeScript retain the existing layout, components, state and business DTOs. Vite builds the frontend. Tauri 2/Rust owns the window and native integration; Go owns chat, network requests, concurrency and SQLite. JSON-RPC travels over private stdio, with directed Tauri Channels for renderer events.
+The supported target is Windows x64. React and TypeScript retain the existing layout, components, state and business DTOs. Vite builds the frontend. GPUI/Rust owns the native window and lifecycle; Wry attaches the WebView2 that renders React; Go owns chat, network requests, concurrency and SQLite. JSON-RPC travels over private stdio, with correlated Wry messages and document-scoped renderer events.
 
 ## Available functionality
 
@@ -39,10 +39,42 @@ The fixed [pre-migration source snapshot](https://github.com/tori-RR/TinyCherry/
 
 ## Data and platform boundaries
 
-The packaged app retains identifier `com.tinycherry.evostack` and the adjacent `evostack-data` profile. CLI start uses a stable local portable profile independent of candidate folders. Development and smoke checks use separate disposable project-local profiles. API keys remain bound to the same Windows user by DPAPI. This change does not alter database schemas or import another desktop application's profile.
+The packaged app retains the `TinyCherry.exe` identity and the adjacent `evostack-data` profile. CLI start uses a stable local portable profile independent of candidate folders. Development and smoke checks use separate disposable project-local profiles. API keys remain bound to the same Windows user by DPAPI. This change does not alter database schemas or import another desktop application's profile.
 
 Build/version/protocol/revision information comes from product metadata and compiled host/sidecar identities. Start validates exact candidate hashes and host/sidecar identities, displays its revision and can run the last complete build after source changes. `start --strict-source`, verification and packaging additionally require current source identity. A missing helper, mismatched binary or modified candidate fails explicitly; no fallback runtime or implicit rebuild runs.
 
 ## Verification boundaries
 
 Automated checks use synthetic loopback providers and isolated SQLite profiles. The package smoke launches the actual release candidate, waits for React, operates onboarding, and verifies shutdown of its owned sidecar. Helper tests do not send input to unrelated applications. Real provider behavior, Windows IME/accessibility effects and future macOS behavior require explicit additional validation.
+
+## GPUI + Wry migration
+
+The active host is `native/evostack/src-gpui`; the active frontend bridge is `src/platform/gpui`. Tauri commands, Channels, configuration and CLI are removed from the active build. The Vite output is embedded in the release executable and served through the retained `tauri` custom protocol. The packaged Windows page uses `http://tauri.localhost/windows/evostack/index.html`; development uses only `http://127.0.0.1:17420`.
+
+Direct native dependencies are pinned to GPUI `0.2.2` and Wry `0.53.5`, with their resolved graph committed in `Cargo.lock`. Existing `evostack-data/evostack.sqlite3` and `evostack-data/webview` locations are retained. Windows build and packaged smoke must pass for the exact candidate before it is described as verified.
+
+The old `tauri` scheme/`http://tauri.localhost` Windows origin is retained for browser-storage compatibility, not as a runtime dependency. Renderer `localStorage`, including `cs_cache_persist`, holds UI state such as open tabs, input history and pane widths separately from SQLite. Preserving both origin and WebView profile keeps that state addressable without a second origin or a storage importer.
+
+| Layer | Responsibility after migration |
+| --- | --- |
+| GPUI | Application event loop, native window and host lifecycle |
+| Wry / WebView2 | React DOM/CSS rendering, browser profile, zoom and page messaging |
+| Renderer bridge | Correlated requests, document session isolation and event dispatch through the retained desktop API |
+| Rust sidecar supervisor | Version handshake, bounded JSON-RPC pipe, computer helper ownership and shutdown |
+| Go | Existing chat, OAuth, business APIs, SQLite schema and network behavior |
+
+The migration preserves the React application and browser styling. It does not convert React components into GPUI-native controls. Windows still uses WebView2, so scrolling, memory use, IME and responsiveness must be compared on the same hardware and profile before making an improvement claim.
+
+### Acceptance on Windows
+
+Run the pinned toolchains and dependencies, then `pnpm verify`. It builds a single candidate and runs source checks, TypeScript tests, Go/Rust tests, contract tests and packaged React interactions. `pnpm package` archives only those verified bytes. A successful unit or cross-compilation check alone does not certify the live Windows GUI.
+
+The packaged smoke validates the Wry bridge, native maximize/restore, renderer reload/reconnection, identity, an isolated WebView profile and owned CDP listener, onboarding, a synthetic provider/chat round trip, partial-output stop, native controls, projection attachment and graceful Go shutdown. The host must be tested on an interactive Windows desktop for the remaining native behaviors:
+
+- Window resize, minimize, maximize/restore, fullscreen, title-bar dragging and close while a reply streams.
+- Layout and mouse hit positions at 100%, 125%, 150% and 200% DPI, including moving between monitors with different scaling.
+- Chinese/Japanese IME composition, candidate placement, selection, clipboard and focus return from the system browser.
+- Light/dark/system theme, WebView background during startup, native zoom and DevTools behavior in the intended build.
+- Application reopen with the same existing EvoStack profile, backend exit behavior and absence of orphaned sidecars/helpers.
+
+Use a disposable profile for verification. The migration does not introduce a new database schema or an automatic importer. To compare with the preceding host, keep its complete candidate and a separately copied profile; do not launch two backends against the same profile simultaneously.

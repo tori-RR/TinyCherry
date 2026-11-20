@@ -55,7 +55,7 @@ export function createPlan(files, fullReason) {
       add(['docs'], file)
     } else if (/^native\/evostack\/backend\/.*\.go$/.test(file)) {
       add(['ts', 'go', 'vet', 'race', 'build', 'contracts', 'smoke'], file, ['desktop'])
-    } else if (/^native\/evostack\/src-tauri\/src\/.*\.rs$/.test(file)) {
+    } else if (/^native\/evostack\/src-gpui\/src\/.*\.rs$/.test(file)) {
       add(['ts', 'rust', 'build', 'contracts', 'smoke'], file, ['desktop'])
     } else if (file.startsWith('src/platform/') || file.startsWith('src/shared/')) {
       full(`Cross-process contract: ${file}`)
@@ -79,7 +79,7 @@ export function createPlan(files, fullReason) {
   }
   const tasks = allTasks.filter((task) => reasons[task])
   return {
-    target: 'tauri',
+    target: 'gpui',
     files: [...new Set(files)].sort(),
     tasks,
     projects: testProjects.filter((project) => projects.has(project)),
@@ -90,7 +90,7 @@ export function createPlan(files, fullReason) {
 
 export function validatePlan(plan) {
   if (
-    plan?.target !== 'tauri' ||
+    plan?.target !== 'gpui' ||
     !Array.isArray(plan.files) ||
     plan.files.some((file) => typeof file !== 'string' || !file || file.includes('\0')) ||
     !Array.isArray(plan.tasks) ||
@@ -100,7 +100,7 @@ export function validatePlan(plan) {
     (plan.projects.length > 0 && !plan.tasks.includes('ts')) ||
     Object.entries(flags(plan.tasks)).some(([key, value]) => plan[key] !== value)
   )
-    throw new Error('Invalid Tauri validation plan')
+    throw new Error('Invalid GPUI validation plan')
   return plan
 }
 

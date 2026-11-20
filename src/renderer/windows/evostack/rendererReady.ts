@@ -1,4 +1,4 @@
-import { nativeTransport } from '@platform/tauri/transport'
+import { nativeTransport } from '@platform/gpui/transport'
 
 // Report the retained React surface, rather than just a WebView/window handle.
 export function reportRendererReady(): Promise<void> {

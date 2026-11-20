@@ -28,7 +28,24 @@ await test('automatic workflow triggers are rejected in string, array and object
   )
 })
 
-await test('every shipped workflow is manual-only and selected checks transfer only the plan artifact', () => {
+await test('only the candidate workflow can run on the exact experimental branch', () => {
+  const jobs = { candidate: { 'runs-on': 'windows-2025' } }
+  const on = { push: { branches: ['GPT/GPUI'] }, workflow_dispatch: {} }
+  assert.doesNotThrow(() => validateWorkflow({ on, jobs }, 'desktop-build.yml'))
+  assert.throws(() => validateWorkflow({ on, jobs }, 'ci.yml'), /Only manual/)
+  for (const push of [
+    {},
+    { branches: ['main'] },
+    { branches: ['GPT/**'] },
+    { branches: ['GPT/GPUI', 'main'] },
+    { branches: ['GPT/GPUI'], tags: ['*'] },
+    { 'branches-ignore': ['main'] }
+  ])
+    assert.throws(() => validateWorkflow({ on: { ...on, push }, jobs }, 'desktop-build.yml'), /Only manual/)
+  assert.throws(() => validateWorkflow({ on: { ...on, pull_request: {} }, jobs }, 'desktop-build.yml'), /Only manual/)
+})
+
+await test('shipped workflows have scoped triggers and selected checks transfer only the plan artifact', () => {
   const directory = resolve(root, '.github/workflows')
   for (const name of readdirSync(directory).filter((name) => /\.ya?ml$/.test(name))) {
     const workflow = parse(readFileSync(resolve(directory, name), 'utf8'))

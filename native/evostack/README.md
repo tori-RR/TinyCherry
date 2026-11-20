@@ -1,14 +1,28 @@
 # TinyCherry
 
-Windows x64 desktop host using TinyCherry's React UI and the Cherry Studio v2.2.2 shared contracts. This is the only desktop target.
+Windows x64 GPUI + Wry desktop host using TinyCherry's React UI and the Cherry Studio v2.2.2 shared contracts. This is the only desktop target.
 
 ```mermaid
 flowchart LR
-  UI[Original React + TypeScript UI] <-->|Tauri commands + Channel| Rust[Tauri 2 / Rust]
+  UI["React + TypeScript in Wry / WebView2"] <-->|"Correlated IPC and events"| Rust["GPUI / Rust host"]
   Rust <-->|JSON-RPC 2.0 over stdio| Go[Go backend]
   Go --> DB[(Isolated SQLite)]
   Go --> HTTP[OpenAI compatible HTTP / SSE]
 ```
+
+## GPUI + Wry host
+
+`src-gpui/` replaces the former desktop host. GPUI owns the native application/window and Wry attaches a child WebView2 to its content area. React, Tailwind/CSS, editor components and the Go business backend retain their existing responsibilities. Release builds embed the Vite output and serve it at `http://tauri.localhost/windows/evostack/index.html`; no development server or Node runtime is included in a portable package.
+
+The `tauri` scheme and Windows `http://tauri.localhost` origin are deliberately retained as browser-storage identifiers. Together with the existing `evostack-data/webview` profile, they let the renderer reuse its existing `localStorage`, including the `cs_cache_persist` UI state. The name does not enable a Tauri runtime, API or dependency. This migration does not introduce another origin or copy/import browser storage.
+
+The host pins `gpui = 0.2.2` and `wry = 0.53.5`, with transitive versions recorded in `src-gpui/Cargo.lock`. Development CSP is supplied by the Vite response headers, including only the fixed loopback HTTP/WebSocket origin for HMR. Production CSP is supplied by the embedded asset protocol.
+
+The renderer adapter lives in `src/platform/gpui/`. Requests carry an ID and a document session; replies and events are correlated before they reach the retained desktop API. Page teardown rejects pending requests, stale-document replies are discarded, and mutations are never automatically retried. The host accepts IPC only from the configured application origin, keeps desktop operations separate from Go requests, and retains the existing sidecar handshake and private helper lifecycle.
+
+CSS continues to style the React content. GPUI-native elements require Rust styling. This host migration still uses WebView2 on Windows and makes no performance or IME improvement claim before a real-machine comparison. The React view occupies the native child rectangle; GPUI overlays must not be placed over it without separately validating Windows composition.
+
+See [desktop architecture](../../docs/desktop.md) for the migration acceptance checks and retained/pending feature boundaries.
 
 ## Implemented slice
 
@@ -29,13 +43,13 @@ flowchart LR
 - Incremental text/reasoning output uses revisioned message projections with immutable attachment baselines and reconnectable subscriptions. Stop preserves partial answers. Interrupted or lost-backend projections remain unresolved; reconnecting never replays a model request. The legacy stream protocol remains available to existing consumers.
 - Original conversation/assistant archive, restore, permanent-delete and Undo flows use the shared Trash protocol. Related pins and group references are updated in the same transaction. Model IDs preserve raw greedy tails, including slashes and percent literals; an encoded alias is decoded once only when no exact raw model ID exists.
 - SQLite WAL, transaction rollback and recovery of replies left pending after a crash. API keys are protected with Windows DPAPI in the SQLite secret table; provider snapshots contain key metadata only.
-- Host–backend IPC uses private stdio pipes. ChatGPT sign-in briefly binds a loopback callback on `127.0.0.1` and closes it when the attempt ends. The portable package uses the native Tauri host and Go sidecar.
+- Host–backend IPC uses private stdio pipes. ChatGPT sign-in briefly binds a loopback callback on `127.0.0.1` and closes it when the attempt ends. The portable package uses the native GPUI + Wry host and Go sidecar.
 
 This is a working migration slice, not feature parity. Agent runtimes (Claude Code/Pi), MCP, chat attachments, browser automation, painting, translation, backups/imports, tray/global shortcuts, multi-window, multi-model groups, advanced reasoning controls and downloads are not migrated. Their routes show an unavailable shell and their primary navigation entries are hidden. Internal unsupported requests still fail explicitly. Knowledge bases are retained again; the native full-text path is independent of the original `sqlite-vec` store. Existing renderer cache/SWR state is retained for this slice; a wholesale Zustand conversion is not part of it.
 
 ## Data and provider setup
 
-The default profile is `evostack-data` next to `TinyCherry.exe`. It contains `evostack.sqlite3`, WebView2 data and a process-owned lock. A second backend cannot acquire that profile. `TINYCHERRY_EVOSTACK_DATA_DIR` overrides it with an **absolute** path for isolated verification.
+The default profile is `evostack-data` next to `TinyCherry.exe`. It contains `evostack.sqlite3`, WebView2 data under the existing `webview` subdirectory and a process-owned lock. The GPUI + Wry host retains these paths and the existing EvoStack schema. A second backend cannot acquire that profile. `TINYCHERRY_EVOSTACK_DATA_DIR` overrides it with an **absolute** path for isolated verification.
 
 The database is a new, versioned EvoStack schema storing the existing UI DTOs. It is **not** a Drizzle-compatible replacement. Do not point this trial at an Electron profile or copy a production database into it. An importer for existing Electron conversation/provider/knowledge data requires separate work. This trial does not read or migrate the user's existing Electron data. Native schema v3 adds the knowledge full-text index; v4 preserves the disabled Computer Use default of older profiles when no explicit choice was saved. Explicit enable/disable choices are retained. Back up a profile before upgrading: older v3 binaries cannot open v4 databases. Knowledge snapshots and managed skill files remain inside the selected native profile.
 
@@ -89,7 +103,7 @@ Verify builds once, runs the current TypeScript/Go/Rust tests, private helper pr
 
 All build outputs, temporary files and Go/Cargo/pnpm caches stay inside the project. The script checks the installed Evergreen WebView2 Runtime using Microsoft's [documented registry locations](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution#detect-if-a-webview2-runtime-is-already-installed); it does not install a runtime. The pinned Windows helper package supplies the native executable and license notices, without its JavaScript SDK or a Node runtime in the product.
 
-The default Go race check runs once. `pnpm verify --stress` opts into ten iterations. Both Windows workflows are manual-only: one selects checks using an optional comparison base, and the other verifies complete candidates. macOS/Linux are pending platform ports and are not in the CI matrix.
+The default Go race check runs once. `pnpm verify --stress` opts into ten iterations. Both Windows workflows support manual dispatch: one selects checks using an optional comparison base, and the other verifies complete candidates. The candidate workflow additionally runs for each push to the exact `GPT/GPUI` experiment branch; it does not run on `main` or other branches. macOS/Linux are pending platform ports and are not in the CI matrix.
 
 ## Verification
 
@@ -106,11 +120,11 @@ pnpm exec tsx --tsconfig tsconfig.web.json native/evostack/check-contract.ts
 
 Go tests use real temporary SQLite databases and loopback-only synthetic model servers. The contract check launches the compiled Go executable, exercises JSON-RPC and validates returned DTOs against the original Zod schemas. `check-computer-contract.ts` additionally feeds ordinary text and multi-step computer tool chunks through the original AI SDK stream reader, using a fake reverse host without desktop input. Evidence is written to `.cache/contract-*` and `.cache/computer-contract-*`. Windows sandbox policies may require running loopback tests outside a network-restricted sandbox.
 
-For UI verification, `verify-package.ps1` starts the packaged EXE with a new project-local `TINYCHERRY_EVOSTACK_DATA_DIR`, a generated 32-character hexadecimal `TINYCHERRY_EVOSTACK_SMOKE_TOKEN` and an unused `TINYCHERRY_EVOSTACK_SMOKE_PORT`. The host validates this pair and configures the loopback port through Tauri's WebView2 environment options. The verifier also isolates `WEBVIEW2_USER_DATA_FOLDER` for that process. Before attaching, it checks the actual loopback listener's owner, its ancestry under the launched host, and its WebView2 profile. Attach only to that instance's `tauri.localhost/windows/evostack/index.html` target. Normal launches do not request a debug listener. Screenshots and test logs belong in this directory's ignored `.cache/`.
+The packaged UI smoke also exercises native maximize/restore and page reload/reconnection through the new bridge. For UI verification, `verify-package.ps1` starts the packaged EXE with a new project-local `TINYCHERRY_EVOSTACK_DATA_DIR`, a generated 32-character hexadecimal `TINYCHERRY_EVOSTACK_SMOKE_TOKEN` and an unused `TINYCHERRY_EVOSTACK_SMOKE_PORT`. The host validates this pair and configures the loopback port through Wry's WebView2 environment options. The verifier also isolates `WEBVIEW2_USER_DATA_FOLDER` for that process. Before attaching, it checks the actual loopback listener's owner, its ancestry under the launched host, and its WebView2 profile. Attach only to that instance's `tauri.localhost/windows/evostack/index.html` target. Normal launches do not request a debug listener. Screenshots and test logs belong in this directory's ignored `.cache/`.
 
 ## Protocol ownership
 
-Rust sends bounded, newline-delimited JSON-RPC 2.0 frames (`ipc.invoke`, `backend.info`, `backend.shutdown`). A bounded writer owns stdin; request deadlines include queueing, pipe writing and response waiting. A blocked write causes an independent supervisor to terminate the owned backend instead of waiting for that same pipe during shutdown. Requests are not replayed. Go returns correlated responses and `event` notifications containing the original renderer IPC envelope. Maximum frame size is 4 MiB. Stdout is reserved for the protocol. Rust relays events through a window-owned Tauri Channel; it does not expose process spawning or arbitrary filesystem commands to JavaScript.
+Rust sends bounded, newline-delimited JSON-RPC 2.0 frames (`ipc.invoke`, `backend.info`, `backend.shutdown`). A bounded writer owns stdin; request deadlines include queueing, pipe writing and response waiting. A blocked write causes an independent supervisor to terminate the owned backend instead of waiting for that same pipe during shutdown. Requests are not replayed. Go returns correlated responses and `event` notifications containing the original renderer IPC envelope. Maximum frame size is 4 MiB. Stdout is reserved for the protocol. Rust relays events through the Wry view on the GPUI UI thread, addressed to the subscribed renderer session; it does not expose process spawning or arbitrary filesystem commands to JavaScript.
 
 Go invokes the fixed native computer bridge through reverse `host.computer` requests with string IDs; ordinary Rust requests retain numeric IDs. Reverse responses bypass Go's request slots and SQLite lock. `host.computer.cancel` cancels an owned task. A monotonic configuration epoch prevents a delayed enable or action from superseding a newer user revocation. Rust grants each task from private open-response metadata against the user request's captured stop version; an acknowledgement arriving after Stop cannot grant control. The metadata is not exposed in the renderer acknowledgement. Overloaded request queues return an explicit busy error while continuing to consume reverse responses.
 
@@ -131,7 +145,7 @@ Sidecar stderr and lifecycle status go to `backend-stderr.log` in the selected p
 
 | Surface | EvoStack behavior |
 | --- | --- |
-| `ipcRenderer.invoke` | Correlated asynchronous Tauri → stdio RPC; unsupported routes reject. |
+| `ipcRenderer.invoke` | Correlated asynchronous Wry → Rust → stdio RPC; unsupported routes reject. |
 | `send` | Queues `invoke` and reports rejection; not synchronous Electron one-way delivery. |
 | `on`, `once`, `removeListener`, `off`, `removeAllListeners` | Renderer-local listeners; per-registration one-shot removal, cleared on page teardown. |
 | `contextBridge.exposeInMainWorld` | Installs the compatibility object in this WebView's main world; not Electron context isolation. |
@@ -141,6 +155,6 @@ Sidecar stderr and lifecycle status go to `backend-stderr.log` in the selected p
 | `webUtils.getPathForFile` | Explicitly unsupported; attachments are outside this slice. |
 | `sendSync`, `sendTo`, other Electron APIs | No implementation; callers must migrate before enabling those features. |
 
-Only the packaged application origins are accepted for navigation and IPC. Production scripts do not allow `unsafe-eval`. Tauri's automatic CSP modification is disabled for `style-src` only, preserving the inline styles required by React and Markdown; script nonce/hash protection remains enabled. Provider snapshots contain key metadata, but the explicit API-key editor endpoint still decrypts values for compatibility with the original settings UI; DPAPI is storage protection, not protection against trusted renderer code. Do not put keys into logs, exported snapshots or diagnostics.
+Only the packaged application origins are accepted for navigation and IPC. Production scripts do not allow `unsafe-eval`. The embedded asset protocol supplies the production CSP. Styles permit inline CSS for the retained React and Markdown components, while scripts load from the application origin. This policy is owned by the GPUI host; there is no Tauri CSP injection. Provider snapshots contain key metadata, but the explicit API-key editor endpoint still decrypts values for compatibility with the original settings UI; DPAPI is storage protection, not protection against trusted renderer code. Do not put keys into logs, exported snapshots or diagnostics.
 
-Official references: [Tauri sidecars](https://v2.tauri.app/develop/sidecar/), [Tauri Channels](https://v2.tauri.app/develop/calling-frontend/#channels), [JSON-RPC 2.0](https://www.jsonrpc.org/specification), [modernc SQLite](https://pkg.go.dev/modernc.org/sqlite).
+Official references: [GPUI](https://www.gpui.rs/), [Wry](https://github.com/tauri-apps/wry), [JSON-RPC 2.0](https://www.jsonrpc.org/specification), [modernc SQLite](https://pkg.go.dev/modernc.org/sqlite).

@@ -37,6 +37,16 @@ await test('installed dependency checks resolve relative stores from node_module
 await test('the browser compatibility database is not an Electron desktop runtime', () => {
   assert.deepEqual(checkDependencyGraph([{ packages: { 'electron-to-chromium@1.0.0': {} } }]), [])
 })
+await test('exit gate rejects the retired Tauri CLI and JavaScript bridge', () => {
+  assert.deepEqual(checkDependencyGraph([{ snapshots: { '@tauri-apps/cli@2.12.0': {} } }]), [
+    'Retired resolved package: @tauri-apps/cli@2.12.0'
+  ])
+  assert.equal(hasRetiredRuntimeSurface('window.__TAURI__.core.invoke("desktop_info")'), true)
+  assert.equal(hasRetiredRuntimeSurface('window["__TAURI__"].core.invoke("desktop_info")'), true)
+  assert.equal(hasRetiredRuntimeSurface('import { invoke } from "@tauri-apps/api/core"'), true)
+  assert.equal(hasRetiredRuntimeSurface('import { nativeTransport } from "@platform/tauri/transport"'), true)
+  assert.equal(hasRetiredRuntimeSurface('window.ipc.postMessage("fixture")'), false)
+})
 await test('exit gate checks executable/type syntax while allowing comments and fixture text', () => {
   assert.equal(hasRetiredRuntimeSurface('// window.electron is retired\nconst text="window.electron"'), false)
   assert.equal(hasRetiredRuntimeSurface('window["electron"].ipcRenderer.send("fixture")'), true)

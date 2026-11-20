@@ -24,7 +24,13 @@ export default defineConfig(({ command }) => ({
     host: '127.0.0.1',
     port: 17420,
     strictPort: true,
-    headers: { 'X-TinyCherry-Dev-Owner': process.env.TINYCHERRY_DEV_OWNER ?? 'standalone' },
+    headers: {
+      'X-TinyCherry-Dev-Owner': process.env.TINYCHERRY_DEV_OWNER ?? 'standalone',
+      'Content-Security-Policy':
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src http://127.0.0.1:17420 ws://127.0.0.1:17420; worker-src 'self' blob:; frame-src 'self' blob: data:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'",
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'no-referrer'
+    },
     fs: {
       allow: [rootPath('')],
       deny: [

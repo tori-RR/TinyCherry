@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 import { sourceIdentity } from './candidate.mjs'
 import { helperDirectory } from './helper.mjs'
-import { native, pnpm, run, stopAll, stopChild, windows } from './process.mjs'
+import { command, native, pnpm, run, stopAll, stopChild, windows } from './process.mjs'
 
 export async function ensureDevPort() {
   await new Promise((done, fail) => {
@@ -76,9 +76,9 @@ export async function dev() {
     )
     return true
   }
-  let watcher,
-    restartTimer,
-    tauri,
+  const watchers = []
+  let restartTimer,
+    host,
     stopPromise,
     restarting = false
   const stop = () => {
@@ -87,7 +87,7 @@ export async function dev() {
       clearTimeout(restartTimer)
       notifyStop()
       stopPromise = Promise.allSettled([
-        Promise.resolve().then(() => watcher?.close()),
+        Promise.resolve().then(() => watchers.forEach((watcher) => watcher.close())),
         Promise.resolve().then(stopAll)
       ]).then((results) => {
         const errors = results.filter((result) => result.status === 'rejected').map((result) => result.reason)
@@ -137,11 +137,12 @@ export async function dev() {
       await new Promise((done) => setTimeout(done, 150))
     }
     if (stopping) return
-    const launch = () => pnpm(['exec', 'tauri', 'dev'], { cwd: native, env })
-    tauri = launch()
+    const launch = () =>
+      command('cargo', ['run', '--locked', '--manifest-path', resolve(native, 'src-gpui/Cargo.toml')], { env })
+    host = launch()
     let restart = Promise.resolve()
-    watcher = watch(resolve(native, 'backend'), { recursive: true }, (_, name) => {
-      if (stopping || !name || /^(generated|\.cache)[/\\]/.test(name) || !/\.(go|mod|sum)$/.test(name)) return
+    const scheduleRestart = () => {
+      if (stopping) return
       clearTimeout(restartTimer)
       restartTimer = setTimeout(() => {
         restart = restart
@@ -149,26 +150,36 @@ export async function dev() {
             if (stopping) return
             restarting = true
             try {
-              console.log('Go source changed: closing the owned dev host before rebuilding')
-              await waitStage(stopChild(tauri))
-              if (!stopping && (await compileGo())) tauri = launch()
+              console.log('Native source changed: closing the owned dev host before rebuilding')
+              await waitStage(stopChild(host))
+              if (!stopping && (await compileGo())) host = launch()
             } finally {
               restarting = false
             }
           })
           .catch(fail)
       }, 350)
-    })
+    }
+    for (const [directory, source] of [
+      ['backend', /^(?!generated\/).*\.(go|mod|sum)$/],
+      ['src-gpui', /^(?:src\/.*\.rs|build\.rs|Cargo\.(toml|lock))$/]
+    ]) {
+      const watcher = watch(resolve(native, directory), { recursive: true }, (_, name) => {
+        if (name && source.test(String(name).replaceAll('\\', '/'))) scheduleRestart()
+      })
+      watcher.on('error', fail)
+      watchers.push(watcher)
+    }
     console.log(
-      'Dev profile is isolated. React uses HMR; Go changes restart this dev host. Ctrl+C closes owned processes.'
+      'Dev profile is isolated. React uses HMR; Go/Rust changes restart this dev host. Ctrl+C closes owned processes.'
     )
     while (!stopping) {
-      const current = tauri
+      const current = host
       await waitStage(current.completion).catch((error) => {
-        if (!stopping && !restarting && current === tauri) throw error
+        if (!stopping && !restarting && current === host) throw error
       })
       await restart
-      if (current === tauri) break
+      if (current === host) break
     }
   }
   try {

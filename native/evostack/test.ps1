@@ -21,18 +21,18 @@ try {
     }
     'race' { & (Join-Path $PSScriptRoot 'test-race.ps1') -Count $Count }
     'rust' {
-      # generate_context! embeds frontendDist even in test binaries.
+      # The GPUI host build script embeds frontend assets in release test binaries.
       if (-not (Test-Path -LiteralPath native/evostack/dist/frontend/windows/evostack/index.html)) { Invoke-TestStep { pnpm exec vite build --config native/evostack/vite.config.mts } }
-      Invoke-TestStep { cargo fmt --manifest-path native/evostack/src-tauri/Cargo.toml --check }
-      Invoke-TestStep { cargo test --release --locked --manifest-path native/evostack/src-tauri/Cargo.toml }
+      Invoke-TestStep { cargo fmt --manifest-path native/evostack/src-gpui/Cargo.toml --check }
+      Invoke-TestStep { cargo test --release --locked --manifest-path native/evostack/src-gpui/Cargo.toml }
       $DesktopHelper = & node scripts/desktop/helper.mjs
       if ($LASTEXITCODE -ne 0) { throw 'Helper unavailable' }
       $env:EVOSTACK_TEST_COMPUTER_RUNTIME = Join-Path $DesktopHelper 'runtime/open-computer-use.exe'
       try {
-        Invoke-TestStep { cargo test --release --locked --manifest-path native/evostack/src-tauri/Cargo.toml computer_use::tests::native_helper_private_session_preflight_confirms_cleanup -- --ignored --exact }
-        Invoke-TestStep { cargo test --release --locked --manifest-path native/evostack/src-tauri/Cargo.toml computer_use::tests::kill_on_close_job_terminates_the_owned_helper_descendant_tree -- --ignored --exact }
+        Invoke-TestStep { cargo test --release --locked --manifest-path native/evostack/src-gpui/Cargo.toml computer_use::tests::native_helper_private_session_preflight_confirms_cleanup -- --ignored --exact }
+        Invoke-TestStep { cargo test --release --locked --manifest-path native/evostack/src-gpui/Cargo.toml computer_use::tests::kill_on_close_job_terminates_the_owned_helper_descendant_tree -- --ignored --exact }
       } finally { Remove-Item -LiteralPath Env:\EVOSTACK_TEST_COMPUTER_RUNTIME -ErrorAction SilentlyContinue }
-      Invoke-TestStep { cargo clippy --release --locked --manifest-path native/evostack/src-tauri/Cargo.toml -- -D warnings }
+      Invoke-TestStep { cargo clippy --release --locked --manifest-path native/evostack/src-gpui/Cargo.toml -- -D warnings }
     }
     'contracts' {
       if (-not $Directory) {

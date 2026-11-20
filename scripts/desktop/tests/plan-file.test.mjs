@@ -46,7 +46,7 @@ await test('missing, malformed and structurally invalid plan files fail explicit
     assert.throws(() => readPlanFile(file), SyntaxError)
     for (const invalid of [{}, { ...createPlan([]), files: [null] }, { ...createPlan([]), tasks: ['fake-success'] }]) {
       writeFileSync(file, JSON.stringify(invalid))
-      assert.throws(() => readPlanFile(file), /Invalid Tauri validation plan/)
+      assert.throws(() => readPlanFile(file), /Invalid GPUI validation plan/)
     }
     const valid = createPlan(['docs/desktop.md'])
     writeFileSync(file, `\uFEFF${JSON.stringify(valid)}`)

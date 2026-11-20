@@ -91,12 +91,20 @@ describe('MarkdownFilePreview', () => {
       return { ok: true, data: { content: bytes, mime: 'text/markdown', version: { size: bytes.length, mtime: 1 } } }
     })
     vi.stubGlobal('location', new URL('http://tauri.localhost/windows/evostack/index.html'))
-    vi.stubGlobal('__TAURI__', { core: { invoke, Channel: vi.fn() } })
+    vi.stubGlobal('ipc', {
+      postMessage(frame: string) {
+        const { id, session, command, args } = JSON.parse(frame)
+        void invoke(command, args).then(
+          (result) => window.__TINYCHERRY_RECEIVE__?.({ session, id, result }),
+          (error) => window.__TINYCHERRY_RECEIVE__?.({ session, id, error: String(error.message ?? error) })
+        )
+      }
+    })
     const root = document.createElement('div')
     root.id = 'root'
     document.body.append(root)
     try {
-      const { nativeTransport } = await import('@platform/tauri/transport')
+      const { nativeTransport } = await import('@platform/gpui/transport')
       expect(await nativeTransport.request('fs:readText', 'C:\\fixture\\SKILL.md')).toBe(content)
       mocks.readText.mockImplementation((path: string) => nativeTransport.request('fs:readText', path))
       renderPreview({ filePath: 'C:\\fixture\\SKILL.md' as AbsoluteFilePath, size: bytes.length })

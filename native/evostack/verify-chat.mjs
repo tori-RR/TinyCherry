@@ -3,7 +3,7 @@ import { createServer } from 'node:http'
 
 import { openChatPage } from './verify-chat-page.mjs'
 
-/** A real React composer -> Tauri -> Go -> loopback provider round trip. */
+/** A real React composer -> GPUI -> Go -> loopback provider round trip. */
 export async function verifyChat({ evaluate, command, until, localeCatalogs }) {
   let streams = 0,
     stopped = false
@@ -38,10 +38,10 @@ export async function verifyChat({ evaluate, command, until, localeCatalogs }) {
         return
       }
       streams++
-      const partial = payload.messages.some((message) => JSON.stringify(message.content).includes('Tauri stop smoke'))
+      const partial = payload.messages.some((message) => JSON.stringify(message.content).includes('GPUI stop smoke'))
       response.writeHead(200, { 'Content-Type': 'text/event-stream' })
       response.write(
-        `data: ${JSON.stringify({ choices: [{ delta: { content: partial ? 'Partial Tauri reply' : 'Tauri mock reply' }, finish_reason: null }] })}\n\n`
+        `data: ${JSON.stringify({ choices: [{ delta: { content: partial ? 'Partial GPUI reply' : 'GPUI mock reply' }, finish_reason: null }] })}\n\n`
       )
       if (partial) {
         responses.add(response)
@@ -76,8 +76,8 @@ export async function verifyChat({ evaluate, command, until, localeCatalogs }) {
       if(!(await data('GET','/prompts')).some(item=>item.id===prompt.id))throw Error('Prompt persistence failed');
       const skills=await ipc('skill.list_catalog',{});if(!Array.isArray(skills)||!skills.length)throw Error('Skill catalog unavailable');
       const knowledge=await ipc('knowledge.create_base',{base:{name:'UI smoke knowledge'}});
-      await ipc('knowledge.import_text',{baseId:knowledge.id,name:'fixture.txt',content:'TauriSmokeKnowledgeMarker'});
-      const hits=await ipc('knowledge.search',{baseId:knowledge.id,query:'TauriSmokeKnowledgeMarker'});
+      await ipc('knowledge.import_text',{baseId:knowledge.id,name:'fixture.txt',content:'GPUISmokeKnowledgeMarker'});
+      const hits=await ipc('knowledge.search',{baseId:knowledge.id,query:'GPUISmokeKnowledgeMarker'});
       if(!hits.length)throw Error('Knowledge search failed');
       return {prompt:true,skills:true,knowledge:true};
     })()`)
@@ -119,21 +119,21 @@ export async function verifyChat({ evaluate, command, until, localeCatalogs }) {
         `[...document.querySelectorAll('[data-ui~="chat.composer.action.send"]')].find(node=>node.getBoundingClientRect().width>0&&node.getAttribute('aria-disabled')!=='true').click()`
       )
     }
-    await submit('Tauri mock chat smoke')
+    await submit('GPUI mock chat smoke')
     await until(
-      `document.body.textContent.includes('Tauri mock reply')&&!document.querySelector('[data-ui~="chat.composer.action.pause"]')`
+      `document.body.textContent.includes('GPUI mock reply')&&!document.querySelector('[data-ui~="chat.composer.action.pause"]')`
     )
     assert.equal(streams, 1, 'Chat send must create one provider request')
-    await submit('Tauri stop smoke')
+    await submit('GPUI stop smoke')
     await until(
-      `document.body.textContent.includes('Partial Tauri reply')&&Boolean(document.querySelector('[data-ui~="chat.composer.action.pause"]'))`
+      `document.body.textContent.includes('Partial GPUI reply')&&Boolean(document.querySelector('[data-ui~="chat.composer.action.pause"]'))`
     )
     await evaluate(`document.querySelector('[data-ui~="chat.composer.action.pause"]').click()`)
     const deadline = Date.now() + 5000
     while (!stopped && Date.now() < deadline) await new Promise((done) => setTimeout(done, 50))
     assert(stopped, 'Stop must close the owned provider stream')
     await until(
-      `!document.querySelector('[data-ui~="chat.composer.action.pause"]')&&document.body.textContent.includes('Partial Tauri reply')`
+      `!document.querySelector('[data-ui~="chat.composer.action.pause"]')&&document.body.textContent.includes('Partial GPUI reply')`
     )
     assert.equal(streams, 2, 'Stopping must not replay the request')
     return { ...setup, chat: true, stop: true, noReplay: true }

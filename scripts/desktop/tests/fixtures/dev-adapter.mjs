@@ -82,19 +82,28 @@ export function pnpm(args, { env } = {}) {
     if (scenario === 'cancel-readiness') setTimeout(() => process.emit('SIGINT'), 50)
     return result
   }
-  if (args.includes('tauri')) {
-    stats.launches++
-    const result = child()
-    if (scenario.startsWith('restart-')) {
-      setTimeout(() => writeFileSync(resolve(native, 'backend/changed.go'), 'package main\n// synthetic change\n'), 100)
-    } else if (scenario === 'host-failure') {
-      setTimeout(() => result.finish(new Error('SYNTHETIC_HOST_FAILURE')), 30)
-    } else {
-      setTimeout(() => result.finish(), 50)
-    }
-    return result
-  }
   throw new Error('Unexpected test pnpm invocation')
+}
+export function command(executable, args) {
+  if (
+    executable !== 'cargo' ||
+    JSON.stringify(args) !==
+      JSON.stringify(['run', '--locked', '--manifest-path', resolve(native, 'src-gpui/Cargo.toml')])
+  )
+    throw new Error('Unexpected GPUI host invocation')
+  stats.launches++
+  const result = child()
+  if (scenario.startsWith('restart-') && stats.launches === 1) {
+    const rust = scenario === 'restart-rust-source'
+    const file = rust ? 'src-gpui/src/main.rs' : 'backend/changed.go'
+    const content = rust ? 'fn main() {}\n// synthetic change\n' : 'package main\n// synthetic change\n'
+    setTimeout(() => writeFileSync(resolve(native, file), content), 100)
+  } else if (scenario === 'host-failure') {
+    setTimeout(() => result.finish(new Error('SYNTHETIC_HOST_FAILURE')), 30)
+  } else {
+    setTimeout(() => result.finish(), 50)
+  }
+  return result
 }
 export async function stopChild(result) {
   stats.stopped++
@@ -110,5 +119,6 @@ export async function stopAll() {
   if (scenario.endsWith('cleanup-failure')) throw new Error('SYNTHETIC_CLEANUP_FAILURE')
 }
 mkdirSync(resolve(native, 'backend'), { recursive: true })
+mkdirSync(resolve(native, 'src-gpui/src'), { recursive: true })
 mkdirSync(resolve(root, 'helper/runtime'), { recursive: true })
 writeFileSync(resolve(root, 'helper/runtime/open-computer-use.exe'), 'NONEXECUTABLE FIXTURE')

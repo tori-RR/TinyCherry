@@ -85,3 +85,12 @@ await test('normal owned host closure is successful and closes the dev server', 
   assert.deepEqual(state.messages, [])
   assert.equal(state.launches, 1)
 })
+for (const name of ['restart-go-source', 'restart-rust-source'])
+  await test(`dev rebuilds after ${name} and releases both owned generations`, () => {
+    const { status, state } = scenario(name)
+    assert.equal(status, 0, JSON.stringify(state))
+    assert.deepEqual(state.messages, [])
+    assert.equal(state.launches, 2)
+    assert.equal(state.goBuilds, 2)
+    assert.equal(state.stopped, 1)
+  })

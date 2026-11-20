@@ -21,14 +21,14 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Pinned computer helper is missing' }
   Invoke-DesktopStep { pnpm exec tsx --tsconfig tsconfig.web.json native/evostack/generate-contract.ts }
   Invoke-DesktopStep { pnpm exec tsc --noEmit -p tsconfig.web.json --composite false }
-  Invoke-DesktopStep { pnpm exec tsc --noEmit -p tsconfig.tauri.json --composite false }
+  Invoke-DesktopStep { pnpm exec tsc --noEmit -p tsconfig.gpui.json --composite false }
   Invoke-DesktopStep { pnpm exec vite build --config native/evostack/vite.config.mts }
   Push-Location (Join-Path $PSScriptRoot 'backend')
   try {
     $DesktopFlags = "-s -w -X main.appVersion=$($DesktopIdentity.version) -X main.buildRevision=$($DesktopIdentity.revision)"
     Invoke-DesktopStep { go build -trimpath -ldflags $DesktopFlags -o (Join-Path $DesktopCandidate 'tinycherry-evostack-backend.exe') . }
   } finally { Pop-Location }
-  Invoke-DesktopStep { cargo build --release --locked --manifest-path native/evostack/src-tauri/Cargo.toml }
+  Invoke-DesktopStep { cargo build --release --locked --manifest-path native/evostack/src-gpui/Cargo.toml }
   Copy-Item -LiteralPath (Join-Path $env:CARGO_TARGET_DIR 'release\TinyCherry.exe') -Destination $DesktopCandidate
   Copy-Item -LiteralPath LICENSE -Destination (Join-Path $DesktopCandidate 'LICENSE.txt')
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'README.md') -Destination (Join-Path $DesktopCandidate 'README.md')

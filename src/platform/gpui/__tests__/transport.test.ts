@@ -18,18 +18,29 @@ function fakeHost(
   invoke: (command: string, args: any) => unknown,
   subscribe: () => Promise<unknown> = async () => undefined
 ) {
-  class Channel {
-    static instances: Channel[] = []
-    onmessage: (message: { channel: string; args: unknown[] }) => void = () => {}
-    constructor() {
-      Channel.instances.push(this)
-    }
-  }
+  const channels: Array<{ onmessage: (message: { channel: string; args: unknown[] }) => void }> = []
   const coreInvoke = vi.fn((command: string, args: unknown) =>
     command === 'subscribe' ? subscribe() : invoke(command, args)
   )
-  vi.stubGlobal('__TAURI__', { core: { invoke: coreInvoke, Channel } })
-  return { channels: Channel.instances, coreInvoke }
+  vi.stubGlobal('ipc', {
+    postMessage(frame: string) {
+      const { id, session, command, args } = JSON.parse(frame)
+      if (command === 'subscribe')
+        channels.push({ onmessage: (event) => window.__TINYCHERRY_RECEIVE__?.({ session, event }) })
+      let reply: unknown
+      try {
+        reply = coreInvoke(command, args)
+      } catch (error) {
+        window.__TINYCHERRY_RECEIVE__?.({ session, id, error: String(error) })
+        return
+      }
+      void Promise.resolve(reply).then(
+        (result) => window.__TINYCHERRY_RECEIVE__?.({ session, id, result }),
+        (error) => window.__TINYCHERRY_RECEIVE__?.({ session, id, error: String(error.message ?? error) })
+      )
+    }
+  })
+  return { channels, coreInvoke }
 }
 
 beforeEach(() => {
@@ -328,11 +339,13 @@ describe('EvoStack transport', () => {
     )
   })
 
-  it('accepts only packaged app origins', () => {
+  it('retains only the existing storage origin for packaged pages', () => {
     for (const raw of ['http://tauri.localhost/windows/evostack/index.html', 'tauri://localhost/index.html']) {
       expect(isTrustedHostUrl(raw), raw).toBe(true)
     }
     for (const raw of [
+      'http://tinycherry.localhost/index.html',
+      'tinycherry://localhost/index.html',
       'tauri://attacker/index.html',
       'https://tauri.localhost/',
       'http://tauri.localhost:8123/',
@@ -358,17 +371,10 @@ describe('EvoStack transport', () => {
   it('installs once and consumes the exact once registration when a callback is also persistent', async () => {
     vi.stubGlobal('location', new URL('http://tauri.localhost/windows/evostack/index.html'))
     const invoke = vi.fn().mockResolvedValue(undefined)
-    class Channel {
-      static instances: Channel[] = []
-      onmessage: (message: { channel: string; args: unknown[] }) => void = () => {}
-      constructor() {
-        Channel.instances.push(this)
-      }
-    }
-    vi.stubGlobal('__TAURI__', { core: { invoke, Channel } })
+    const host = fakeHost(invoke, () => invoke('subscribe', {}))
     const { installHostTransport, nativeTransport } = await import('../transport')
     await Promise.all([installHostTransport(), installHostTransport()])
-    const channel = Channel.instances[0]
+    const channel = host.channels[0]
     expect(invoke).toHaveBeenCalledTimes(1)
     const callback = vi.fn()
     nativeTransport.subscribeOnce('fixture', callback)
