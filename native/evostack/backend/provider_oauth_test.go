@@ -356,6 +356,9 @@ func TestNativeNousAuthenticatedListCheckAndChatShareTheCredentialResolver(t *te
 		if request.Host != "inference-api.nousresearch.com" || request.Header.Get("Authorization") != "Bearer synthetic-access" {
 			t.Error("request did not use the pinned host and synthetic access token")
 		}
+		if request.UserAgent() != "TinyCherry/"+appVersion {
+			t.Error("Nous request did not identify TinyCherry")
+		}
 		if request.URL.Path == "/v1/models" {
 			fmt.Fprint(w, `{"data":[{"id":"synthetic-model"}]}`)
 			return
