@@ -592,6 +592,10 @@ func (s *server) data(method, path string, query object, body any) (any, error) 
 				result = append(result, row)
 			}
 			return result, nil
+		case "DELETE":
+			if resource == "models" {
+				return nil, s.deleteModelsByQuery(query)
+			}
 		}
 	}
 	if len(segments) != 2 {
@@ -845,28 +849,113 @@ func patchModel(row, patch object) error {
 
 // Called by the serialized Data API write transaction. History is retained unless
 // the user explicitly deletes its topic; message snapshots keep their original names.
-func (s *server) deleteEntity(resource, id string) error {
-	_, err := s.store.get(resource, id)
+func (s *server) deleteModelsByQuery(query object) error {
+	ids := array(query["ids"])
+	if id, ok := query["ids"].(string); ok {
+		ids = []any{id}
+	}
+	if len(query) != 1 || len(ids) == 0 || len(ids) > 1000 {
+		return errors.New("expected 1 to 1000 model IDs in ids")
+	}
+	modelIDs := make(map[string]bool, len(ids))
+	for _, value := range ids {
+		id := text(value)
+		providerID, modelID, _ := strings.Cut(id, "::")
+		if providerID == "" || modelID == "" || strings.ContainsAny(modelID, "?#") {
+			return errors.New("invalid unique model ID")
+		}
+		if modelIDs[id] {
+			continue
+		}
+		if _, err := s.store.get("models", id); err != nil {
+			return err
+		}
+		modelIDs[id] = true
+	}
+	return s.deleteModelRows(modelIDs)
+}
+
+func (s *server) deleteModelRows(modelIDs map[string]bool) error {
+	if len(modelIDs) == 0 {
+		return nil
+	}
+	for _, g := range s.active {
+		if modelIDs[text(g.row["modelId"])] {
+			return errors.New("stop generation before deleting this resource")
+		}
+	}
+	for _, target := range []string{"assistants", "messages"} {
+		rows, err := s.store.list(target)
+		if err != nil {
+			return err
+		}
+		for _, value := range rows {
+			if modelIDs[text(value["modelId"])] {
+				value["modelId"] = nil
+				if target == "assistants" {
+					value["modelName"] = nil
+				}
+				if err := s.store.put(target, value); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	preferences, err := s.store.preferences()
 	if err != nil {
 		return err
 	}
-	modelIDs := map[string]bool{}
+	for key, value := range preferences {
+		if strings.HasSuffix(key, "model_id") && modelIDs[text(value)] {
+			if err := s.store.setPreference(key, s.store.defaults.Preferences[key]); err != nil {
+				return err
+			}
+		}
+	}
+	fallbacks := []any{}
+	for _, value := range array(preferences["chat.retry.fallback_model_ids"]) {
+		if !modelIDs[text(value)] {
+			fallbacks = append(fallbacks, value)
+		}
+	}
+	if err := s.store.setPreference("chat.retry.fallback_model_ids", fallbacks); err != nil {
+		return err
+	}
+	for modelID := range modelIDs {
+		if err := s.purgeEntityPins("models", modelID); err != nil {
+			return err
+		}
+		if err := s.store.delete("models", modelID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *server) deleteEntity(resource, id string) error {
+	if _, err := s.store.get(resource, id); err != nil {
+		return err
+	}
 	if resource == "models" {
-		modelIDs[id] = true
+		return s.deleteModelRows(map[string]bool{id: true})
 	}
 	if resource == "providers" {
 		models, err := s.store.list("models")
 		if err != nil {
 			return err
 		}
+		modelIDs := map[string]bool{}
 		for _, model := range models {
 			if model["providerId"] == id {
 				modelIDs[text(model["id"])] = true
 			}
 		}
+		if err := s.deleteModelRows(modelIDs); err != nil {
+			return err
+		}
 	}
-	for topicID, g := range s.active {
-		if (resource == "topics" && topicID == id) || modelIDs[text(g.row["modelId"])] {
+	for topicID := range s.active {
+		if resource == "topics" && topicID == id {
 			return errors.New("stop generation before deleting this resource")
 		}
 		if resource == "assistants" {
@@ -885,53 +974,6 @@ func (s *server) deleteEntity(resource, id string) error {
 	if resource == "groups" {
 		if _, err := s.store.connection().Exec("UPDATE entity SET body=json_set(body,'$.groupId',NULL,'$.updatedAt',?) WHERE resource IN ('assistants','knowledge-bases') AND json_extract(body,'$.groupId')=?", timestamp(), id); err != nil {
 			return err
-		}
-	}
-	if len(modelIDs) > 0 {
-		for _, target := range []string{"assistants", "messages"} {
-			rows, err := s.store.list(target)
-			if err != nil {
-				return err
-			}
-			for _, value := range rows {
-				if modelIDs[text(value["modelId"])] {
-					value["modelId"] = nil
-					if target == "assistants" {
-						value["modelName"] = nil
-					}
-					if err := s.store.put(target, value); err != nil {
-						return err
-					}
-				}
-			}
-		}
-		preferences, err := s.store.preferences()
-		if err != nil {
-			return err
-		}
-		for key, value := range preferences {
-			if strings.HasSuffix(key, "model_id") && modelIDs[text(value)] {
-				if err := s.store.setPreference(key, s.store.defaults.Preferences[key]); err != nil {
-					return err
-				}
-			}
-		}
-		fallbacks := []any{}
-		for _, value := range array(preferences["chat.retry.fallback_model_ids"]) {
-			if !modelIDs[text(value)] {
-				fallbacks = append(fallbacks, value)
-			}
-		}
-		if err := s.store.setPreference("chat.retry.fallback_model_ids", fallbacks); err != nil {
-			return err
-		}
-		for modelID := range modelIDs {
-			if err := s.purgeEntityPins("models", modelID); err != nil {
-				return err
-			}
-			if err := s.store.delete("models", modelID); err != nil {
-				return err
-			}
 		}
 	}
 	if resource == "assistants" {
