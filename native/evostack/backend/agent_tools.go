@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -394,8 +395,17 @@ func (b *agentCommandOutput) Write(p []byte) (int, error) {
 func agentShellEnvironment() []string {
 	// Do not pass the backend's provider keys, tokens or private transport values
 	// to subprocesses. Shell still has user privileges, explicitly shown at approval.
+	keys := []string{"PATH", "HOME", "USER", "USERPROFILE", "SystemRoot", "WINDIR", "PATHEXT", "ComSpec", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL"}
+	if runtime.GOOS == "windows" {
+		// Windows PowerShell 5.1 needs the standard logon-created directories to
+		// initialize and discover its built-in modules. Omitting ProgramFiles and
+		// AppData breaks that baseline even with -NoProfile/-NonInteractive.
+		// Let 5.1 construct PSModulePath itself: inheriting it from PowerShell 7
+		// can load incompatible modules in a desktop app launched from that shell.
+		keys = append(keys, "ALLUSERSPROFILE", "APPDATA", "LOCALAPPDATA", "ProgramData", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "CommonProgramFiles", "CommonProgramFiles(x86)", "CommonProgramW6432", "PUBLIC", "SystemDrive", "HOMEDRIVE", "HOMEPATH")
+	}
 	result := []string{}
-	for _, key := range []string{"PATH", "HOME", "USER", "USERPROFILE", "SystemRoot", "WINDIR", "PATHEXT", "ComSpec", "TEMP", "TMP", "TMPDIR", "LANG", "LC_ALL"} {
+	for _, key := range keys {
 		if value, ok := os.LookupEnv(key); ok {
 			result = append(result, key+"="+value)
 		}

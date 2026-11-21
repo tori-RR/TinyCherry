@@ -15,9 +15,36 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+func TestNativeAgentWindowsEnvironmentPreservesSystemPathsWithoutSecrets(t *testing.T) {
+	for _, key := range []string{"OPENAI_API_KEY", "EVOSTACK_BACKEND_TOKEN", "PSModulePath"} {
+		t.Setenv(key, "must-not-reach-agent-shell")
+	}
+	environment := map[string]string{}
+	for _, entry := range agentShellEnvironment() {
+		key, value, _ := strings.Cut(entry, "=")
+		environment[strings.ToUpper(key)] = value
+	}
+	for _, key := range []string{"SystemRoot", "USERPROFILE", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "CommonProgramFiles", "CommonProgramFiles(x86)", "CommonProgramW6432", "APPDATA", "LOCALAPPDATA", "ProgramData", "ALLUSERSPROFILE", "PUBLIC", "SystemDrive", "HOMEDRIVE", "HOMEPATH"} {
+		if value, exists := os.LookupEnv(key); exists && environment[strings.ToUpper(key)] != value {
+			t.Errorf("agent environment dropped Windows runtime directory %s", key)
+		}
+	}
+	for _, key := range []string{"OPENAI_API_KEY", "EVOSTACK_BACKEND_TOKEN", "PSMODULEPATH"} {
+		if _, exists := environment[key]; exists {
+			t.Errorf("agent environment inherited %s", key)
+		}
+	}
+}
+
+func nativeAgentWindowsStartMarker(workspace string) (string, string) {
+	path := filepath.Join(workspace, "powershell.started")
+	return path, `[System.IO.File]::WriteAllText('` + strings.ReplaceAll(path, "'", "''") + `', 'started'); `
+}
+
 func TestNativeAgentWindowsShellCapturesOutputWithoutConsole(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	// The tool's ten-second deadline remains the execution limit. An outer
+	// deadline at the same instant discarded its captured output on failure.
+	ctx := context.Background()
 	cmd := nativeAgentShell(ctx, "Write-Output 'Hello Cherry'")
 	if cmd.SysProcAttr == nil || !cmd.SysProcAttr.HideWindow || cmd.SysProcAttr.CreationFlags&windows.CREATE_NO_WINDOW == 0 {
 		t.Fatal("agent PowerShell would open a console window")
@@ -26,9 +53,12 @@ func TestNativeAgentWindowsShellCapturesOutputWithoutConsole(t *testing.T) {
 	if terminator.SysProcAttr == nil || !terminator.SysProcAttr.HideWindow || terminator.SysProcAttr.CreationFlags&windows.CREATE_NO_WINDOW == 0 {
 		t.Fatal("agent Stop would open a taskkill console window")
 	}
-	result, err := runAgentShell(ctx, t.TempDir(), ".", object{"command": "Write-Output 'Hello Cherry'", "timeout_seconds": float64(10)})
-	if err != nil || result["exitCode"] != 0 || !strings.Contains(text(result["output"]), "Hello Cherry") {
-		t.Fatal("PowerShell output was not captured", result, err)
+	workspace := t.TempDir()
+	marker, prefix := nativeAgentWindowsStartMarker(workspace)
+	result, err := runAgentShell(ctx, workspace, ".", object{"command": prefix + "Write-Output 'Hello Cherry'", "timeout_seconds": float64(10)})
+	started, _ := os.ReadFile(marker)
+	if err != nil || result["exitCode"] != 0 || result["timedOut"] != false || !strings.Contains(text(result["output"]), "Hello Cherry") {
+		t.Fatalf("PowerShell did not finish within its ten-second limit: engineStarted=%t result=%v error=%v", string(started) == "started", result, err)
 	}
 }
 
@@ -38,7 +68,8 @@ func TestNativeAgentWindowsStopTerminatesShellAndChild(t *testing.T) {
 	defer cancel()
 	// A real child process is used so this catches cancellation that kills only
 	// PowerShell but leaves an approved command running after the UI says Stop.
-	script := `$child = Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList @('-NoLogo','-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 30') -PassThru -WindowStyle Hidden; Set-Content -LiteralPath 'child.pid' -Value $child.Id; Start-Sleep -Seconds 30`
+	marker, prefix := nativeAgentWindowsStartMarker(workspace)
+	script := prefix + `$child = Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList @('-NoLogo','-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 30') -PassThru -WindowStyle Hidden; Set-Content -LiteralPath 'child.pid' -Value $child.Id; Start-Sleep -Seconds 30`
 	done := make(chan error, 1)
 	go func() {
 		_, err := runAgentShell(ctx, workspace, ".", object{"command": script, "timeout_seconds": float64(60)})
@@ -62,8 +93,14 @@ func TestNativeAgentWindowsStopTerminatesShellAndChild(t *testing.T) {
 	}
 	if childID == 0 {
 		cancel()
-		<-done
-		t.Fatal("PowerShell child did not start")
+		started, _ := os.ReadFile(marker)
+		pid, _ := os.ReadFile(filepath.Join(workspace, "child.pid"))
+		select {
+		case err := <-done:
+			t.Fatalf("PowerShell child did not start within ten seconds: engineStarted=%t childPID=%q error=%v", string(started) == "started", pid, err)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("PowerShell startup and cancellation did not finish: engineStarted=%t childPID=%q", string(started) == "started", pid)
+		}
 	}
 	handle, err := windows.OpenProcess(windows.SYNCHRONIZE|windows.PROCESS_TERMINATE, false, uint32(childID))
 	if err != nil {

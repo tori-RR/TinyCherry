@@ -163,6 +163,7 @@ export async function verifyCandy({ evaluate, command, until, profile }) {
       `document.body.textContent.includes('Candy agent verified file')&&!(${visible('[data-testid="agent-stop"]')})`
     )
     assert.equal(readFileSync(join(session.workspace.path, 'approved.txt'), 'utf8'), CONTENT)
+    await screenshot('workspace-agents.png')
     await submit('Candy denied tool')
     await click('[data-testid="agent-tool-reject"]')
     await until(
@@ -175,7 +176,6 @@ export async function verifyCandy({ evaluate, command, until, profile }) {
     await until(`!(${visible('[data-testid="agent-stop"]')})&&!(${visible('[data-testid="agent-tool-approve"]')})`)
     assert(!existsSync(join(session.workspace.path, 'stopped.txt')))
     assert.equal(counters.chat, 6, 'Agent actions must not replay after approval, denial or stop')
-    await screenshot('workspace-agents.png')
     await command('Page.reload', {})
     await until('Boolean(window.api?.ipcApi?.request && document.querySelector(\'[data-ui~="app.content"]\'))')
     await open(`/app/agents?sessionId=${encodeURIComponent(session.id)}`, '[data-testid="agent-conversation"]')
