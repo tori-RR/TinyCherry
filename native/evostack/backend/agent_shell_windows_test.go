@@ -38,7 +38,64 @@ func TestNativeAgentWindowsEnvironmentPreservesSystemPathsWithoutSecrets(t *test
 
 func nativeAgentWindowsStartMarker(workspace string) (string, string) {
 	path := filepath.Join(workspace, "powershell.started")
-	return path, `[System.IO.File]::WriteAllText('` + strings.ReplaceAll(path, "'", "''") + `', 'started'); `
+	return path, nativeAgentWindowsMark(path, "started")
+}
+
+func nativeAgentWindowsMark(path, stage string) string {
+	return `[System.IO.File]::WriteAllText('` + strings.ReplaceAll(path, "'", "''") + `', '` + stage + `'); `
+}
+
+func nativeAgentWindowsOutputScript(workspace string) (string, string) {
+	marker, prefix := nativeAgentWindowsStartMarker(workspace)
+	return marker, prefix + `[Console]::WriteLine('console-ready'); ` + nativeAgentWindowsMark(marker, "console") +
+		`$null = Write-Output 'cmdlet-ready'; ` + nativeAgentWindowsMark(marker, "cmdlet") +
+		`'Hello Cherry'; ` + nativeAgentWindowsMark(marker, "formatted") + `exit 0`
+}
+
+func diagnoseNativeAgentWindowsShell(t *testing.T) {
+	t.Helper()
+	budget, cancelBudget := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancelBudget()
+	for _, mode := range []string{"module-analysis-cache", "empty-stdin-pipe", "inherited-environment", "system-module-path", "inherited-console"} {
+		if budget.Err() != nil {
+			t.Log("PowerShell diagnostic budget exhausted")
+			break
+		}
+		workspace := t.TempDir()
+		marker, script := nativeAgentWindowsOutputScript(workspace)
+		if mode == "system-module-path" {
+			// Set this after initialization: 5.1 can prepend machine/user module
+			// directories while constructing its startup environment.
+			script = `$env:PSModulePath = $PSHOME + '\Modules'; ` + script
+		}
+		ctx, cancel := context.WithTimeout(budget, 3*time.Second)
+		cmd := nativeAgentShell(ctx, script)
+		cmd.Dir, cmd.Env, cmd.WaitDelay = workspace, agentShellEnvironment(), time.Second
+		switch mode {
+		case "module-analysis-cache":
+			if path, exists := os.LookupEnv("PSModuleAnalysisCachePath"); exists {
+				cmd.Env = append(cmd.Env, "PSModuleAnalysisCachePath="+path)
+			} else {
+				cancel()
+				t.Log("PowerShell probe module-analysis-cache: parent has no cache override")
+				continue
+			}
+		case "empty-stdin-pipe":
+			cmd.Stdin = strings.NewReader("")
+		case "inherited-environment":
+			// Fixed test-only script; it never reads or prints environment values.
+			cmd.Env = nil
+		case "inherited-console":
+			cmd.SysProcAttr.CreationFlags = 0
+		}
+		var output agentCommandOutput
+		cmd.Stdout, cmd.Stderr = &output, &output
+		startedAt := time.Now()
+		err := cmd.Run()
+		stage, _ := os.ReadFile(marker)
+		t.Logf("PowerShell probe %s: elapsed=%s stage=%q output=%q error=%v deadline=%v", mode, time.Since(startedAt).Round(time.Millisecond), stage, string(output.value), err, ctx.Err())
+		cancel()
+	}
 }
 
 func TestNativeAgentWindowsShellCapturesOutputWithoutConsole(t *testing.T) {
@@ -54,11 +111,13 @@ func TestNativeAgentWindowsShellCapturesOutputWithoutConsole(t *testing.T) {
 		t.Fatal("agent Stop would open a taskkill console window")
 	}
 	workspace := t.TempDir()
-	marker, prefix := nativeAgentWindowsStartMarker(workspace)
-	result, err := runAgentShell(ctx, workspace, ".", object{"command": prefix + "Write-Output 'Hello Cherry'", "timeout_seconds": float64(10)})
+	marker, script := nativeAgentWindowsOutputScript(workspace)
+	result, err := runAgentShell(ctx, workspace, ".", object{"command": script, "timeout_seconds": float64(10)})
 	started, _ := os.ReadFile(marker)
-	if err != nil || result["exitCode"] != 0 || result["timedOut"] != false || !strings.Contains(text(result["output"]), "Hello Cherry") {
-		t.Fatalf("PowerShell did not finish within its ten-second limit: engineStarted=%t result=%v error=%v", string(started) == "started", result, err)
+	if err != nil || result["exitCode"] != 0 || result["timedOut"] != false || !strings.Contains(text(result["output"]), "Hello Cherry") || string(started) != "formatted" {
+		t.Logf("PowerShell original command: stage=%q result=%v error=%v", started, result, err)
+		diagnoseNativeAgentWindowsShell(t)
+		t.Fatal("PowerShell did not finish within its ten-second limit")
 	}
 }
 
