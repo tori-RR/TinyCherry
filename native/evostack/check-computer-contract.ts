@@ -125,6 +125,7 @@ async function main(): Promise<void> {
           assert.equal(params.ownerId.length, 36)
           assert.equal(params.taskId.length, 36)
           assert(['get_app_state', 'click'].includes(params.tool), 'Only the synthetic contract tools may execute')
+          if (params.tool === 'click') assert.equal(params.actionApproved, true)
           const snapshot = {
             id: params.tool === 'click' ? 'snapshot-2' : 'snapshot-1',
             appSessionId: 'contract-session',
@@ -136,6 +137,13 @@ async function main(): Promise<void> {
           }
           result =
             params.tool === 'click' ? { status: 'completed', observation: { status: 'available', snapshot } } : snapshot
+        } else if (params.operation === 'prepare_action') {
+          assert(grantedTasks.has(params.taskId), 'Desktop action had no private task grant')
+          assert.equal(params.tool, 'click')
+          result = {
+            app: { id: 'contract-app', name: 'Contract fixture', identity: 'contract:fixture' },
+            target: 'Synthetic button'
+          }
         } else if (params.operation === 'close_task') closedTasks++
         else assert.equal(params.operation, 'configure')
         // The process is a fake reverse host; it never launches a native helper.
@@ -224,7 +232,11 @@ async function main(): Promise<void> {
     }
     return view
   }
-  const run = async (assistantId: string, text: string, reconnect = false, abort = false) => {
+  const run = async (
+    assistantId: string,
+    text: string,
+    { reconnect = false, abort = false, approveFixtureAction = false } = {}
+  ) => {
     const topic = await data('POST', '/topics', { assistantId })
     const target = { kind: 'topic', topicId: topic.id }
     let subscriptionId = randomUUID()
@@ -277,6 +289,27 @@ async function main(): Promise<void> {
       )
     }
     if (abort) await command('ai.stream.abort', { topicId: topic.id })
+    if (approveFixtureAction) {
+      await waitFor(
+        () =>
+          events.some(
+            (event) => event.channel === 'ipc-api:event' && event.args[0] === 'computer_use.approvals_changed'
+          ),
+        'The synthetic action did not request approval'
+      )
+      const approvals = computerUseRequestSchemas['computer_use.get_approvals'].output.parse(
+        await command('computer_use.get_approvals', undefined)
+      )
+      const approval = approvals.find((item) => item.topicId === topic.id)
+      assert(approval?.action)
+      assert.equal(approval.action.tool, 'click')
+      assert.equal(approval.action.target, 'Synthetic button')
+      assert.deepEqual(nativeCalls, ['get_app_state'], 'Input must wait for the action approval')
+      assert.equal(
+        await command('computer_use.respond_approval', { approvalId: approval.approvalId, scope: 'once' }),
+        true
+      )
+    }
     const end = Date.now() + 10_000
     while (
       !events.some(
@@ -367,11 +400,11 @@ async function main(): Promise<void> {
       false
     )
     await invoke('preference:set', 'app.computer_use.agent_control.enabled', false)
-    const plain = await run(assistant.id, 'Plain text only', true)
+    const plain = await run(assistant.id, 'Plain text only', { reconnect: true })
     assert(plain.message.parts.some((part) => part.type === 'text' && part.text === 'Plain SSE contract passed.'))
     assert.equal(nativeCalls.length, 0)
     await invoke('preference:set', 'app.computer_use.agent_control.enabled', true)
-    const tool = await run(assistant.id, 'Use only the synthetic fixture application')
+    const tool = await run(assistant.id, 'Use only the synthetic fixture application', { approveFixtureAction: true })
     assert.deepEqual(nativeCalls, ['get_app_state', 'click'])
     const dynamic = tool.message.parts.filter((part) => part.type === 'dynamic-tool')
     assert.equal(dynamic.length, 2)
@@ -397,7 +430,7 @@ async function main(): Promise<void> {
     assert.equal(closedTasks, 1)
     assert.equal(grantedTasks.size, 1)
     await invoke('preference:set', 'app.computer_use.agent_control.enabled', false)
-    const aborted = await run(assistant.id, 'Abort synthetic projection', false, true)
+    const aborted = await run(assistant.id, 'Abort synthetic projection', { abort: true })
     assert(aborted.message.parts.some((part) => part.type === 'text' && part.text === 'Partial cancellation proof'))
     await waitFor(() => abortedRequests === 1, 'Abort did not close the owned provider request')
     const result = {

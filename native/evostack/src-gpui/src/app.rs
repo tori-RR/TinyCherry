@@ -10,8 +10,8 @@ use crate::{
 };
 use async_channel::{Receiver, Sender};
 use gpui::{
-    div, prelude::*, px, rgb, size, App, Application, Bounds, Context, Subscription, Task,
-    TitlebarOptions, Window, WindowAppearance, WindowBounds, WindowOptions,
+    div, prelude::*, px, rgb, size, App, Application, Bounds, Context, PathPromptOptions,
+    Subscription, Task, TitlebarOptions, Window, WindowAppearance, WindowBounds, WindowOptions,
 };
 use serde_json::{json, Value};
 use std::{
@@ -167,6 +167,7 @@ struct Desktop {
     backend: Arc<Backend>,
     sender: Sender<UiMessage>,
     session: Option<String>,
+    skill_picker_open: bool,
     desired_fullscreen: Option<bool>,
     fullscreen_transition: Option<bool>,
     theme: WindowTheme,
@@ -191,6 +192,7 @@ impl Desktop {
             backend,
             sender,
             session: None,
+            skill_picker_open: false,
             desired_fullscreen: None,
             fullscreen_transition: None,
             theme,
@@ -532,13 +534,26 @@ impl Desktop {
                             .map_err(|e| e.to_string()),
                     )
                 } else if channel == "ipc-api:request" {
-                    self.window_request(
-                        args.first().and_then(Value::as_str).unwrap_or(""),
-                        args.get(1).unwrap_or(&Value::Null),
-                        window,
-                        cx,
-                    )
-                    .map(|reply| Ok(desktop_response(reply)))
+                    let route = args.first().and_then(Value::as_str).unwrap_or("");
+                    if let Some(kind) = match route {
+                        "skill.install_from_zip" => Some("zip"),
+                        "skill.install_from_directory" => Some("directory"),
+                        _ => None,
+                    } {
+                        if args.len() > 2 || args.get(1).is_some_and(|arg| !arg.is_null()) {
+                            self.reply(
+                                &request,
+                                Ok(desktop_response(Err(
+                                    "EVOSTACK_INVALID_SKILL_SELECTION".into()
+                                ))),
+                            );
+                        } else {
+                            self.pick_skill(request, permit, kind, window, cx);
+                        }
+                        return;
+                    }
+                    self.window_request(route, args.get(1).unwrap_or(&Value::Null), window, cx)
+                        .map(|reply| Ok(desktop_response(reply)))
                 } else {
                     None
                 }
@@ -557,6 +572,70 @@ impl Desktop {
             let result = background_request(&backend, &request.args);
             let _ = sender.send_blocking(UiMessage::Reply(request, result, permit));
         });
+    }
+
+    fn pick_skill(
+        &mut self,
+        request: Request,
+        permit: RequestPermit,
+        kind: &'static str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.skill_picker_open {
+            self.reply(
+                &request,
+                Ok(desktop_response(Err("EVOSTACK_SKILL_PICKER_BUSY".into()))),
+            );
+            return;
+        }
+        self.skill_picker_open = true;
+        let selection = cx.prompt_for_paths(PathPromptOptions {
+            files: kind == "zip",
+            directories: kind == "directory",
+            multiple: false,
+            prompt: Some("Import a TinyCherry skill".into()),
+        });
+        let backend = self.backend.clone();
+        let sender = self.sender.clone();
+        cx.spawn_in(window, async move |view, cx| {
+            let selection = selection.await;
+            let current = view
+                .update_in(cx, |view, _, _| {
+                    view.skill_picker_open = false;
+                    !view.close_requested && view.session.as_deref() == Some(&request.session)
+                })
+                .unwrap_or(false);
+            if !current {
+                return;
+            }
+            let result = match selection {
+                Ok(Ok(None)) => Ok(json!({"cancelled": true})),
+                Ok(Ok(Some(paths))) if paths.len() == 1 => {
+                    if let Some(path) = paths[0].to_str().map(str::to_owned) {
+                        cx.background_executor()
+                            .spawn(async move {
+                                backend.request(
+                                    "skill.import_selected",
+                                    json!({"kind":kind,"path":path}),
+                                )
+                            })
+                            .await
+                    } else {
+                        Err("EVOSTACK_INVALID_SKILL_SELECTION".into())
+                    }
+                }
+                _ => Err("EVOSTACK_SKILL_PICKER_FAILED".into()),
+            };
+            let _ = sender
+                .send(UiMessage::Reply(
+                    request,
+                    Ok(desktop_response(result)),
+                    permit,
+                ))
+                .await;
+        })
+        .detach();
     }
 
     fn window_request(
@@ -810,7 +889,10 @@ fn background_request(backend: &Backend, envelope: &Value) -> Reply {
 }
 
 fn desktop_request(backend: &Backend, route: &str, input: &Value) -> Option<Reply> {
-    if matches!(route, "computer_use.stop_all" | "computer_use.stop_app") {
+    if matches!(
+        route,
+        "computer_use.stop_all" | "computer_use.stop_app" | "computer_use.revoke_approval"
+    ) {
         let cancelled = backend.request_with_timeout(
             "ipc.invoke",
             json!({"channel":"ipc-api:request","args":[route,input]}),

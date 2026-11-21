@@ -836,17 +836,11 @@ func (s *server) readKnowledgeSource(ctx context.Context, typ string, data objec
 	case "note":
 		raw = []byte(text(data["content"]))
 	case "file":
-		if inline, ok := data["inlineContent"].(string); ok {
-			if strings.TrimSpace(inline) == "" || len(inline) > knowledgeTextLimit || !utf8.ValidString(inline) || strings.IndexByte(inline, 0) >= 0 || strings.HasPrefix(strings.TrimSpace(inline), "%PDF-") {
-				return "", errors.New("invalid UTF-8 knowledge text")
-			}
-			return inline, nil
+		inline, ok := data["inlineContent"].(string)
+		if !ok || data["path"] != nil {
+			return "", errors.New("Local knowledge files must be imported as selected text content")
 		}
-		path := text(data["path"])
-		if !filepath.IsAbs(path) || !knowledgeTextExtension(path) {
-			return "", errors.New("EvoStack imports text, Markdown, CSV, JSON and HTML files; PDF/OCR processors are not connected")
-		}
-		raw, err = readKnowledgeTextFile(path)
+		raw = []byte(inline)
 	case "url":
 		parsed, e := url.Parse(text(data["url"]))
 		if e != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil || parsed.Fragment != "" {

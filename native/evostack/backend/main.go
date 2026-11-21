@@ -222,6 +222,14 @@ readLoop:
 			switch request.Method {
 			case "backend.info":
 				result = buildInfo()
+			case "skill.import_selected":
+				// Only the GPUI host can call this private method after a native pick.
+				var selection struct{ Kind, Path string }
+				if json.Unmarshal(request.Params, &selection) != nil {
+					err = errors.New("invalid skill selection")
+				} else {
+					result = s.importSelectedSkill(selection.Kind, selection.Path)
+				}
 			case "ipc.invoke":
 				var params struct {
 					Channel string `json:"channel"`

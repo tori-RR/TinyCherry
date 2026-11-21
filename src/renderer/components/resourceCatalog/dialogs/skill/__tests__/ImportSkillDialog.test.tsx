@@ -7,27 +7,6 @@ import type * as CherryStudioUi from '@cherrystudio/ui'
 
 const installFromZip = vi.fn()
 const installFromDirectory = vi.fn()
-const ipcApiRequest = vi.hoisted(() => vi.fn())
-const runtime = vi.hoisted(() => ({ isEvoStack: false }))
-
-vi.mock(import('@renderer/utils/platform'), async (importOriginal) => ({
-  ...(await importOriginal()),
-  get isEvoStack() {
-    return runtime.isEvoStack
-  }
-}))
-
-vi.mock('@renderer/ipc', () => ({ ipcApi: { request: ipcApiRequest } }))
-
-const fileMetadata = {
-  kind: 'file' as const,
-  type: 'other' as const,
-  size: 0,
-  createdAt: 0,
-  modifiedAt: 0,
-  mime: 'application/octet-stream'
-}
-
 vi.mock('@cherrystudio/ui', async (importOriginal) => {
   const actual = await importOriginal<typeof CherryStudioUi>()
   return actual
@@ -71,41 +50,37 @@ beforeAll(() => {
 })
 
 beforeEach(() => {
-  runtime.isEvoStack = false
   vi.clearAllMocks()
   installFromZip.mockReset()
   installFromDirectory.mockReset()
-  ipcApiRequest.mockReset()
-  ipcApiRequest.mockResolvedValue(fileMetadata)
-  Object.assign(window, {
-    api: {
-      ...window.api,
-      file: {
-        ...window.api?.file,
-        getPathForFile: vi.fn((file: File) => `/tmp/${file.name}`),
-        select: vi.fn(async () => [{ name: 'broken.zip', path: '/tmp/broken.zip' }])
-      }
-    }
-  })
 })
 
 afterEach(cleanup)
 
 describe('ImportSkillDialog', () => {
-  it('imports a native absolute path without calling an unavailable Electron picker', async () => {
-    runtime.isEvoStack = true
+  it('asks the native host to pick and import the skill directory', async () => {
     const user = userEvent.setup()
+    const onOpenChange = vi.fn()
     installFromDirectory.mockResolvedValueOnce({ id: 'fixture', name: 'Local fixture' })
-    render(<ImportSkillDialog open onOpenChange={vi.fn()} />)
+    render(<ImportSkillDialog open onOpenChange={onOpenChange} />)
 
     await user.click(screen.getByRole('button', { name: 'settings.skills.installFromDirectory' }))
-    expect(screen.getByText('settings.skills.evostack.path_required')).toBeInTheDocument()
-    expect(installFromDirectory).not.toHaveBeenCalled()
-    await user.type(screen.getByRole('textbox', { name: 'settings.skills.evostack.import_path' }), 'C:/fixture/skill')
-    await user.click(screen.getByRole('button', { name: 'settings.skills.installFromDirectory' }))
+    expect(installFromDirectory).toHaveBeenCalledExactlyOnceWith()
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+  })
 
-    await waitFor(() => expect(installFromDirectory).toHaveBeenCalledWith('C:/fixture/skill'))
-    expect(window.api.file.select).not.toHaveBeenCalled()
+  it('keeps the import dialog ready when the native picker is cancelled', async () => {
+    const user = userEvent.setup()
+    const onOpenChange = vi.fn()
+    installFromZip.mockResolvedValueOnce(null)
+    render(<ImportSkillDialog open onOpenChange={onOpenChange} />)
+
+    const zip = screen.getByRole('button', { name: 'settings.skills.installFromZip' })
+    await user.click(zip)
+    expect(installFromZip).toHaveBeenCalledExactlyOnceWith()
+    await waitFor(() => expect(zip).toBeEnabled())
+    expect(onOpenChange).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   it('closes when clicking the overlay while idle', () => {

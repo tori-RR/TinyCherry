@@ -257,9 +257,9 @@ func TestComputerApprovalDeduplicatesWaitersAndValidatesStoredIdentities(t *test
 			t.Fatal(err)
 		}
 	}
-	for _, value := range []any{"fixture:stable", []any{""}, []any{"same", "same"}, []any{42}} {
+	for _, value := range []any{"fixture:stable", []any{"fixture:stable"}, []any{}, []any{42}} {
 		if _, err, _ := s.invoke("preference:set", []any{approvedComputerAppsPreference, value}); err == nil {
-			t.Fatal("invalid approved identity preferences accepted", value)
+			t.Fatal("approved identities could be changed outside the authorization commands", value)
 		}
 	}
 }

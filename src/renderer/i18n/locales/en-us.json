@@ -4056,6 +4056,8 @@
   "settings.computerUse.approval.always": "Always",
   "settings.computerUse.approval.empty": "No saved app approvals",
   "settings.computerUse.approval.prompt": "Allow control of {{app}}?",
+  "settings.computerUse.approval.action_prompt": "Allow this action in {{app}}?",
+  "settings.computerUse.approval.once": "Allow once",
   "settings.computerUse.approval.reject": "Reject",
   "settings.computerUse.approval.saved": "Always allowed apps",
   "settings.computerUse.approval.session": "Approve for session",

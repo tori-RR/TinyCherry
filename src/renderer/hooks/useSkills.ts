@@ -423,37 +423,35 @@ export function useSkillInstall() {
     [beginInstalling, finishInstalling, invalidate]
   )
 
-  const installFromZip = useCallback(
-    async (zipFilePath: string): Promise<InstalledSkill | null> => {
-      beginInstalling('zip')
-      try {
-        const skill = unwrapSkillResult(await ipcApi.request('skill.install_from_zip', { zipFilePath }))
-        await refreshSkillsBestEffort(invalidate)
-        return skill
-      } catch (error) {
-        logAndRethrowSkillMutationError('install skill from zip', error)
-      } finally {
-        finishInstalling('zip')
-      }
-    },
-    [beginInstalling, finishInstalling, invalidate]
-  )
+  const installFromZip = useCallback(async (): Promise<InstalledSkill | null> => {
+    beginInstalling('zip')
+    try {
+      const result = await ipcApi.request('skill.install_from_zip')
+      if ('cancelled' in result) return null
+      const skill = unwrapSkillResult(result)
+      await refreshSkillsBestEffort(invalidate)
+      return skill
+    } catch (error) {
+      logAndRethrowSkillMutationError('install skill from zip', error)
+    } finally {
+      finishInstalling('zip')
+    }
+  }, [beginInstalling, finishInstalling, invalidate])
 
-  const installFromDirectory = useCallback(
-    async (directoryPath: string): Promise<InstalledSkill | null> => {
-      beginInstalling('directory')
-      try {
-        const skill = unwrapSkillResult(await ipcApi.request('skill.install_from_directory', { directoryPath }))
-        await refreshSkillsBestEffort(invalidate)
-        return skill
-      } catch (error) {
-        logAndRethrowSkillMutationError('install skill from directory', error)
-      } finally {
-        finishInstalling('directory')
-      }
-    },
-    [beginInstalling, finishInstalling, invalidate]
-  )
+  const installFromDirectory = useCallback(async (): Promise<InstalledSkill | null> => {
+    beginInstalling('directory')
+    try {
+      const result = await ipcApi.request('skill.install_from_directory')
+      if ('cancelled' in result) return null
+      const skill = unwrapSkillResult(result)
+      await refreshSkillsBestEffort(invalidate)
+      return skill
+    } catch (error) {
+      logAndRethrowSkillMutationError('install skill from directory', error)
+    } finally {
+      finishInstalling('directory')
+    }
+  }, [beginInstalling, finishInstalling, invalidate])
 
   const isInstalling = useCallback(
     (key?: string) => {

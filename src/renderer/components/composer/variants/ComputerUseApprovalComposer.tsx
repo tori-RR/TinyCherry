@@ -70,9 +70,27 @@ export function ComputerUseApprovalComposer({
       )}>
       <div className="flex items-center gap-2 font-medium text-sm">
         <ComputerUseAppIcon app={request.app} />
-        {t('settings.computerUse.approval.prompt', { app: request.app.name })}
+        {t(request.action ? 'settings.computerUse.approval.action_prompt' : 'settings.computerUse.approval.prompt', {
+          app: request.app.name
+        })}
       </div>
       <p className="mt-1 break-all text-xs text-muted-foreground">{request.app.identity}</p>
+      {request.action && (
+        <div className="mt-2 rounded-md bg-background-subtle p-2 text-xs">
+          <div className="break-words">
+            <code>{request.action.tool}</code>
+            {request.action.target && (
+              <>
+                {' '}
+                · <bdi>{request.action.target}</bdi>
+              </>
+            )}
+          </div>
+          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-all">
+            {JSON.stringify(request.action.arguments, null, 2)}
+          </pre>
+        </div>
+      )}
       {failed && (
         <p role="alert" className="mt-2 text-sm text-error">
           {t('agent.toolPermission.error.sendFailed')}
@@ -82,12 +100,20 @@ export function ComputerUseApprovalComposer({
         <Button variant="outline" disabled={submitting} onClick={() => void respond('reject')}>
           {t('settings.computerUse.approval.reject')}
         </Button>
-        <Button variant="secondary" disabled={submitting} onClick={() => void respond('session')}>
-          {t('settings.computerUse.approval.session')}
-        </Button>
-        <Button disabled={submitting} onClick={() => void respond('always')}>
-          {t('settings.computerUse.approval.always')}
-        </Button>
+        {request.action ? (
+          <Button disabled={submitting} onClick={() => void respond('once')}>
+            {t('settings.computerUse.approval.once')}
+          </Button>
+        ) : (
+          <>
+            <Button variant="secondary" disabled={submitting} onClick={() => void respond('session')}>
+              {t('settings.computerUse.approval.session')}
+            </Button>
+            <Button disabled={submitting} onClick={() => void respond('always')}>
+              {t('settings.computerUse.approval.always')}
+            </Button>
+          </>
+        )}
       </div>
     </div>
   )

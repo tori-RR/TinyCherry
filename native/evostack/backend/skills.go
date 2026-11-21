@@ -357,22 +357,6 @@ func (s *server) skillCommand(route string, value any) (any, error, bool) {
 		}
 		row["mirrorEnabled"] = false
 		return row, s.skillTransaction(func(s *server) error { return s.store.put("skills", row) }), true
-	case "skill.install_from_directory", "skill.install_from_zip":
-		var files map[string]string
-		var err error
-		if route == "skill.install_from_directory" {
-			files, err = collectSkillDirectory(text(input["directoryPath"]))
-		} else {
-			files, err = collectSkillZip(text(input["zipFilePath"]))
-		}
-		if err != nil {
-			return object{"success": false, "error": err.Error()}, nil, true
-		}
-		row, err := s.importSkill(files)
-		if err != nil {
-			return object{"success": false, "error": err.Error()}, nil, true
-		}
-		return object{"success": true, "data": row}, nil, true
 	case "skill.uninstall":
 		err := s.uninstallSkill(text(input["skillId"]))
 		if err != nil {
@@ -381,6 +365,32 @@ func (s *server) skillCommand(route string, value any) (any, error, bool) {
 		return object{"success": true}, nil, true
 	}
 	return nil, notMigrated(route), true
+}
+
+func (s *server) importSelectedSkill(kind, path string) object {
+	var files map[string]string
+	var err error
+	switch kind {
+	case "directory":
+		files, err = collectSkillDirectory(path)
+	case "zip":
+		if !strings.EqualFold(filepath.Ext(path), ".zip") {
+			return object{"success": false, "error": "Select a ZIP skill archive"}
+		}
+		files, err = collectSkillZip(path)
+	default:
+		return object{"success": false, "error": "Invalid skill selection"}
+	}
+	if err != nil {
+		return object{"success": false, "error": err.Error()}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	row, err := s.importSkill(files)
+	if err != nil {
+		return object{"success": false, "error": err.Error()}
+	}
+	return object{"success": true, "data": row}
 }
 
 func collectSkillDirectory(directory string) (map[string]string, error) {

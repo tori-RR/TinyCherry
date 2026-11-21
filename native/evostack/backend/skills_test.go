@@ -140,7 +140,13 @@ func writeSkillFixture(t *testing.T) string {
 func TestSkillLocalImportEditConflictAndUninstallPreserveSource(t *testing.T) {
 	s, _ := testServer(t)
 	source := writeSkillFixture(t)
-	result := obj(skillRequest(t, s, "skill.install_from_directory", object{"directoryPath": source}))
+	for _, route := range []string{"skill.install_from_directory", "skill.install_from_zip", "skill.import_selected"} {
+		reply, err, _ := s.invoke("ipc-api:request", []any{route, nil})
+		if err != nil || obj(reply)["ok"] != false {
+			t.Fatalf("renderer import route did not require the native picker: %s", route)
+		}
+	}
+	result := s.importSelectedSkill("directory", source)
 	if result["success"] != true {
 		t.Fatalf("import failed: %v", result["error"])
 	}

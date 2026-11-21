@@ -220,12 +220,8 @@ func TestKnowledgeTextImportURLAndUnsupportedSources(t *testing.T) {
 	s, dir := testServer(t)
 	base := knowledgeBase(t, s, nil)
 	knowledgeOK(t, s, "knowledge.import_text", object{"baseId": base["id"], "name": "upload.txt", "content": "uploaded UTF-8 樱桃"})
-	source := filepath.Join(dir, "source.md")
-	if err := os.WriteFile(source, []byte("local file reference"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	knowledgeOK(t, s, "knowledge.import_text", object{"baseId": base["id"], "name": "source.md", "content": "local file reference"})
 	knowledgeOK(t, s, "knowledge.add_items", object{"baseId": base["id"], "items": []any{
-		object{"type": "file", "data": object{"source": "source.md", "path": source}},
 		object{"type": "url", "data": object{"source": "Web", "url": web.URL + "/text"}},
 	}})
 	for _, source := range []object{
@@ -240,6 +236,12 @@ func TestKnowledgeTextImportURLAndUnsupportedSources(t *testing.T) {
 		if response := knowledgeReply(t, s, "knowledge.add_items", object{"baseId": base["id"], "items": []any{source}}); response["ok"] != false {
 			t.Fatalf("unsupported material accepted: %v", source["type"])
 		}
+	}
+	unselected := knowledgeReply(t, s, "knowledge.add_items", object{"baseId": base["id"], "items": []any{
+		object{"type": "file", "data": object{"source": "Unselected text", "path": filepath.Join(dir, "unselected.txt")}},
+	}})
+	if unselected["ok"] != false || obj(unselected["error"])["message"] != "Local knowledge files must be imported as selected text content" {
+		t.Fatal("file import did not reject a path before reading it", unselected)
 	}
 	if response := knowledgeReply(t, s, "knowledge.import_text", object{"baseId": base["id"], "name": "upload.pdf", "content": "%PDF-1.7"}); response["ok"] != false {
 		t.Fatal("PDF upload accepted as text")

@@ -16,12 +16,15 @@ export const computerUseAppIconSchema = z.discriminatedUnion('status', [
   z.object({ status: z.literal('unavailable') })
 ])
 
-export const computerUseApprovalScopeSchema = z.enum(['always', 'session', 'reject'])
+export const computerUseApprovalScopeSchema = z.enum(['always', 'session', 'once', 'reject'])
 export type ComputerUseApprovalScope = z.infer<typeof computerUseApprovalScopeSchema>
 const computerUseApprovalRequestSchema = z.object({
   approvalId: z.uuid(),
   topicId: z.string(),
-  app: computerUseAppSchema
+  app: computerUseAppSchema,
+  action: z
+    .object({ tool: z.string(), arguments: z.record(z.string(), z.unknown()), target: z.string().optional() })
+    .optional()
 })
 export type ComputerUseApprovalRequest = z.infer<typeof computerUseApprovalRequestSchema>
 

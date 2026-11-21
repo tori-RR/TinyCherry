@@ -174,28 +174,40 @@ impl Controller {
     }
 
     fn stop_app_control(&self, owner: &str, app_id: &str) -> ControlResult {
-        let tasks = {
+        self.stop_app_controls(|task, id, _| task.owner == owner && id == app_id)
+    }
+
+    fn revoke_app_approval(&self, identity: &str) -> ControlResult {
+        let identity = identity.to_lowercase();
+        self.stop_app_controls(|_, _, app| {
+            app.app["identity"]
+                .as_str()
+                .is_some_and(|id| id.to_lowercase() == identity)
+        })
+    }
+
+    fn stop_app_controls(
+        &self,
+        matches: impl Fn(&Task, &str, &AppControl) -> bool,
+    ) -> ControlResult {
+        let _cleanup = self.app_cleanup.lock().unwrap();
+        let controls = {
             let state = self.state.lock().unwrap();
-            state
-                .tasks
-                .iter()
-                .filter(|(_, task)| {
-                    task.owner == owner && task.apps.lock().unwrap().contains_key(app_id)
-                })
-                .map(|(id, task)| (id.clone(), task.clone()))
-                .collect::<Vec<_>>()
-        };
-        for (id, task) in tasks {
-            {
+            let mut controls = Vec::new();
+            for (id, task) in &state.tasks {
                 let mut apps = task.apps.lock().unwrap();
-                let Some(app) = apps.get_mut(app_id) else {
-                    continue;
-                };
-                if app.status == "stopped" {
-                    continue;
+                for (app_id, app) in apps.iter_mut() {
+                    if app.status != "stopped" && matches(task, app_id, app) {
+                        // Share the state/app lock order with native open registration.
+                        app.status = "stopping";
+                        controls.push((id.clone(), task.clone(), app_id.clone()));
+                    }
                 }
-                app.status = "stopping";
             }
+            controls
+        };
+        for (id, task, app_id) in controls {
+            let app_id = app_id.as_str();
             let stopped_sessions = task
                 .sessions
                 .lock()
@@ -226,8 +238,18 @@ impl Controller {
                     .unwrap()
                     .get(app_id)
                     .is_some_and(|app| app.opening);
-                if !opening || task.cancelled.load(Ordering::Acquire) {
+                if task.cancelled.load(Ordering::Acquire) {
                     break None;
+                }
+                if !opening {
+                    // A session can be registered between the first lookup and
+                    // the opener clearing its opening flag.
+                    break task
+                        .sessions
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .find_map(|(session, app)| (app == app_id).then(|| session.clone()));
                 }
                 if Instant::now() >= deadline {
                     self.close_task(&id)?;
@@ -343,6 +365,13 @@ impl Controller {
                 let owner = string(input, "ownerId")?;
                 let app = string(input, "appId")?;
                 self.stop_app_control(&owner, &app)
+            }),
+            "computer_use.revoke_approval" => object_fields(input, &["identity"]).and_then(|_| {
+                let identity = string(input, "identity")?;
+                if identity.encode_utf16().count() > 512 {
+                    return Err(invalid());
+                }
+                self.revoke_app_approval(&identity)
             }),
             "computer_use.get_app_icon" => object_fields(input, &["identity"]).and_then(|_| {
                 let identity = input["identity"]

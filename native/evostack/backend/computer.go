@@ -60,7 +60,8 @@ func (s *server) computerTool(ctx context.Context, ownerID, taskID, label, name 
 	}
 	tool := strings.TrimPrefix(name, "mcp__computer__")
 	request := object{"operation": "invoke", "epoch": epoch, "ownerId": ownerID, "taskId": taskID, "label": label, "tool": tool, "input": input}
-	if tool == "open_app" {
+	switch tool {
+	case "open_app":
 		// Resolve presentation and stable identity from Rust's owned discovery
 		// catalog, never from model-supplied approval names or identities.
 		app, err := s.computerHost.Call(ctx, object{"operation": "approval_app", "epoch": epoch, "ownerId": ownerID, "taskId": taskID, "appId": input["appId"]})
@@ -71,6 +72,23 @@ func (s *server) computerTool(ctx context.Context, ownerID, taskID, label, name 
 			return nil, err
 		}
 		request["approvedIdentity"] = app["identity"]
+	case "list_apps", "get_app_state", "press_key":
+		// Observations need no action approval. Rust rejects unavailable keyboard actions.
+	default:
+		preparation := clone(request)
+		preparation["operation"] = "prepare_action"
+		prepared, err := s.computerHost.Call(ctx, preparation)
+		if err != nil {
+			return nil, err
+		}
+		action := object{"tool": tool, "arguments": input}
+		if target := text(prepared["target"]); target != "" {
+			action["target"] = target
+		}
+		if err := s.authorizeComputerAction(ctx, ownerID, taskID, epoch, obj(prepared["app"]), action); err != nil {
+			return nil, err
+		}
+		request["actionApproved"] = true
 	}
 	return s.computerHost.Call(ctx, request)
 }
@@ -109,10 +127,8 @@ func (s *server) setPreferences(channel string, args []any) (any, error, func())
 			return nil, errors.New("desktop control preference must be a boolean"), nil
 		}
 	}
-	if approved, exists := updates[approvedComputerAppsPreference]; exists {
-		if _, err := computerApprovedApps(approved); err != nil {
-			return nil, err, nil
-		}
+	if _, exists := updates[approvedComputerAppsPreference]; exists {
+		return nil, errors.New("application approvals can only be changed through Computer Use approval commands"), nil
 	}
 	s.mu.Lock()
 	var old any

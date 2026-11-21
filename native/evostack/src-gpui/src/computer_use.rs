@@ -518,9 +518,14 @@ fn native_response(frame: &Value) -> ControlResult {
 }
 
 #[derive(Clone)]
+struct ElementPermit {
+    name: Option<String>,
+    actions: HashSet<String>,
+}
+#[derive(Clone)]
 struct SnapshotPermit {
     id: String,
-    elements: HashMap<String, HashSet<String>>,
+    elements: HashMap<String, ElementPermit>,
     image: Option<(f64, f64)>,
 }
 #[derive(Clone)]
@@ -528,6 +533,10 @@ struct AppControl {
     app: Value,
     status: &'static str,
     opening: bool,
+}
+enum ToolApproval<'a> {
+    Application(&'a str),
+    Action,
 }
 struct Task {
     owner: String,
@@ -540,6 +549,7 @@ struct Task {
     known_apps: Mutex<HashMap<String, Value>>,
     sessions: Mutex<HashMap<String, String>>,
     snapshots: Mutex<HashMap<String, SnapshotPermit>>,
+    prepared_action: Mutex<Option<Value>>,
     apps: Mutex<HashMap<String, AppControl>>,
     cleanup_unconfirmed: AtomicBool,
 }
@@ -556,6 +566,7 @@ impl Task {
             known_apps: Mutex::new(HashMap::new()),
             sessions: Mutex::new(HashMap::new()),
             snapshots: Mutex::new(HashMap::new()),
+            prepared_action: Mutex::new(None),
             apps: Mutex::new(HashMap::new()),
             cleanup_unconfirmed: AtomicBool::new(false),
         }
@@ -596,6 +607,7 @@ type ControlEvents = Arc<dyn Fn(Value) + Send + Sync>;
 pub struct Controller {
     state: Mutex<ControlState>,
     configuration: Mutex<()>,
+    app_cleanup: Mutex<()>,
     standalone: Mutex<()>,
     standalone_runtime: Mutex<Option<Arc<dyn Runtime>>>,
     factory: RuntimeFactory,
@@ -611,6 +623,7 @@ impl Controller {
         Self {
             state: Mutex::new(ControlState::default()),
             configuration: Mutex::new(()),
+            app_cleanup: Mutex::new(()),
             standalone: Mutex::new(()),
             standalone_runtime: Mutex::new(None),
             factory,
@@ -653,6 +666,7 @@ impl Controller {
             Some("configure") => self.configure(input),
             Some("invoke") => self.invoke(input),
             Some("approval_app") => self.approval_app(input),
+            Some("prepare_action") => self.prepare_action(input),
             Some("close_task") => string(input, "taskId").and_then(|id| {
                 if !uuid(&id) {
                     return Err(invalid());
@@ -962,6 +976,54 @@ impl Controller {
         state.tasks.insert(id.clone(), task.clone());
         Ok((id, task))
     }
+    fn prepare_action(&self, input: &Value) -> ControlResult {
+        object_fields(
+            input,
+            &[
+                "operation",
+                "epoch",
+                "taskId",
+                "ownerId",
+                "label",
+                "tool",
+                "input",
+            ],
+        )?;
+        let (_, task) = self.task(input)?;
+        let _operation = task.operation.try_lock().map_err(|_| {
+            ControlError::new(
+                "CONTROL_BUSY",
+                "A desktop operation is already in flight for this task",
+            )
+        })?;
+        let tool = string(input, "tool")?;
+        let (session, action) = validated_action(&task, &tool, input["input"].clone())?;
+        let app_id = task
+            .sessions
+            .lock()
+            .unwrap()
+            .get(&session)
+            .cloned()
+            .ok_or_else(closed)?;
+        let app = task
+            .apps
+            .lock()
+            .unwrap()
+            .get(&app_id)
+            .map(|control| control.app.clone())
+            .ok_or_else(closed)?;
+        let snapshots = task.snapshots.lock().unwrap();
+        let target = snapshots
+            .get(&session)
+            .and_then(|permit| permit.elements.get(action["elementId"].as_str()?))
+            .and_then(|element| element.name.as_deref());
+        *task.prepared_action.lock().unwrap() = Some(action);
+        Ok(json!({
+            "app": {"id": app["id"], "identity": app["identity"], "name": app["name"]},
+            "target": target,
+        }))
+    }
+
     fn invoke(&self, input: &Value) -> ControlResult {
         object_fields(
             input,
@@ -974,6 +1036,7 @@ impl Controller {
                 "tool",
                 "input",
                 "approvedIdentity",
+                "actionApproved",
             ],
         )?;
         let tool = string(input, "tool")?;
@@ -1028,14 +1091,11 @@ impl Controller {
                 task.initialized.store(true, Ordering::Release);
                 self.emit_controls();
             }
-            self.run_tool(
-                &id,
-                &task,
-                &runtime,
-                &tool,
-                arguments,
-                input.get("approvedIdentity"),
-            )
+            let approval = input["approvedIdentity"]
+                .as_str()
+                .map(ToolApproval::Application)
+                .or_else(|| (input["actionApproved"] == true).then_some(ToolApproval::Action));
+            self.run_tool(&id, &task, &runtime, &tool, arguments, approval)
         })();
         if let Err(error) = &result {
             if error.unconfirmed || error.effect != "none" {
@@ -1052,7 +1112,7 @@ impl Controller {
         runtime: &Arc<dyn Runtime>,
         tool: &str,
         input: Value,
-        approved_identity: Option<&Value>,
+        approval: Option<ToolApproval<'_>>,
     ) -> ControlResult {
         if task.cancelled.load(Ordering::Acquire) {
             return Err(closed());
@@ -1092,18 +1152,6 @@ impl Controller {
             "open_app" => {
                 object_fields(&input, &["appId"])?;
                 let app_id = string(&input, "appId")?;
-                if task
-                    .apps
-                    .lock()
-                    .unwrap()
-                    .get(&app_id)
-                    .is_some_and(|app| matches!(app.status, "stopping" | "stopped" | "unconfirmed"))
-                {
-                    return Err(ControlError::new(
-                        "USER_STOPPED",
-                        "The user stopped this application's control in this turn",
-                    ));
-                }
                 let app = task
                     .known_apps
                     .lock()
@@ -1118,32 +1166,44 @@ impl Controller {
                     })?;
                 let keys = app_keys(&app);
                 let identity = app["identity"].as_str().filter(|value| !value.is_empty());
-                if identity.is_none() || approved_identity.and_then(Value::as_str) != identity {
+                if !matches!(approval, Some(ToolApproval::Application(approved)) if Some(approved) == identity)
+                {
                     return Err(ControlError::new("APPROVAL_REQUIRED", "A matching stable application identity must be approved before opening control"));
                 }
-                if task.apps.lock().unwrap().values().any(|blocked| {
-                    matches!(blocked.status, "stopping" | "stopped" | "unconfirmed")
-                        && app_keys(&blocked.app).iter().any(|key| keys.contains(key))
-                }) {
-                    return Err(ControlError::new("USER_STOPPED", "The user stopped this application; another native token cannot bypass that stop"));
-                }
-                if let Some(session_id) =
-                    task.sessions
-                        .lock()
-                        .unwrap()
-                        .iter()
-                        .find_map(|(session, known)| {
-                            if known == &app_id {
-                                Some(session.clone())
-                            } else {
-                                None
-                            }
-                        })
-                {
-                    return Ok(json!({"appSessionId":session_id,"app":app,"status":"active"}));
-                }
+                let existing = task
+                    .sessions
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .find_map(|(session, known)| (known == &app_id).then(|| session.clone()));
                 {
                     let mut state = self.state.lock().unwrap();
+                    let mut apps = task.apps.lock().unwrap();
+                    // Revocation and Stop mark this same registration before acknowledging.
+                    if task.cancelled.load(Ordering::Acquire) {
+                        return Err(closed());
+                    }
+                    if apps.values().any(|blocked| {
+                        matches!(blocked.status, "stopping" | "stopped" | "unconfirmed")
+                            && app_keys(&blocked.app).iter().any(|key| keys.contains(key))
+                    }) {
+                        return Err(ControlError::new(
+                            "USER_STOPPED",
+                            "The user stopped this application's control in this turn",
+                        ));
+                    }
+                    if apps
+                        .get(&app_id)
+                        .is_none_or(|pending| pending.app["identity"].as_str() != identity)
+                    {
+                        return Err(ControlError::new(
+                            "APPROVAL_REQUIRED",
+                            "Register the application for approval before opening control",
+                        ));
+                    }
+                    if let Some(session_id) = existing {
+                        return Ok(json!({"appSessionId":session_id,"app":app,"status":"active"}));
+                    }
                     if keys
                         .iter()
                         .any(|key| state.app_owners.get(key).is_some_and(|owner| owner != id))
@@ -1156,15 +1216,15 @@ impl Controller {
                     for key in &keys {
                         state.app_owners.insert(key.clone(), id.into());
                     }
+                    apps.insert(
+                        app_id.clone(),
+                        AppControl {
+                            app: app.clone(),
+                            status: "opening",
+                            opening: true,
+                        },
+                    );
                 }
-                task.apps.lock().unwrap().insert(
-                    app_id.clone(),
-                    AppControl {
-                        app: app.clone(),
-                        status: "opening",
-                        opening: true,
-                    },
-                );
                 self.emit_controls();
                 let result = runtime.call("openAppSession", input, "none");
                 let session = match result {
@@ -1232,6 +1292,16 @@ impl Controller {
             }
             _ => {
                 let (session, action) = validated_action(task, tool, input)?;
+                if !matches!(approval, Some(ToolApproval::Action))
+                    || task.prepared_action.lock().unwrap().take().as_ref() != Some(&action)
+                {
+                    return Err(ControlError::new(
+                        "ACTION_APPROVAL_REQUIRED",
+                        "The specific desktop action needs one-time user approval",
+                    ));
+                }
+                ensure_app_available(task, &session)?;
+                task.snapshots.lock().unwrap().remove(&session);
                 let result = runtime.call("act", action, "possible")?;
                 if result["status"] != "completed" {
                     return Err(ControlError::uncertain(
@@ -1325,7 +1395,11 @@ impl Controller {
                             .collect()
                     })
                     .unwrap_or_default();
-                elements.insert(element_id, actions);
+                let name = element["name"]
+                    .as_str()
+                    .filter(|name| !name.trim().is_empty())
+                    .map(|name| name.chars().take(160).collect());
+                elements.insert(element_id, ElementPermit { name, actions });
             }
         }
         let image = if snapshot["screenshot"]["status"] == "available" {
@@ -1512,7 +1586,7 @@ fn validated_action(
         "perform_secondary_action" => {
             let id = element.ok_or_else(invalid)?;
             let action = string(&input, "actionId")?;
-            if !permit.elements[&id].contains(&action) {
+            if !permit.elements[&id].actions.contains(&action) {
                 return Err(invalid());
             }
         }
@@ -1549,8 +1623,6 @@ fn validated_action(
         }
         _ => return Err(invalid()),
     }
-    // Validation rejections have no effect and preserve the observation; actual dispatch consumes it.
-    task.snapshots.lock().unwrap().remove(&session);
     input["type"] = json!(if tool == "perform_secondary_action" {
         "performSecondaryAction"
     } else if tool == "type_text" {
@@ -1949,14 +2021,26 @@ mod tests {
         c.dispatch(&json!({"operation":"configure","epoch":epoch,"enabled":enabled}))
     }
     fn invoke(c: &Controller, task: &str, epoch: u64, tool: &str, input: Value) -> Value {
-        let identity = c.state.lock().unwrap().tasks.get(task).and_then(|task| {
-            task.known_apps
-                .lock()
-                .unwrap()
-                .get(input["appId"].as_str().unwrap_or(""))
-                .map(|app| app["identity"].clone())
-        });
-        c.dispatch(&json!({"operation":"invoke","epoch":epoch,"taskId":task,"ownerId":OWNER,"label":"Fixture task","tool":tool,"input":input,"approvedIdentity":identity}))
+        let mut request = json!({"operation":"invoke","epoch":epoch,"taskId":task,"ownerId":OWNER,"label":"Fixture task","tool":tool,"input":input});
+        if tool == "open_app" {
+            let selected = c.dispatch(&json!({"operation":"approval_app","epoch":epoch,"taskId":task,"ownerId":OWNER,"appId":request["input"]["appId"]}));
+            if selected["ok"] != true {
+                return selected;
+            }
+            request["approvedIdentity"] = selected["data"]["identity"].clone();
+        } else if matches!(
+            tool,
+            "click" | "drag" | "perform_secondary_action" | "scroll" | "set_value" | "type_text"
+        ) {
+            let mut preparation = request.clone();
+            preparation["operation"] = json!("prepare_action");
+            let checked = c.dispatch(&preparation);
+            if checked["ok"] != true {
+                return checked;
+            }
+            request["actionApproved"] = json!(true);
+        }
+        c.dispatch(&request)
     }
     fn authorize(c: &Controller, task: &str) {
         assert!(c.grant_task(c.capture_open(OWNER).unwrap(), task));
@@ -1968,6 +2052,73 @@ mod tests {
             invoke(c, task, 1, "open_app", json!({"appId":"app-1"}))["ok"],
             true
         );
+    }
+
+    #[test]
+    fn actions_require_confirmation_of_the_prepared_input() {
+        let (c, runtimes) = controller(false);
+        assert_eq!(configure(&c, 1, true)["ok"], true);
+        open(&c, TASK);
+        let state = invoke(
+            &c,
+            TASK,
+            1,
+            "get_app_state",
+            json!({"appSessionId":"session-1"}),
+        );
+        assert_eq!(state["ok"], true);
+        let mut request = json!({
+            "operation":"prepare_action","epoch":1,"taskId":TASK,"ownerId":OWNER,
+            "tool":"click","input":{"appSessionId":"session-1","snapshotId":state["data"]["id"],"elementId":"1"}
+        });
+        let prepared = c.dispatch(&request);
+        assert_eq!(prepared["data"]["target"], "Count");
+        request["operation"] = json!("invoke");
+        assert_eq!(
+            c.dispatch(&request)["error"]["code"],
+            "ACTION_APPROVAL_REQUIRED"
+        );
+        let runtime = runtimes.lock().unwrap()[0].clone();
+        assert!(!runtime
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(method, _)| method == "act"));
+        request["actionApproved"] = json!(true);
+        assert_eq!(c.dispatch(&request)["ok"], true);
+        assert_eq!(
+            runtime
+                .calls
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(method, _)| method == "act")
+                .count(),
+            1
+        );
+        c.shutdown();
+    }
+
+    #[test]
+    fn revocation_stops_the_pending_application_registration() {
+        let (c, _) = controller(false);
+        assert_eq!(configure(&c, 1, true)["ok"], true);
+        authorize(&c, TASK);
+        assert_eq!(invoke(&c, TASK, 1, "list_apps", json!({}))["ok"], true);
+        let registration = json!({"operation":"approval_app","epoch":1,"taskId":TASK,"ownerId":OWNER,"appId":"app-1"});
+        assert_eq!(c.dispatch(&registration)["ok"], true);
+        c.request(
+            "computer_use.revoke_approval",
+            &json!({"identity":"fixture:stable"}),
+        )
+        .unwrap()
+        .unwrap();
+        let task = c.state.lock().unwrap().tasks[TASK].clone();
+        assert_eq!(task.apps.lock().unwrap()["app-1"].status, "stopped");
+        assert!(task.sessions.lock().unwrap().is_empty());
+        assert_eq!(c.dispatch(&registration)["error"]["code"], "USER_STOPPED");
+        c.shutdown();
     }
 
     #[test]

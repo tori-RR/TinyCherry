@@ -335,12 +335,12 @@ describe('useSkillInstall', () => {
     const { result } = renderHook(() => useSkillInstall())
 
     await act(async () => {
-      await result.current.installFromZip('/tmp/my-skill.zip')
-      await result.current.installFromDirectory('/tmp/my-skill')
+      await result.current.installFromZip()
+      await result.current.installFromDirectory()
     })
 
-    expect(skillMocks.request).toHaveBeenCalledWith('skill.install_from_zip', { zipFilePath: '/tmp/my-skill.zip' })
-    expect(skillMocks.request).toHaveBeenCalledWith('skill.install_from_directory', { directoryPath: '/tmp/my-skill' })
+    expect(skillMocks.request).toHaveBeenCalledWith('skill.install_from_zip')
+    expect(skillMocks.request).toHaveBeenCalledWith('skill.install_from_directory')
     expect(invalidateMock).toHaveBeenCalledTimes(2)
     expect(invalidateMock).toHaveBeenCalledWith('/skills')
   })
@@ -350,13 +350,13 @@ describe('useSkillInstall', () => {
 
     installSkillFromZipMock.mockRejectedValueOnce(new Error('zip failed'))
     await act(async () => {
-      await expect(result.current.installFromZip('/tmp/bad.zip')).rejects.toThrow('zip failed')
+      await expect(result.current.installFromZip()).rejects.toThrow('zip failed')
     })
     expect(toast.error).not.toHaveBeenCalled()
 
     installSkillFromDirectoryMock.mockResolvedValueOnce({ success: false, error: 'directory failed' })
     await act(async () => {
-      await expect(result.current.installFromDirectory('/tmp/bad-dir')).rejects.toThrow('directory failed')
+      await expect(result.current.installFromDirectory()).rejects.toThrow('directory failed')
     })
     expect(toast.error).not.toHaveBeenCalled()
   })

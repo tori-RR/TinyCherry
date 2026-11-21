@@ -27,6 +27,8 @@ func (h *chatComputerHost) Call(ctx context.Context, params object) (object, err
 		return object{}, nil
 	case "approval_app":
 		return object{"id": params["appId"], "name": "Synthetic desktop fixture", "identity": "fixture-native-app"}, nil
+	case "prepare_action":
+		return object{"app": object{"id": "fixture-app", "name": "Synthetic desktop fixture", "identity": "fixture-native-app"}, "target": "Editable field"}, nil
 	case "close_task":
 		h.mu.Lock()
 		h.closed++
@@ -126,6 +128,15 @@ func TestComputerChatCompletesBoundedToolRoundsAndPersistsOriginalParts(t *testi
 	}
 	enableChatComputer(t, s, host)
 	g := launch(t, s, topic)
+	pending := pendingApproval(t, s)
+	action := obj(pending["action"])
+	if action["tool"] != "type_text" || obj(action["arguments"])["text"] != "hello 🍒" || host.count() != 1 {
+		t.Fatal("the exact action must be presented before dispatch")
+	}
+	id := text(pending["approvalId"])
+	if respondApproval(t, s, id, "always") || !respondApproval(t, s, id, "once") || respondApproval(t, s, id, "once") {
+		t.Fatal("action approval must be single-use")
+	}
 	waitDone(t, g)
 	row, err := s.store.get("messages", text(g.row["id"]))
 	if err != nil {

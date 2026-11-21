@@ -81,12 +81,12 @@ export const skillRequestSchemas = {
     output: z.custom<InstalledSkill>()
   }),
   'skill.install_from_zip': defineRoute({
-    input: z.object({ zipFilePath: z.string() }),
-    output: z.custom<SkillResult<InstalledSkill>>()
+    input: z.void(),
+    output: z.union([z.strictObject({ cancelled: z.literal(true) }), z.custom<SkillResult<InstalledSkill>>()])
   }),
   'skill.install_from_directory': defineRoute({
-    input: z.object({ directoryPath: z.string() }),
-    output: z.custom<SkillResult<InstalledSkill>>()
+    input: z.void(),
+    output: z.union([z.strictObject({ cancelled: z.literal(true) }), z.custom<SkillResult<InstalledSkill>>()])
   }),
   'skill.list_catalog': defineRoute({
     input: z.object({ search: z.string().trim().min(1).optional() }),
