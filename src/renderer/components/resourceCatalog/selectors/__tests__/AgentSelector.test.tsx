@@ -511,12 +511,16 @@ describe('AgentSelector', () => {
     })
     await user.click(screen.getByRole('button', { name: 'Next' }))
     await user.click(screen.getByRole('button', { name: 'Next' }))
-    await user.click(screen.getByRole('button', { name: 'Next' }))
     await user.click(screen.getByRole('button', { name: 'Create' }))
 
     await waitFor(() =>
       expect(createAgentMock).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'Created Agent', model: MODEL.id, description: 'Created from selector' })
+        expect.objectContaining({
+          type: 'native',
+          name: 'Created Agent',
+          model: MODEL.id,
+          description: 'Created from selector'
+        })
       )
     )
     await waitFor(() => expect(refetchAgentsMock).toHaveBeenCalledTimes(1))
@@ -541,9 +545,13 @@ describe('AgentSelector', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pick model' }))
     await user.click(screen.getByRole('button', { name: 'Next' }))
     await user.click(screen.getByRole('button', { name: 'Next' }))
-    await user.click(screen.getByRole('button', { name: 'Next' }))
     await user.click(screen.getByRole('button', { name: 'Create' }))
 
+    await waitFor(() =>
+      expect(createAgentMock).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'native', name: 'Created Agent', model: MODEL.id })
+      )
+    )
     await waitFor(() => expect(refetchAgentsMock).toHaveBeenCalledTimes(1))
     expect(onChange).toHaveBeenCalledWith('created-agent')
   })
@@ -558,9 +566,13 @@ describe('AgentSelector', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pick model' }))
     await user.click(screen.getByRole('button', { name: 'Next' }))
     await user.click(screen.getByRole('button', { name: 'Next' }))
-    await user.click(screen.getByRole('button', { name: 'Next' }))
     await user.click(screen.getByRole('button', { name: 'Create' }))
 
+    await waitFor(() =>
+      expect(createAgentMock).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'native', name: 'Created Agent', model: MODEL.id })
+      )
+    )
     await waitFor(() => expect(refetchAgentsMock).toHaveBeenCalledTimes(1))
 
     expect(toast.error).toHaveBeenCalledWith('Created, but refresh failed')
