@@ -20,7 +20,18 @@ declare global {
 const MAX_FRAME = 4 * 1024 * 1024
 const MAX_PENDING = 128
 const REQUEST_TIMEOUT = 60_000
+const DIALOG_TIMEOUT = 10 * 60_000
 const encoder = new TextEncoder()
+
+function requestTimeout(command: HostCommand, args: Record<string, unknown>): number {
+  if (command !== 'ipc_request') return REQUEST_TIMEOUT
+  if (args.channel === 'file:selectFolder') return DIALOG_TIMEOUT
+  const route = Array.isArray(args.args) ? args.args[0] : undefined
+  return args.channel === 'ipc-api:request' &&
+    ['painting.file.export', 'skill.install_from_zip', 'skill.install_from_directory'].includes(route)
+    ? DIALOG_TIMEOUT
+    : REQUEST_TIMEOUT
+}
 
 export function isTrustedHostUrl(raw: string): boolean {
   let url: URL
@@ -81,10 +92,13 @@ class HostBridge {
       return Promise.reject(error)
     }
     return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id)
-        reject(new Error('EVOSTACK_REQUEST_TIMEOUT: outcome unknown; no retry'))
-      }, REQUEST_TIMEOUT)
+      const timer = setTimeout(
+        () => {
+          this.pending.delete(id)
+          reject(new Error('EVOSTACK_REQUEST_TIMEOUT: outcome unknown; no retry'))
+        },
+        requestTimeout(command, args)
+      )
       this.pending.set(id, { resolve: (value) => resolve(value as T), reject, timer })
       try {
         this.postMessage(frame)

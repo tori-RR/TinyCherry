@@ -86,7 +86,7 @@ vi.mock('../steps/BasicInfoStep', async () => {
             }}>
             fill basic
           </button>
-          {(['pi', 'claude-code'] as const).map((runtime) => (
+          {(['native', 'pi-durable', 'pi', 'claude-code'] as const).map((runtime) => (
             <button
               key={runtime}
               type="button"
@@ -211,8 +211,7 @@ async function fillDraftToKnowledge(user: ReturnType<typeof userEvent.setup>, ki
   await user.click(screen.getByRole('textbox', { name: 'draft prompt' }))
   await user.paste(draft.prompt)
   await user.click(screen.getByRole('button', { name: NEXT }))
-  if (kind === 'agent') {
-    expect(screen.getByTestId('capability-step')).toBeInTheDocument()
+  if (kind === 'agent' && screen.queryByTestId('capability-step')) {
     await user.click(screen.getByRole('button', { name: NEXT }))
   }
   await user.click(screen.getByRole('button', { name: 'select knowledge base' }))
@@ -234,8 +233,8 @@ function expectDefaults(kind: ResourceCreateWizardKind, name = '') {
   expect(screen.getByTestId('draft-prompt')).toBeEmptyDOMElement()
   expect(screen.getByTestId('knowledge-ids').textContent).toBe('[]')
   expect(screen.getByTestId('knowledge-count')).toHaveTextContent('0')
-  expect(screen.getByTestId('agent-type')).toHaveTextContent(kind === 'agent' ? 'pi-durable' : 'claude-code')
-  expect(screen.getByTestId('permission-mode')).toHaveTextContent('auto')
+  expect(screen.getByTestId('agent-type')).toHaveTextContent(kind === 'agent' ? 'native' : 'claude-code')
+  expect(screen.getByTestId('permission-mode')).toHaveTextContent(kind === 'agent' ? 'default' : 'auto')
 }
 
 afterEach(() => {
@@ -268,15 +267,15 @@ describe('ResourceCreateWizard', () => {
       />
     )
     await waitFor(() => expect(screen.getByRole('button', { name: NEXT })).toBeEnabled())
-    for (let step = 0; step < 3; step++) await user.click(screen.getByRole('button', { name: NEXT }))
+    for (let step = 0; step < 2; step++) await user.click(screen.getByRole('button', { name: NEXT }))
     await user.click(screen.getByRole('button', { name: CREATE }))
     expect(onSubmit).toHaveBeenCalledWith({
       name: 'Product manager',
       avatar: '👨‍💼',
       description: 'Plan products',
       prompt: 'Keep this prompt\n{{language}}',
-      agentType: 'pi-durable',
-      permissionMode: 'auto',
+      agentType: 'native',
+      permissionMode: 'default',
       modelId: 'provider::default',
       skillIds: [],
       knowledgeBaseIds: []
@@ -514,24 +513,27 @@ describe('ResourceCreateWizard', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
-  it.each(['pi-durable', 'pi', 'claude-code'] as const)('submits the selected %s agent runtime', async (runtime) => {
-    const user = userEvent.setup()
-    const onSubmit = vi.fn()
-    render(<ResourceCreateWizard kind="agent" open onOpenChange={vi.fn()} onSubmit={onSubmit} />)
+  it.each(['native', 'pi-durable', 'pi', 'claude-code'] as const)(
+    'submits the selected %s agent runtime',
+    async (runtime) => {
+      const user = userEvent.setup()
+      const onSubmit = vi.fn()
+      render(<ResourceCreateWizard kind="agent" open onOpenChange={vi.fn()} onSubmit={onSubmit} />)
 
-    if (runtime !== 'pi-durable') {
-      await user.click(screen.getByRole('button', { name: `switch to ${runtime}` }))
+      if (runtime !== 'native') {
+        await user.click(screen.getByRole('button', { name: `switch to ${runtime}` }))
+      }
+      await user.click(screen.getByRole('button', { name: 'fill basic' }))
+      await user.click(screen.getByRole('button', { name: NEXT }))
+      await user.click(screen.getByRole('button', { name: NEXT }))
+      if (runtime !== 'native') await user.click(screen.getByRole('button', { name: NEXT }))
+      await user.click(screen.getByRole('button', { name: CREATE }))
+
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ agentType: runtime, permissionMode: 'default' }))
     }
-    await user.click(screen.getByRole('button', { name: 'fill basic' }))
-    await user.click(screen.getByRole('button', { name: NEXT }))
-    await user.click(screen.getByRole('button', { name: NEXT }))
-    await user.click(screen.getByRole('button', { name: NEXT }))
-    await user.click(screen.getByRole('button', { name: CREATE }))
+  )
 
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ agentType: runtime, permissionMode: 'auto' }))
-  })
-
-  it('restores Pi Durable and its permission default after canceling and reopening', async () => {
+  it('restores Native and its approval default after canceling and reopening', async () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn()
     const onOpenChange = vi.fn()
@@ -548,10 +550,9 @@ describe('ResourceCreateWizard', () => {
     await user.click(screen.getByRole('button', { name: 'fill basic' }))
     await user.click(screen.getByRole('button', { name: NEXT }))
     await user.click(screen.getByRole('button', { name: NEXT }))
-    await user.click(screen.getByRole('button', { name: NEXT }))
     await user.click(screen.getByRole('button', { name: CREATE }))
 
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ agentType: 'pi-durable', permissionMode: 'auto' }))
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ agentType: 'native', permissionMode: 'default' }))
   })
 
   it('does not render an invalid step when a closed agent wizard falls back to assistant kind', async () => {
@@ -560,7 +561,6 @@ describe('ResourceCreateWizard', () => {
     const { rerender } = render(<ResourceCreateWizard {...props} kind="agent" />)
 
     await user.click(screen.getByRole('button', { name: 'fill basic' }))
-    await user.click(screen.getByRole('button', { name: NEXT }))
     await user.click(screen.getByRole('button', { name: NEXT }))
     await user.click(screen.getByRole('button', { name: NEXT }))
     expect(screen.getByTestId('knowledge-step')).toBeInTheDocument()

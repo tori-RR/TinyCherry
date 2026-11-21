@@ -9,6 +9,7 @@ import { parseUniqueModelId } from '@shared/data/types/model'
 import type { Provider } from '@shared/data/types/provider'
 import { isGatewayRoutableModel } from '@shared/utils/model'
 
+import { isNativeAgentModelCompatible, NATIVE_AGENT_TOOLS } from './nativeAgentRuntime'
 import type { SlashCommand } from './slashCommands'
 
 export interface AgentRuntimeCapabilities {
@@ -103,6 +104,30 @@ const PI_CAPABILITIES = {
 } as const satisfies AgentRuntimeCapabilities
 
 export const AGENT_RUNTIME_CAPABILITIES = {
+  native: {
+    labelKey: 'agent.native.runtime',
+    labelFallback: 'TinyCherry Native',
+    permissionModes: ['default', 'plan'],
+    modelTiers: false,
+    heartbeat: false,
+    knowledgeBases: true,
+    mcp: false,
+    skills: false,
+    claudeRegistryTools: false,
+    slashCommands: [],
+    createDefaults: { permissionMode: 'default' },
+    isModelCompatible: isNativeAgentModelCompatible,
+    transport: 'native-agent',
+    builtinTools: () =>
+      NATIVE_AGENT_TOOLS.map((tool) => ({
+        id: tool.id,
+        labelKey: `agent.native.tools.${tool.id}.label`,
+        descriptionKey: `agent.native.tools.${tool.id}.description`,
+        labelFallback: tool.label,
+        descriptionFallback: tool.description,
+        category: tool.id === 'run_shell' ? 'execution' : 'filesystem'
+      }))
+  },
   'claude-code': {
     labelKey: 'library.config.agent.field.runtime.option.claude_code',
     labelFallback: 'Claude Agent',

@@ -176,6 +176,8 @@ export interface CacheAgentComposerDraft extends CacheComposerDraftBase {
   workspaceKey: string
   agentId: string
   shouldValidateSkills?: boolean
+  /** Native work retries reuse the same request identity until submission is acknowledged. */
+  nativeSubmission?: { requestId: string; text: string }
 }
 
 /** Unsubmitted AskUserQuestion answers, keyed per question index. Survives composer remounts. */

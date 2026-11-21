@@ -59,7 +59,11 @@ func (s *server) projectionCommand(route string, input object) (any, error) {
 		s.pruneProjections()
 		return nil, nil
 	}
-	if _, err := s.store.get("topics", topicID); err != nil {
+	resource, id := "topics", topicID
+	if isAgentTopic(topicID) {
+		resource, id = "agent-sessions", agentSessionID(topicID)
+	}
+	if _, err := s.store.get(resource, id); err != nil {
 		return nil, err
 	}
 	if _, exists := s.projectionSubscriptions[subscription]; !exists && len(s.projectionSubscriptions) >= maxProjectionSubscriptions {

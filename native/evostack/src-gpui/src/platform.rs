@@ -40,8 +40,8 @@ pub fn info() -> Value {
             "chat": true, "knowledge": true, "prompts": true, "skills": true,
             "computerUse": cfg!(all(target_os = "windows", target_arch = "x86_64")),
             "markdownPreview": true, "notifications": true, "archives": true,
-            "agents": false, "mcp": false, "attachments": false, "backups": false,
-            "browser": false, "painting": false, "translation": false, "downloads": false,
+            "agents": true, "mcp": false, "attachments": false, "backups": false,
+            "browser": false, "painting": true, "translation": false, "downloads": false,
             "globalShortcuts": false, "extraWindows": false, "skillExecution": false
         }
     })

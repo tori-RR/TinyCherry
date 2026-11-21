@@ -98,6 +98,24 @@ describe('Wry document bridge', () => {
     await expect(next).resolves.toBe('available')
   })
 
+  it.each([
+    { channel: 'file:selectFolder', args: [] },
+    { channel: 'ipc-api:request', args: ['painting.file.export', { fileId: 'registered-image' }] },
+    { channel: 'ipc-api:request', args: ['skill.install_from_directory'] }
+  ])('keeps a user-operated native dialog pending past the network timeout: $channel', async (args) => {
+    vi.useFakeTimers()
+    const native = host()
+    const { invokeHost } = await import('../bridge')
+    const settled = vi.fn()
+    const request = invokeHost('ipc_request', args).then(settled)
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(settled).not.toHaveBeenCalled()
+    expect(native.postMessage).toHaveBeenCalledOnce()
+    native.reply(native.requests[0], { saved: false })
+    await request
+    expect(settled).toHaveBeenCalledWith({ saved: false })
+  })
+
   it('bounds outstanding requests and resumes after a reply frees a slot', async () => {
     const native = host()
     const { invokeHost } = await import('../bridge')

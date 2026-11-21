@@ -139,6 +139,12 @@ CREATE INDEX IF NOT EXISTS entity_knowledge_item ON entity(resource,json_extract
 	if err := recoverKnowledgeFiles(s); err != nil {
 		return fail(err)
 	}
+	if err := recoverAgentMessages(s); err != nil {
+		return fail(err)
+	}
+	if err := recoverPaintingFiles(s); err != nil {
+		return fail(err)
+	}
 	return s, nil
 }
 

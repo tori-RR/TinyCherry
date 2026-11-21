@@ -28,16 +28,21 @@ await test('automatic workflow triggers are rejected in string, array and object
   )
 })
 
-await test('only the candidate workflow can run on the exact experimental branch', () => {
+await test('only the candidate workflow can run on the explicitly named experimental branches', () => {
   const jobs = { candidate: { 'runs-on': 'windows-2025' } }
   const on = { push: { branches: ['GPT/GPUI'] }, workflow_dispatch: {} }
   assert.doesNotThrow(() => validateWorkflow({ on, jobs }, 'desktop-build.yml'))
+  for (const branches of [['GPT/CandyBack'], ['GPT/GPUI', 'GPT/CandyBack']])
+    assert.doesNotThrow(() => validateWorkflow({ on: { ...on, push: { branches } }, jobs }, 'desktop-build.yml'))
   assert.throws(() => validateWorkflow({ on, jobs }, 'ci.yml'), /Only manual/)
   for (const push of [
     {},
     { branches: ['main'] },
     { branches: ['GPT/**'] },
     { branches: ['GPT/GPUI', 'main'] },
+    { branches: ['GPT/CandyBack', 'main'] },
+    { branches: [] },
+    { branches: ['GPT/CandyBack', 'GPT/CandyBack'] },
     { branches: ['GPT/GPUI'], tags: ['*'] },
     { 'branches-ignore': ['main'] }
   ])

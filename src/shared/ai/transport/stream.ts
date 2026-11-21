@@ -190,6 +190,8 @@ export interface StreamErrorPayload {
  */
 export type AiStreamOpenRequest = {
   topicId: string
+  /** Stable idempotency key for native work submissions, retained when retrying an uncertain IPC result. */
+  requestId?: string
   /** Composer-selected request models; one id overrides the fallback, while persistent non-live sends may fan out. */
   mentionedModelIds?: UniqueModelId[]
 } & (

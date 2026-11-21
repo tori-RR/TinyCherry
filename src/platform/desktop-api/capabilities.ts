@@ -39,6 +39,8 @@ export function hasCapability(name: (typeof capabilityNames)[number]): boolean {
 
 export function isDesktopRouteAvailable(raw: string): boolean {
   const path = raw.split(/[?#]/, 1)[0]
+  if (path === '/app/agents' || path.startsWith('/app/agents/')) return hasCapability('agents')
+  if (path === '/app/paintings' || path.startsWith('/app/paintings/')) return hasCapability('painting')
   return [
     '/app/chat',
     '/app/launchpad',

@@ -3,13 +3,14 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { verifyCandy } from './verify-candy.mjs'
 import { verifyChat } from './verify-chat.mjs'
 
 const [port, profile, revision] = process.argv.slice(2)
 assert(/^\d+$/.test(port) && profile && revision)
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const expectedVersion = JSON.parse(readFileSync(join(repository, 'package.json'), 'utf8')).version
-const deadline = Date.now() + 60_000
+const deadline = Date.now() + 120_000
 const pause = () => new Promise((resolve) => setTimeout(resolve, 100))
 let target
 while (Date.now() < deadline) {
@@ -173,6 +174,7 @@ try {
   const journeys = await verifyChat({ evaluate, command, until, localeCatalogs })
   const screenshot = await command('Page.captureScreenshot', { format: 'png' })
   writeFileSync(join(profile, 'workspace-chat.png'), Buffer.from(screenshot.data, 'base64'))
+  const candy = await verifyCandy({ evaluate, command, until, profile })
   const settingsOpened = await evaluate(`(() => {
     const event = new CustomEvent('cherry:open-main-route', {
       cancelable: true, detail: { path: '/settings/provider?id=chatgpt-sub&filter=all' }
@@ -242,7 +244,7 @@ try {
     browserStorageRetained: true,
     chatGPTSignIn,
     contracts,
-    journeys
+    journeys: { ...journeys, ...candy }
   }
   writeFileSync(join(profile, 'renderer-ui-smoke.json'), JSON.stringify(result, null, 2))
   process.stdout.write('Packaged React ready and Set Up Later → workspace persistence passed\n')

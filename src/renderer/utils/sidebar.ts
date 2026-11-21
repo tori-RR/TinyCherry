@@ -133,6 +133,8 @@ export function isSidebarAppId(value: string): value is SidebarAppId {
   return sidebarFavoriteSet.has(value as SidebarAppId)
 }
 function isSidebarAppAvailable(id: string): boolean {
+  if (id === 'agents') return hasCapability('agents')
+  if (id === 'paintings') return hasCapability('painting')
   return ['assistants', 'knowledge'].includes(id)
 }
 export const SIDEBAR_SHORTCUT_PROVIDER_IDS = {
@@ -249,6 +251,9 @@ export function getVisibleSidebarShortcutItems(values: readonly unknown[] | unde
     .filter(isSidebarShortcutItem)
     .filter((item) => {
       const id = item.target.locator.providerId
+      if (id === SIDEBAR_SHORTCUT_PROVIDER_IDS.AGENT || id === SIDEBAR_SHORTCUT_PROVIDER_IDS.AGENT_SESSION) {
+        return hasCapability('agents')
+      }
       return id === SIDEBAR_SHORTCUT_PROVIDER_IDS.APP
         ? isSidebarAppAvailable(item.target.locator.resourceId)
         : new Set<string>([
@@ -421,3 +426,4 @@ export function reorderLaunchpadApps(
   }
   return next
 }
+import { hasCapability } from '@platform/desktop-api/capabilities'

@@ -106,6 +106,11 @@ func (s *server) mutationChanged(method, path string, body object) {
 		endpoints = []string{"/prompts", "/prompts/:id", "/prompt-bindings", "/prompts/:id/bindings", "/prompt-bindings/:targetType/:targetId"}
 	case "skills":
 		endpoints = []string{"/skills"}
+	case "agents", "agent-sessions", "agent-workspaces":
+		s.agentChanged()
+		return
+	case "paintings":
+		endpoints = []string{"/paintings", "/paintings/:id", "/archives"}
 	case "knowledge-bases", "knowledge-items":
 		endpoints = []string{"/knowledge-bases", "/knowledge-bases/:id", "/knowledge-bases/:id/items", "/knowledge-items/:id"}
 	default:

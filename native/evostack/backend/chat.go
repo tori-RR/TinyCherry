@@ -13,6 +13,7 @@ import (
 )
 
 type generation struct {
+	agent                 *agentExecution
 	topicID               string
 	executionID           string
 	attempt               int64
@@ -98,6 +99,9 @@ func (s *server) providerConfig(modelID string, requireEnabled bool, keyOverride
 
 func (s *server) openGeneration(input object) (any, error, func()) {
 	topicID := text(input["topicId"])
+	if isAgentTopic(topicID) {
+		return s.openAgentGeneration(input)
+	}
 	if topicID == "" {
 		return nil, errors.New("topicId required"), nil
 	}
@@ -311,6 +315,9 @@ func (s *server) abort(topicID string) error {
 func (s *server) generate(ctx context.Context, g *generation, config providerRequestConfig, payload object) {
 	defer close(g.done)
 	defer g.cancel()
+	if g.agent != nil {
+		defer g.agent.root.Close()
+	}
 	var generationErr error
 	finishReason := "stop"
 	defer func() {
@@ -372,7 +379,11 @@ func (s *server) generate(ctx context.Context, g *generation, config providerReq
 		s.pruneProjections()
 		s.unregisterGenerationCancel(g.topicID)
 		s.cache("topic.stream.statuses."+g.topicID, object{"status": topicStatus, "activeExecutions": []any{}, "awaitingApprovalAnchors": []any{}, "lastCompletedAt": time.Now().UnixMilli()})
-		s.changed("/topics", "/topics/:topicId/messages", "/topics/:topicId/tree")
+		if g.agent != nil {
+			s.agentChanged()
+		} else {
+			s.changed("/topics", "/topics/:topicId/messages", "/topics/:topicId/tree")
+		}
 	}()
 	defer func() {
 		if g.computerEnabled {
@@ -381,7 +392,9 @@ func (s *server) generate(ctx context.Context, g *generation, config providerReq
 			}
 		}
 	}()
-	if config.chatGPTOwner != "" {
+	if g.agent != nil {
+		generationErr, finishReason = s.generateAgentSteps(ctx, g, config, payload)
+	} else if config.chatGPTOwner != "" {
 		generationErr = s.generateChatGPTStep(ctx, g, config, payload)
 	} else {
 		generationErr, finishReason = s.generateComputerSteps(ctx, g, config, payload)
@@ -389,6 +402,9 @@ func (s *server) generate(ctx context.Context, g *generation, config providerReq
 }
 
 func (s *server) persistGeneration(g *generation, status string) error {
+	if g.agent != nil {
+		return s.persistAgentGeneration(g, status)
+	}
 	if status != "pending" {
 		finalizeComputerParts(g.parts)
 	}

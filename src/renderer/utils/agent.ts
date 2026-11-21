@@ -124,6 +124,17 @@ const PI_CARD_OVERRIDES: Partial<Record<AgentPermissionMode, Partial<PermissionM
   }
 }
 
+const NATIVE_CARD_OVERRIDES: Partial<Record<AgentPermissionMode, Partial<PermissionModeCard>>> = {
+  default: {
+    descriptionKey: 'agent.native.default_hint',
+    descriptionFallback: 'Reads the workspace automatically. Every file change and shell command needs approval.'
+  },
+  plan: {
+    descriptionKey: 'agent.native.plan_hint',
+    descriptionFallback: 'Only lists, reads and searches workspace files. File writes and shell commands are disabled.'
+  }
+}
+
 /** Permission-mode cards offered for an agent type. Unknown types keep the full set. */
 export function getPermissionModeCards(agentType: AgentType | string | undefined): PermissionModeCard[] {
   if (!agentType || !(agentType in AGENT_RUNTIME_CAPABILITIES)) return permissionModeCards
@@ -131,6 +142,10 @@ export function getPermissionModeCards(agentType: AgentType | string | undefined
   return permissionModeCards
     .filter((card) => modes.has(card.mode))
     .map((card) =>
-      agentType === 'pi' || agentType === 'pi-durable' ? { ...card, ...PI_CARD_OVERRIDES[card.mode] } : card
+      agentType === 'native'
+        ? { ...card, ...NATIVE_CARD_OVERRIDES[card.mode] }
+        : agentType === 'pi' || agentType === 'pi-durable'
+          ? { ...card, ...PI_CARD_OVERRIDES[card.mode] }
+          : card
     )
 }

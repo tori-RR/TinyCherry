@@ -1,4 +1,5 @@
 import type { TFunction } from 'i18next'
+import { Bot } from 'lucide-react'
 
 import { Item, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@cherrystudio/ui'
 import { type IconComponent, PiCli } from '@cherrystudio/ui/icons'
@@ -8,18 +9,21 @@ import { AGENT_RUNTIME_CAPABILITIES } from '@shared/ai/agentRuntimeCapabilities'
 import type { AgentType } from '@shared/data/types/agent'
 
 const RUNTIME_ICONS = {
+  native: (props) => <Bot {...props} />,
   'claude-code': ClaudeCode,
   pi: PiCli,
   'pi-durable': PiCli
 } satisfies Record<AgentType, IconComponent>
 
 const COMPACT_RUNTIME_ICON_CLASS: Record<AgentType, string> = {
+  native: 'size-4',
   'claude-code': 'size-6',
   pi: 'size-4',
   'pi-durable': 'size-4'
 }
 
 const RUNTIME_DESCRIPTION_KEYS: Record<AgentType, string> = {
+  native: 'agent.native.runtime_description',
   // t('library.config.agent.field.runtime.option_description.claude_code')
   'claude-code': 'library.config.agent.field.runtime.option_description.claude_code',
   // t('library.config.agent.field.runtime.option_description.pi')
@@ -50,7 +54,9 @@ function RuntimeCardBody({ runtime, t, compact = false }: { runtime: AgentType; 
           {t(caps.labelKey, caps.labelFallback)}
         </ItemTitle>
         <ItemDescription className={cn('text-xs', compact && 'min-w-0 text-ellipsis whitespace-nowrap leading-4')}>
-          {t(RUNTIME_DESCRIPTION_KEYS[runtime])}
+          {runtime === 'native'
+            ? t(RUNTIME_DESCRIPTION_KEYS[runtime], '工作区文件、命令执行与逐次审批')
+            : t(RUNTIME_DESCRIPTION_KEYS[runtime])}
         </ItemDescription>
       </ItemContent>
     </>

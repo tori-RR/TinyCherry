@@ -50,7 +50,7 @@ function getDefaultValues(
   initialName = '',
   initialValues: ResourceCreateWizardProps['initialValues'] = {}
 ): ResourceCreateWizardFormValues {
-  const agentType = kind === 'agent' ? 'pi-durable' : 'claude-code'
+  const agentType = kind === 'agent' ? 'native' : 'claude-code'
   return {
     avatar: getResourceCreateDefaultAvatar(kind),
     name: initialName,

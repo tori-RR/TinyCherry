@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import { FeatureUnavailable } from '@renderer/components/FeatureUnavailable'
+import PaintingPage from '@renderer/pages/paintings/PaintingPage'
 export const Route = createFileRoute('/app/paintings/')({
   validateSearch: (search: Record<string, unknown>) => search,
-  component: FeatureUnavailable
+  component: PaintingPage
 })

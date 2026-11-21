@@ -25,6 +25,9 @@ func (s *server) invoke(channel string, args []any) (any, error, func()) {
 	if channel == "ipc-api:request" {
 		route := text(argument(args, 0))
 		input := obj(argument(args, 1))
+		if result, err, handled := s.paintingCommand(route, input); handled {
+			return ipcResult(result, err), nil, nil
+		}
 		if strings.HasPrefix(route, "oauth.") {
 			result, err := s.oauthCommand(route, input)
 			return ipcResult(result, err), nil, nil
@@ -210,6 +213,9 @@ func ipcResult(result any, err error) object {
 }
 
 func (s *server) command(route string, value any) (any, error, func()) {
+	if result, err, handled := s.nativeAgentCommand(route, obj(value)); handled {
+		return result, err, nil
+	}
 	input := obj(value)
 	if result, err, handled := s.computerApprovalCommand(route, input); handled {
 		return result, err, nil
@@ -301,6 +307,12 @@ func newModel(body object) object {
 }
 
 func (s *server) data(method, path string, query object, body any) (any, error) {
+	if result, err, handled := s.agentData(method, path, query, body); handled {
+		return result, err
+	}
+	if result, err, handled := s.paintingData(method, path, query, body); handled {
+		return result, err
+	}
 	if result, err, handled := s.notificationData(method, path, query, obj(body)); handled {
 		return result, err
 	}

@@ -29,6 +29,7 @@ import { type NotificationEventSchemas, notificationRequestSchemas } from './not
 import { oauthRequestSchemas } from './oauth'
 import { openclawRequestSchemas } from './openclaw'
 import { ovmsRequestSchemas } from './ovms'
+import { paintingRequestSchemas } from './painting'
 import { pdfjsRequestSchemas } from './pdfjs'
 import { printRequestSchemas } from './print'
 import { profileRequestSchemas } from './profile'
@@ -85,6 +86,7 @@ export const ipcRequestSchemas = {
   ...oauthRequestSchemas,
   ...openclawRequestSchemas,
   ...ovmsRequestSchemas,
+  ...paintingRequestSchemas,
   ...pdfjsRequestSchemas,
   ...printRequestSchemas,
   ...assistantRequestSchemas,

@@ -467,7 +467,7 @@ func (s *server) readComputerModelStep(ctx context.Context, g *generation, confi
 		}
 		choice := frame.Choices[0]
 		for _, delta := range choice.Delta.ToolCalls {
-			if !g.computerEnabled {
+			if !g.computerEnabled && g.agent == nil {
 				return notMigrated("provider tool calls")
 			}
 			if delta.Index < 0 || delta.Index >= maxComputerCalls {

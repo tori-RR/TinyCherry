@@ -1,7 +1,7 @@
 name: Windows Desktop Candidate
 on:
   push:
-    branches: [GPT/GPUI]
+    branches: [GPT/GPUI, GPT/CandyBack]
   workflow_dispatch:
     inputs:
       stress:
@@ -85,6 +85,19 @@ jobs:
         with:
           name: TinyCherry-startup-diagnostics-${{ github.sha }}
           path: native/evostack/.cache/package-smoke-*/diagnostics/**
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 7
+      - name: Upload synthetic workspace verification
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: TinyCherry-workspace-evidence-${{ github.sha }}
+          path: |
+            native/evostack/.cache/package-smoke-*/renderer-ui-smoke.json
+            native/evostack/.cache/package-smoke-*/workspace-chat.png
+            native/evostack/.cache/package-smoke-*/workspace-agents.png
+            native/evostack/.cache/package-smoke-*/workspace-paintings.png
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 7

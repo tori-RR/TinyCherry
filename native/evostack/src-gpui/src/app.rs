@@ -4,7 +4,7 @@ use crate::{
     bridge::{self, EventChannel, Request, RequestBudget, RequestPermit},
     build_info, desktop_response,
     host::{trusted_origin, verify_backend_info},
-    native_window, platform, smoke,
+    native_window, painting_export, platform, smoke,
     window_background::{WindowTheme, THEME_PREFERENCE},
     Backend, Reply,
 };
@@ -172,7 +172,7 @@ struct Desktop {
     backend: Arc<Backend>,
     sender: Sender<UiMessage>,
     session: Option<String>,
-    skill_picker_open: bool,
+    file_dialog_open: bool,
     desired_fullscreen: Option<bool>,
     fullscreen_transition: Option<bool>,
     theme: WindowTheme,
@@ -197,7 +197,7 @@ impl Desktop {
             backend,
             sender,
             session: None,
-            skill_picker_open: false,
+            file_dialog_open: false,
             desired_fullscreen: None,
             fullscreen_transition: None,
             theme,
@@ -538,8 +538,25 @@ impl Desktop {
                             .map(|_| Value::Null)
                             .map_err(|e| e.to_string()),
                     )
+                } else if channel == "file:selectFolder" {
+                    self.pick_directory(request, permit, window, cx);
+                    return;
                 } else if channel == "ipc-api:request" {
                     let route = args.first().and_then(Value::as_str).unwrap_or("");
+                    if route == "painting.file.export" {
+                        let input = args.get(1).cloned().unwrap_or(Value::Null);
+                        if painting_export::valid_input(&input) {
+                            self.export_painting(request, permit, input, window, cx);
+                        } else {
+                            self.reply(
+                                &request,
+                                Ok(desktop_response(Err(
+                                    "EVOSTACK_INVALID_PAINTING_FILE".into()
+                                ))),
+                            );
+                        }
+                        return;
+                    }
                     if let Some(kind) = match route {
                         "skill.install_from_zip" => Some("zip"),
                         "skill.install_from_directory" => Some("directory"),
@@ -587,14 +604,14 @@ impl Desktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.skill_picker_open {
+        if self.file_dialog_open {
             self.reply(
                 &request,
                 Ok(desktop_response(Err("EVOSTACK_SKILL_PICKER_BUSY".into()))),
             );
             return;
         }
-        self.skill_picker_open = true;
+        self.file_dialog_open = true;
         let selection = cx.prompt_for_paths(PathPromptOptions {
             files: kind == "zip",
             directories: kind == "directory",
@@ -607,7 +624,7 @@ impl Desktop {
             let selection = selection.await;
             let current = view
                 .update_in(cx, |view, _, _| {
-                    view.skill_picker_open = false;
+                    view.file_dialog_open = false;
                     !view.close_requested && view.session.as_deref() == Some(&request.session)
                 })
                 .unwrap_or(false);
@@ -639,6 +656,156 @@ impl Desktop {
                     permit,
                 ))
                 .await;
+        })
+        .detach();
+    }
+
+    fn pick_directory(
+        &mut self,
+        request: Request,
+        permit: RequestPermit,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.file_dialog_open {
+            self.reply(&request, Err("EVOSTACK_FILE_DIALOG_BUSY".into()));
+            return;
+        }
+        self.file_dialog_open = true;
+        // This legacy facade only selects a directory. Renderer options cannot
+        // silently register a path or enable file/multiple selection.
+        let selection = cx.prompt_for_paths(PathPromptOptions {
+            files: false,
+            directories: true,
+            multiple: false,
+            prompt: Some("Choose an agent workspace".into()),
+        });
+        let sender = self.sender.clone();
+        cx.spawn_in(window, async move |view, cx| {
+            let selection = selection.await;
+            let current = view
+                .update_in(cx, |view, _, _| {
+                    view.file_dialog_open = false;
+                    !view.close_requested && view.session.as_deref() == Some(&request.session)
+                })
+                .unwrap_or(false);
+            if !current {
+                return;
+            }
+            let result = match selection {
+                Ok(Ok(None)) => Ok(Value::Null),
+                Ok(Ok(Some(paths))) if paths.len() == 1 => paths[0]
+                    .to_str()
+                    .map(|path| Value::String(path.to_string()))
+                    .ok_or("EVOSTACK_INVALID_DIRECTORY_SELECTION".into()),
+                _ => Err("EVOSTACK_DIRECTORY_PICKER_FAILED".into()),
+            };
+            let _ = sender.send(UiMessage::Reply(request, result, permit)).await;
+        })
+        .detach();
+    }
+
+    fn export_painting(
+        &mut self,
+        request: Request,
+        permit: RequestPermit,
+        input: Value,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.file_dialog_open {
+            self.reply(
+                &request,
+                Ok(desktop_response(Err("EVOSTACK_FILE_DIALOG_BUSY".into()))),
+            );
+            return;
+        }
+        self.file_dialog_open = true;
+        let backend = self.backend.clone();
+        let sender = self.sender.clone();
+        cx.spawn_in(window, async move |view, cx| {
+            let source_backend = backend.clone();
+            let prepared = cx
+                .background_executor()
+                .spawn(async move {
+                    let reply = source_backend.request(
+                        "ipc.invoke",
+                        json!({
+                            "channel":"ipc-api:request", "args":["painting.file.path", input]
+                        }),
+                    )?;
+                    if reply["ok"] != true {
+                        return Err("EVOSTACK_PAINTING_FILE_UNAVAILABLE".into());
+                    }
+                    painting_export::PreparedExport::from_registered(
+                        &source_backend.data_dir,
+                        &reply["data"],
+                    )
+                })
+                .await;
+            let result = match prepared {
+                Err(error) => Err(error),
+                Ok(prepared) => {
+                    let selection = view
+                        .update_in(cx, |view, _, cx| {
+                            if view.close_requested
+                                || view.session.as_deref() != Some(&request.session)
+                            {
+                                view.file_dialog_open = false;
+                                return None;
+                            }
+                            Some(cx.prompt_for_new_path(
+                                backend.data_dir.parent().unwrap_or(&backend.data_dir),
+                                Some(&prepared.name),
+                            ))
+                        })
+                        .ok()
+                        .flatten();
+                    let Some(selection) = selection else {
+                        return;
+                    };
+                    let selection = selection.await;
+                    let current = view
+                        .update_in(cx, |view, _, _| {
+                            let current = !view.close_requested
+                                && view.session.as_deref() == Some(&request.session);
+                            if !current {
+                                view.file_dialog_open = false;
+                            }
+                            current
+                        })
+                        .unwrap_or(false);
+                    if !current {
+                        return;
+                    }
+                    match selection {
+                        Ok(Ok(None)) => Ok(json!({"saved":false})),
+                        Ok(Ok(Some(destination))) => {
+                            cx.background_executor()
+                                .spawn(async move {
+                                    prepared.save(&destination).map(|_| json!({"saved":true}))
+                                })
+                                .await
+                        }
+                        _ => Err("EVOSTACK_PAINTING_EXPORT_DIALOG_FAILED".into()),
+                    }
+                }
+            };
+            let current = view
+                .update_in(cx, |view, _, _| {
+                    view.file_dialog_open = false;
+                    !view.close_requested && view.session.as_deref() == Some(&request.session)
+                })
+                .unwrap_or(false);
+            if current {
+                let _ = sender
+                    .send(UiMessage::Reply(
+                        request,
+                        Ok(desktop_response(result)),
+                        permit,
+                    ))
+                    .await;
+            }
         })
         .detach();
     }
@@ -914,6 +1081,7 @@ fn desktop_request(backend: &Backend, route: &str, input: &Value) -> Option<Repl
         return Some(result);
     }
     Some(match route {
+        "painting.file.path" => Err("EVOSTACK_HOST_ONLY_OPERATION".into()),
         "skill.folder.open" => (|| {
             let resolved = backend.request(
                 "ipc.invoke",

@@ -70,6 +70,8 @@ type serverState struct {
 	computerHost            computerHost
 	computerEpoch           uint64
 	computerApprovals       *computerApprovalState
+	agentApprovals          map[string]*agentPendingApproval
+	painting                *paintingRuntime
 	skills                  *skillRuntime
 	nousOAuth               *nousOAuthRuntime
 	nousOAuthGenerations    map[string]uint64
@@ -105,6 +107,7 @@ func newServer(repository *store, writer *wireWriter, ctx context.Context, cance
 	s := &server{store: repository, serverState: &serverState{writer: writer, active: map[string]*generation{}, shared: object{}, context: ctx, cancel: cancel, computerEpoch: 1, networkTransports: newTransportPool(), nousOAuthGenerations: map[string]uint64{}, nousOAuthRequests: map[string]map[string]context.CancelFunc{}}}
 	s.nousOAuth = newNousOAuthRuntime(ctx, nativeNousOAuthStorage{server: s}, s.nativeNousHTTPClient)
 	s.chatGPT.requests = map[string]context.CancelFunc{}
+	s.painting = newPaintingRuntime()
 	return s
 }
 
@@ -135,7 +138,7 @@ func (s *server) changed(endpoints ...string) {
 	for _, endpoint := range endpoints {
 		effect := object{"endpoint": endpoint}
 		switch endpoint {
-		case "/providers", "/models", "/assistants", "/topics", "/topics/:topicId/messages", "/groups", "/pins", "/tags", "/prompts", "/prompt-bindings", "/prompts/:id/bindings", "/prompt-bindings/:targetType/:targetId", "/skills", "/knowledge-bases", "/knowledge-bases/:id/items", "/archives", "/notifications":
+		case "/providers", "/models", "/assistants", "/topics", "/topics/:topicId/messages", "/groups", "/pins", "/tags", "/prompts", "/prompt-bindings", "/prompts/:id/bindings", "/prompt-bindings/:targetType/:targetId", "/skills", "/knowledge-bases", "/knowledge-bases/:id/items", "/archives", "/notifications", "/agents", "/agent-sessions", "/agent-sessions/:sessionId/messages", "/agent-workspaces", "/paintings":
 			effect["kind"] = "membership"
 		}
 		effects = append(effects, effect)
@@ -270,17 +273,32 @@ readLoop:
 	workers.Wait()
 	s.mu.Lock()
 	running := []*generation{}
+	paintings := []*paintingTask{}
 	for _, g := range s.active {
 		g.cancel()
 		running = append(running, g)
 	}
+	for _, task := range s.painting.jobs {
+		task.cancel()
+		paintings = append(paintings, task)
+	}
 	s.mu.Unlock()
+	// All task cleanup shares one deadline; multiple cancelled sessions must
+	// not accumulate a fresh five-second wait each before the host can exit.
+	taskDrain, cancelTaskDrain := context.WithTimeout(context.Background(), 5*time.Second)
 	for _, g := range running {
 		select {
 		case <-g.done:
-		case <-time.After(5 * time.Second):
+		case <-taskDrain.Done():
 		}
 	}
+	for _, task := range paintings {
+		select {
+		case <-task.done:
+		case <-taskDrain.Done():
+		}
+	}
+	cancelTaskDrain()
 	// Cancelled refreshes still have to persist rotated or uncertain token state
 	// before the deferred database close. No incoming IPC worker remains here.
 	drainContext, drainCancel := context.WithTimeout(context.Background(), time.Second)

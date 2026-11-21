@@ -8,6 +8,8 @@ mod computer_use;
 mod host;
 #[cfg(windows)]
 mod native_window;
+#[cfg(any(windows, test))]
+mod painting_export;
 mod platform;
 mod rpc_writer;
 mod smoke;
@@ -303,7 +305,12 @@ impl Backend {
         }
         self.diagnostics.record("host: shutdown requested");
         self.controls.shutdown();
-        let _ = self.request("backend.shutdown", Value::Null);
+        if self.request("backend.shutdown", Value::Null).is_err() {
+            // A sidecar that cannot acknowledge cancellation must not extend
+            // shutdown behind a blocked pipe or an unresponsive request.
+            terminate_child(&self.child, &self.diagnostics);
+            return;
+        }
         reap_child(&self.child, &self.diagnostics);
     }
 }
@@ -315,7 +322,10 @@ impl Drop for Backend {
 }
 
 fn reap_child(child: &Mutex<Child>, diagnostics: &Diagnostics) {
-    for _ in 0..50 {
+    // Go has one five-second task drain plus a one-second credential drain.
+    // Let an acknowledged shutdown persist terminal tool/image state first.
+    let deadline = Instant::now() + Duration::from_secs(8);
+    while Instant::now() < deadline {
         let status = child.lock().unwrap().try_wait();
         match status {
             Ok(Some(status)) => {
@@ -464,16 +474,16 @@ mod tests {
 
     #[cfg(windows)]
     fn unread_sidecar() -> Backend {
+        sidecar_fixture("Start-Sleep -Seconds 30")
+    }
+
+    #[cfg(windows)]
+    fn sidecar_fixture(script: &str) -> Backend {
         use std::os::windows::process::CommandExt;
         let powershell = PathBuf::from(std::env::var_os("SystemRoot").unwrap())
             .join("System32/WindowsPowerShell/v1.0/powershell.exe");
         let child = Command::new(powershell)
-            .args([
-                "-NoProfile",
-                "-NonInteractive",
-                "-Command",
-                "Start-Sleep -Seconds 30",
-            ])
+            .args(["-NoProfile", "-NonInteractive", "-Command", script])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -491,6 +501,24 @@ mod tests {
         std::fs::create_dir_all(&directory).unwrap();
         let diagnostics = Arc::new(Diagnostics::open(&directory).unwrap());
         Backend::connect(child, directory, diagnostics, |_| {}).unwrap()
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn acknowledged_shutdown_can_finish_cancelling_tools_before_reaping() {
+        let backend = sidecar_fixture(
+            "$request = [Console]::ReadLine() | ConvertFrom-Json; \
+             [Console]::WriteLine((@{jsonrpc='2.0';id=$request.id;result=$null} | ConvertTo-Json -Compress)); \
+             [Console]::Out.Flush(); Start-Sleep -Milliseconds 3100; exit 0",
+        );
+        let start = Instant::now();
+        backend.shutdown();
+        let status = backend.child.lock().unwrap().try_wait().unwrap().unwrap();
+        assert!(
+            status.success(),
+            "Acknowledged task cleanup was force-terminated"
+        );
+        assert!(start.elapsed() < Duration::from_secs(8));
     }
 
     #[cfg(windows)]
