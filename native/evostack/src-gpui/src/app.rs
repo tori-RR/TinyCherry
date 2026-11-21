@@ -30,6 +30,11 @@ use wry::{
 
 const FRONTEND_PATH: &str = "windows/evostack/index.html";
 
+fn skill_picker_has_no_input(args: &[Value]) -> bool {
+    // The renderer facade serializes unused input and metadata slots as null.
+    matches!(args, [_] | [_, Value::Null] | [_, Value::Null, Value::Null])
+}
+
 enum UiMessage {
     Request(Request, RequestPermit),
     Reply(Request, Reply, RequestPermit),
@@ -540,7 +545,7 @@ impl Desktop {
                         "skill.install_from_directory" => Some("directory"),
                         _ => None,
                     } {
-                        if args.len() > 2 || args.get(1).is_some_and(|arg| !arg.is_null()) {
+                        if !skill_picker_has_no_input(args) {
                             self.reply(
                                 &request,
                                 Ok(desktop_response(Err(
@@ -960,4 +965,19 @@ fn desktop_request(backend: &Backend, route: &str, input: &Value) -> Option<Repl
         })),
         _ => return None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn skill_picker_accepts_void_ipc_and_rejects_extra_data() {
+        let route = json!("skill.install_from_zip");
+        let null = Value::Null;
+        assert!(skill_picker_has_no_input(&[route.clone(), null.clone(), null.clone()]));
+        assert!(!skill_picker_has_no_input(&[route.clone(), json!({"path":"fixture.zip"}), null.clone()]));
+        assert!(!skill_picker_has_no_input(&[route.clone(), null, json!({"path":"fixture.zip"})]));
+        assert!(!skill_picker_has_no_input(&[route, Value::Null, Value::Null, Value::Null]));
+    }
 }
