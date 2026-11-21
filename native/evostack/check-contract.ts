@@ -1,12 +1,16 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
-import { resolve } from 'node:path'
+import { isAbsolute, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 
 import { applyMessageProjectionUpdate } from '../../src/shared/ai/messageProjection'
+import { AgentEntitySchema } from '../../src/shared/data/api/schemas/agents'
+import { AgentSessionMessageEntitySchema } from '../../src/shared/data/api/schemas/agentSessionMessages'
+import { AgentSessionEntitySchema, CreateAgentSessionSchema } from '../../src/shared/data/api/schemas/agentSessions'
+import { AgentWorkspaceEntitySchema } from '../../src/shared/data/api/schemas/agentWorkspaces'
 import { InstalledSkillSchema } from '../../src/shared/data/api/schemas/skills'
 import { AssistantSchema } from '../../src/shared/data/types/assistant'
 import {
@@ -85,36 +89,37 @@ async function main(): Promise<void> {
   await new Promise<void>((resolve) => proxy.listen(0, '127.0.0.1', resolve))
   const proxyAddress = proxy.address()
   assert(proxyAddress && typeof proxyAddress === 'object')
-  const child = spawn(
-    process.env.EVOSTACK_BACKEND_EXECUTABLE ?? resolve(root, 'dist/portable/tinycherry-evostack-backend.exe'),
-    ['--data-dir', evidence],
-    {
-      windowsHide: true,
-      stdio: ['pipe', 'pipe', 'pipe']
-    }
-  )
   const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>()
   const events: any[] = []
   let nextId = 1
-  createInterface({ input: child.stdout }).on('line', (line) => {
-    const frame = JSON.parse(line)
-    assert.equal(frame.jsonrpc, '2.0')
-    if (frame.method === 'host.computer') {
-      assert.equal(frame.params.operation, 'configure', 'Plain contracts must never control the desktop')
-      assert.equal(frame.params.enabled, false)
-      child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: frame.id, result: { ok: true, data: {} } })}\n`)
-    } else if (frame.method === 'event') events.push(frame.params)
-    else {
-      const callback = pending.get(frame.id)
-      pending.delete(frame.id)
-      if (frame.error) callback?.reject(new Error(frame.error.message))
-      else callback?.resolve(frame.result)
-    }
-  })
-  child.on('exit', () => {
-    for (const value of pending.values()) value.reject(new Error('backend exited'))
-    pending.clear()
-  })
+  const startBackend = () => {
+    const backend = spawn(
+      process.env.EVOSTACK_BACKEND_EXECUTABLE ?? resolve(root, 'dist/portable/tinycherry-evostack-backend.exe'),
+      ['--data-dir', evidence],
+      { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }
+    )
+    createInterface({ input: backend.stdout }).on('line', (line) => {
+      const frame = JSON.parse(line)
+      assert.equal(frame.jsonrpc, '2.0')
+      if (frame.method === 'host.computer') {
+        assert.equal(frame.params.operation, 'configure', 'Plain contracts must never control the desktop')
+        assert.equal(frame.params.enabled, false)
+        backend.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: frame.id, result: { ok: true, data: {} } })}\n`)
+      } else if (frame.method === 'event') events.push(frame.params)
+      else {
+        const callback = pending.get(frame.id)
+        pending.delete(frame.id)
+        if (frame.error) callback?.reject(new Error(frame.error.message))
+        else callback?.resolve(frame.result)
+      }
+    })
+    backend.on('exit', () => {
+      for (const value of pending.values()) value.reject(new Error('backend exited'))
+      pending.clear()
+    })
+    return backend
+  }
+  let child = startBackend()
   const rpc = (method: string, params: unknown): Promise<any> => {
     const id = nextId++
     return new Promise((resolve, reject) => {
@@ -416,6 +421,103 @@ async function main(): Promise<void> {
     assert.equal(invalidHealth.ok, false, 'HTTP 200 error body was accepted as a model completion')
     invalidProbe = false
 
+    const nativeInput = aiRequestSchemas['ai.agent.create'].input.parse({
+      type: 'native',
+      name: 'Native 契约智能体',
+      model: model.id,
+      instructions: 'Only inspect this contract workspace and report verified results.',
+      configuration: { permission_mode: 'plan' }
+    })
+    const nativeAgent = aiRequestSchemas['ai.agent.create'].output.parse(await command('ai.agent.create', nativeInput))
+    assert.equal(nativeAgent.type, 'native')
+    assert.equal(nativeAgent.model, model.id)
+    assert.equal(nativeAgent.instructions, nativeInput.instructions)
+    assert.equal(nativeAgent.configuration?.permission_mode, 'plan')
+    assert.deepEqual(AgentEntitySchema.parse(await data('GET', `/agents/${nativeAgent.id}`)), nativeAgent)
+    for (const type of ['claude-code', 'pi', 'pi-durable'] as const) {
+      const legacyInput = aiRequestSchemas['ai.agent.create'].input.parse({ ...nativeInput, type })
+      const unsupported = await invoke('ipc-api:request', 'ai.agent.create', legacyInput)
+      assert.equal(unsupported.ok, false, `Unsupported ${type} runtime was accepted`)
+      assert.equal(unsupported.error.message, 'this desktop supports TinyCherry Native agents')
+    }
+    assert.deepEqual(AgentEntitySchema.array().parse((await data('GET', '/agents')).items), [nativeAgent])
+
+    const nativeSession = AgentSessionEntitySchema.parse(
+      await data(
+        'POST',
+        '/agent-sessions',
+        CreateAgentSessionSchema.parse({
+          agentId: nativeAgent.id,
+          name: 'Native 契约会话',
+          workspace: { type: 'system' }
+        })
+      )
+    )
+    assert.equal(nativeSession.agentId, nativeAgent.id)
+    assert.equal(nativeSession.workspaceId, nativeSession.workspace.id)
+    assert.equal(nativeSession.workspace.type, 'system')
+    assert(isAbsolute(nativeSession.workspace.path) && statSync(nativeSession.workspace.path).isDirectory())
+    assert.deepEqual(AgentWorkspaceEntitySchema.array().parse(await data('GET', '/agent-workspaces')), [
+      nativeSession.workspace
+    ])
+    const reusable = aiRequestSchemas['ai.agent.session.reuse_or_create'].output.parse(
+      await command(
+        'ai.agent.session.reuse_or_create',
+        aiRequestSchemas['ai.agent.session.reuse_or_create'].input.parse({
+          agentId: nativeAgent.id,
+          workspace: { type: 'system' }
+        })
+      )
+    )
+    assert.equal(reusable.created, false)
+    assert.deepEqual(AgentSessionEntitySchema.parse(reusable.session), nativeSession)
+    assert.deepEqual(reusable.deletedDuplicateSessionIds, [])
+
+    const nativeTopicId = `agent-session:${nativeSession.id}`
+    const nativeSubmit = aiRequestSchemas['ai.stream.open'].input.parse({
+      topicId: nativeTopicId,
+      requestId: randomUUID(),
+      trigger: 'submit-message',
+      userMessageParts: [{ type: 'text', text: 'Native 工作会话契约测试' }]
+    })
+    const nativeStart = events.length
+    const nativeRequestStart = requests.length
+    const nativeOpened = aiRequestSchemas['ai.stream.open'].output.parse(await command('ai.stream.open', nativeSubmit))
+    assert.equal(nativeOpened.mode, 'started')
+    assert.equal(nativeOpened.reservedMessages?.length, 2)
+    await waitDone(nativeTopicId, nativeStart)
+    assert.equal(requests.length, nativeRequestStart + 1)
+    assert.deepEqual(requests[nativeRequestStart].tools.map((tool: any) => tool.function.name).sort(), [
+      'list_files',
+      'read_file',
+      'search_files'
+    ])
+    assert.equal(requests[nativeRequestStart].parallel_tool_calls, false)
+    const nativeMessages = AgentSessionMessageEntitySchema.array().parse(
+      (await data('GET', `/agent-sessions/${nativeSession.id}/messages`)).items
+    )
+    assert.equal(nativeMessages.length, 2)
+    assert.deepEqual(
+      nativeMessages.map((message) => message.role),
+      ['assistant', 'user']
+    )
+    assert(nativeMessages.every((message) => message.sessionId === nativeSession.id && message.status === 'success'))
+    assert.equal(nativeMessages[0].searchableText, 'EvoStack 真实协议通过')
+    assert.equal(nativeMessages[1].searchableText, 'Native 工作会话契约测试')
+    const persistedSession = AgentSessionEntitySchema.parse(await data('GET', `/agent-sessions/${nativeSession.id}`))
+    assert.deepEqual(
+      AgentSessionEntitySchema.array().parse(
+        (await data('GET', '/agent-sessions', undefined, { agentId: nativeAgent.id })).items
+      ),
+      [persistedSession]
+    )
+    assert.deepEqual(
+      AgentSessionEntitySchema.parse(
+        (await data('GET', '/agent-sessions/latest', undefined, { agentId: nativeAgent.id })).session
+      ),
+      persistedSession
+    )
+
     await invoke('preference:set', 'app.proxy.mode', 'custom')
     await invoke('preference:set', 'app.proxy.url', `http://127.0.0.1:${proxyAddress.port}`)
     await data('PATCH', `/providers/${provider.id}`, {
@@ -436,14 +538,51 @@ async function main(): Promise<void> {
       'proxy loopback only'
     )
     assert(requests.every((request) => request.model === 'vendor/local-test'))
-    const unsupported = await invoke('ipc-api:request', 'ai.agent.create', { name: 'unsupported' })
-    assert.equal(unsupported.ok, false)
-    assert.match(unsupported.error.message, /NOT_MIGRATED/)
     const prefs = await invoke('preference:get-all')
     assert(Object.keys(prefs).length > 100)
     const db = readFileSync(resolve(evidence, 'evostack.sqlite3'))
     const wal = readFileSync(resolve(evidence, 'evostack.sqlite3-wal'))
     assert(!db.includes(Buffer.from(syntheticKey)) && !wal.includes(Buffer.from(syntheticKey)))
+
+    const previousBackend = child
+    await rpc('backend.shutdown', null)
+    previousBackend.stdin.end()
+    await waitFor(() => previousBackend.exitCode !== null || previousBackend.signalCode !== null)
+    assert.equal(previousBackend.exitCode, 0, 'Backend did not shut down cleanly before the persistence check')
+    child = startBackend()
+    assert.equal((await rpc('backend.info', null)).backend, 'go')
+    assert.deepEqual(AgentEntitySchema.parse(await data('GET', `/agents/${nativeAgent.id}`)), nativeAgent)
+    assert.deepEqual(
+      AgentSessionEntitySchema.parse(await data('GET', `/agent-sessions/${nativeSession.id}`)),
+      persistedSession
+    )
+    assert.deepEqual(
+      AgentWorkspaceEntitySchema.parse(await data('GET', `/agent-workspaces/${nativeSession.workspaceId}`)),
+      nativeSession.workspace
+    )
+    assert.deepEqual(
+      AgentSessionMessageEntitySchema.array().parse(
+        (await data('GET', `/agent-sessions/${nativeSession.id}/messages`)).items
+      ),
+      nativeMessages
+    )
+    const callsBeforeRetry = providerCalls
+    const proxyCallsBeforeRetry = proxyRequests.length
+    const retried = aiRequestSchemas['ai.stream.open'].output.parse(await command('ai.stream.open', nativeSubmit))
+    assert.equal(retried.mode, 'started')
+    assert.deepEqual(
+      retried.reservedMessages?.map((message) => message.id),
+      nativeOpened.reservedMessages?.map((message) => message.id)
+    )
+    assert.deepEqual(retried.activeExecutions, [])
+    assert.equal(providerCalls, callsBeforeRetry, 'Restart replayed an already completed Native request')
+    assert.equal(proxyRequests.length, proxyCallsBeforeRetry, 'Restart replayed the Native request through the proxy')
+    assert.deepEqual(
+      AgentSessionMessageEntitySchema.array().parse(
+        (await data('GET', `/agent-sessions/${nativeSession.id}/messages`)).items
+      ),
+      nativeMessages
+    )
     writeFileSync(
       resolve(evidence, 'result.json'),
       JSON.stringify(
@@ -475,7 +614,11 @@ async function main(): Promise<void> {
             'stream-stop-partial',
             'model-health-200-error',
             'custom-proxy-loopback-and-headers',
-            'model-greedy-id'
+            'model-greedy-id',
+            'native-agent-create-read-and-legacy-rejection',
+            'native-agent-session-workspace-and-empty-reuse',
+            'native-agent-stream-and-message-schema',
+            'native-agent-restart-persistence-and-request-deduplication'
           ],
           providerCalls,
           proxyCalls: proxyRequests.length,

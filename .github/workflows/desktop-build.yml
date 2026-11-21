@@ -75,6 +75,10 @@ jobs:
             go test -run '^TestNativeAgentWindows' -count=1 -timeout 45s -v ./...
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally { Pop-Location }
+      - name: Verify native desktop contracts
+        run: |
+          ./native/evostack/test.ps1 -Task contracts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify and package the same candidate
         env:
           STRESS: ${{ inputs.stress }}
