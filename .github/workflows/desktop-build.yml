@@ -72,7 +72,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Push-Location native/evostack/backend
           try {
-            go test -run '^TestNativeAgentWindows' -count=1 -timeout 60s -v ./...
+            go test -run '^TestNativeAgentWindows' -count=1 -timeout 45s -v ./...
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally { Pop-Location }
       - name: Verify and package the same candidate

@@ -402,7 +402,9 @@ func agentShellEnvironment() []string {
 		// AppData breaks that baseline even with -NoProfile/-NonInteractive.
 		// Let 5.1 construct PSModulePath itself: inheriting it from PowerShell 7
 		// can load incompatible modules in a desktop app launched from that shell.
-		keys = append(keys, "ALLUSERSPROFILE", "APPDATA", "LOCALAPPDATA", "ProgramData", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "CommonProgramFiles", "CommonProgramFiles(x86)", "CommonProgramW6432", "PUBLIC", "SystemDrive", "HOMEDRIVE", "HOMEPATH")
+		// Keep its module-analysis cache location: dropping a system-configured
+		// warm cache can make the first cmdlet rescan every installed module.
+		keys = append(keys, "ALLUSERSPROFILE", "APPDATA", "LOCALAPPDATA", "ProgramData", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "CommonProgramFiles", "CommonProgramFiles(x86)", "CommonProgramW6432", "PUBLIC", "SystemDrive", "HOMEDRIVE", "HOMEPATH", "PSModuleAnalysisCachePath")
 	}
 	result := []string{}
 	for _, key := range keys {
