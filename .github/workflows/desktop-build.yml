@@ -68,6 +68,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify native Windows agent commands
         run: |
+          pnpm exec tsx --tsconfig tsconfig.web.json native/evostack/generate-contract.ts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Push-Location native/evostack/backend
           try {
             go test -run '^TestNativeAgentWindows' -count=1 -timeout 45s -v ./...
