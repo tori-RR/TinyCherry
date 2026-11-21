@@ -17,7 +17,9 @@ import { useTranslation } from 'react-i18next'
 
 import { Button, Tooltip } from '@cherrystudio/ui'
 import ComposerSurface, { type ComposerSurfaceActions } from '@renderer/components/composer/ComposerSurface'
+import { ComposerToolProvider } from '@renderer/components/composer/tools/ComposerToolProvider'
 import { AppMarkdown, MarkdownHostProvider } from '@renderer/components/markdown'
+import { QuickPanelProvider } from '@renderer/components/QuickPanel/QuickPanelProvider'
 import { toast } from '@renderer/services/toast'
 import { getErrorMessage } from '@renderer/utils/error'
 import { cn } from '@renderer/utils/style'
@@ -467,53 +469,62 @@ export function NativeAgentConversation({
         </div>
       )}
       <div className="shrink-0 pb-4" data-testid="agent-composer">
-        <ComposerSurface
-          text={text}
-          onTextChange={setDraft}
-          tokens={EMPTY_TOKENS}
-          managedTokenKinds={EMPTY_TOKENS}
-          onTokensChange={ignoreChange}
-          placeholder={t('agent.native.prompt', '描述任务，或继续给智能体指令…')}
-          sendDisabled={!canRun || !text.trim() || runtime.isRunning || runtime.isSubmitting}
-          isLoading={runtime.isRunning}
-          onSendDraft={send}
-          onPause={runtime.stop}
-          supportedExts={EMPTY_TOKENS}
-          setFiles={ignoreChange}
-          filesCount={0}
-          isExpanded={expanded}
-          onExpandedChange={setExpanded}
-          quickPanelEnabled={false}
-          enableDragDrop={false}
-          enableSpellCheck={false}
-          editable={canRun && !runtime.isSubmitting}
-          fontSize={14}
-          narrowMode
-          markdownLivePreview
-          onActionsChange={(actions) => {
-            actionsRef.current = actions
-          }}
-          renderLeftControls={() => (
-            <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-              <Terminal className="size-3.5" />
-              <span>TinyCherry Native</span>
-              <span className="text-border">·</span>
-              <ShieldCheck className="size-3.5" />
-              <span>
-                {permissionMode === 'plan'
-                  ? t('agent.native.plan_mode', '只读规划')
-                  : t('agent.native.default_mode', '逐次确认')}
-              </span>
-              {runtime.isSubmitting && <Loader2 className="size-3.5 animate-spin" />}
-            </div>
-          )}
-          renderBelowControls={() => (
-            <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-              <ChevronDown className="size-3" />
-              {t('agent.native.composer_hint', '历史与工具执行结果会自动保存。切换工作不会中断正在执行的任务。')}
-            </div>
-          )}
-        />
+        {/* The lazy rich editor requires both contexts even with quick-panel actions disabled. */}
+        <QuickPanelProvider>
+          <ComposerToolProvider
+            actions={{
+              addNewTopic: ignoreChange,
+              onTextChange: (updater) => setDraft(typeof updater === 'function' ? updater(text) : updater)
+            }}>
+            <ComposerSurface
+              text={text}
+              onTextChange={setDraft}
+              tokens={EMPTY_TOKENS}
+              managedTokenKinds={EMPTY_TOKENS}
+              onTokensChange={ignoreChange}
+              placeholder={t('agent.native.prompt', '描述任务，或继续给智能体指令…')}
+              sendDisabled={!canRun || !text.trim() || runtime.isRunning || runtime.isSubmitting}
+              isLoading={runtime.isRunning}
+              onSendDraft={send}
+              onPause={runtime.stop}
+              supportedExts={EMPTY_TOKENS}
+              setFiles={ignoreChange}
+              filesCount={0}
+              isExpanded={expanded}
+              onExpandedChange={setExpanded}
+              quickPanelEnabled={false}
+              enableDragDrop={false}
+              enableSpellCheck={false}
+              editable={canRun && !runtime.isSubmitting}
+              fontSize={14}
+              narrowMode
+              markdownLivePreview
+              onActionsChange={(actions) => {
+                actionsRef.current = actions
+              }}
+              renderLeftControls={() => (
+                <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+                  <Terminal className="size-3.5" />
+                  <span>TinyCherry Native</span>
+                  <span className="text-border">·</span>
+                  <ShieldCheck className="size-3.5" />
+                  <span>
+                    {permissionMode === 'plan'
+                      ? t('agent.native.plan_mode', '只读规划')
+                      : t('agent.native.default_mode', '逐次确认')}
+                  </span>
+                  {runtime.isSubmitting && <Loader2 className="size-3.5 animate-spin" />}
+                </div>
+              )}
+              renderBelowControls={() => (
+                <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <ChevronDown className="size-3" />
+                  {t('agent.native.composer_hint', '历史与工具执行结果会自动保存。切换工作不会中断正在执行的任务。')}
+                </div>
+              )}
+            />
+          </ComposerToolProvider>
+        </QuickPanelProvider>
       </div>
     </div>
   )

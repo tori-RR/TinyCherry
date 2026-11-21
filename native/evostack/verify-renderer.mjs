@@ -56,6 +56,7 @@ let next = 0
 let pageLoads = 0
 const pending = new Map()
 const errors = []
+const consoleErrors = []
 socket.addEventListener('message', ({ data }) => {
   const message = JSON.parse(String(data))
   if (message.id) {
@@ -71,6 +72,14 @@ socket.addEventListener('message', ({ data }) => {
     const details = message.params.exceptionDetails
     const text = details.exception?.description ?? details.text
     if (!text.includes('ResizeObserver loop')) errors.push(text)
+  } else if (message.method === 'Runtime.consoleAPICalled' && message.params.type === 'error') {
+    consoleErrors.push(
+      message.params.args
+        .slice(0, 8)
+        .map((arg) => String(arg.value ?? arg.description ?? '').slice(0, 2000))
+        .join(' ')
+    )
+    if (consoleErrors.length > 32) consoleErrors.shift()
   }
 })
 const command = (method, params) =>
@@ -251,12 +260,12 @@ try {
 } catch (error) {
   try {
     const state = await evaluate(
-      `({url:location.href,text:document.body.innerText.slice(0,6000),dataTrace:window.__EVOSTACK_SMOKE_DATA_TRACE__,editors:[...document.querySelectorAll('textarea,[contenteditable]')].map(node=>({tag:node.tagName,editable:node.getAttribute('contenteditable'),parent:node.parentElement?.outerHTML.slice(0,1000)}))})`
+      `({url:location.href,text:document.body.innerText.slice(0,6000),details:[...document.querySelectorAll('details pre')].slice(0,4).map(node=>node.textContent.slice(0,6000)),dataTrace:window.__EVOSTACK_SMOKE_DATA_TRACE__,editors:[...document.querySelectorAll('textarea,[contenteditable]')].map(node=>({tag:node.tagName,editable:node.getAttribute('contenteditable'),parent:node.parentElement?.outerHTML.slice(0,1000)}))})`
     )
-    writeFileSync(join(profile, 'renderer-failure.json'), JSON.stringify({ state, errors }, null, 2))
+    writeFileSync(join(profile, 'renderer-failure.json'), JSON.stringify({ state, errors, consoleErrors }, null, 2))
     const capture = await command('Page.captureScreenshot', { format: 'png' })
     writeFileSync(join(profile, 'renderer-failure.png'), Buffer.from(capture.data, 'base64'))
-    console.error('Synthetic renderer failure state:', JSON.stringify({ state, errors }))
+    console.error('Synthetic renderer failure state:', JSON.stringify({ state, errors, consoleErrors }))
   } catch {
     /* Preserve the original verification failure if the owned renderer closed. */
   }

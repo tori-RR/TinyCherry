@@ -159,6 +159,7 @@ try {
         return {
           url: cleanUrl(location.href), title: document.title.slice(0, 256), readyState: document.readyState,
           body: (document.body?.innerText ?? '').slice(0, 4096), rootChildren: document.querySelector('#root')?.childElementCount ?? null,
+          details: [...document.querySelectorAll('details pre')].slice(0, 4).map(node => (node.textContent ?? '').slice(0, 6000)),
           bridge: { postMessage: typeof window.ipc?.postMessage, receiver: typeof window.__TINYCHERRY_RECEIVE__, request: typeof window.api?.ipcApi?.request },
           scripts: [...document.scripts].slice(0, 32).map(script => ({ src: cleanUrl(script.src), type: script.type })),
           resources: performance.getEntriesByType('resource').slice(-32).map(resource => ({ url: cleanUrl(resource.name), type: resource.initiatorType, status: resource.responseStatus, bytes: resource.transferSize }))

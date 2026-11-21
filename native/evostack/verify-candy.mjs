@@ -147,7 +147,12 @@ export async function verifyCandy({ evaluate, command, until, profile }) {
         .startsWith(resolve(profile).toLowerCase() + sep)
     )
     const submit = async (text) => {
-      await fill('[data-testid="agent-composer"] [contenteditable="true"]', text)
+      // The shared composer is immediately usable as a textarea while its rich
+      // editor loads on idle/interaction. Exercise either real input surface.
+      await fill(
+        '[data-testid="agent-composer"] textarea,[data-testid="agent-composer"] [contenteditable="true"]',
+        text
+      )
       await click('[data-testid="agent-composer"] [data-ui~="chat.composer.action.send"]')
     }
     await submit('Candy approved tool')
