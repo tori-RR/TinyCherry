@@ -975,9 +975,26 @@ mod tests {
     fn skill_picker_accepts_void_ipc_and_rejects_extra_data() {
         let route = json!("skill.install_from_zip");
         let null = Value::Null;
-        assert!(skill_picker_has_no_input(&[route.clone(), null.clone(), null.clone()]));
-        assert!(!skill_picker_has_no_input(&[route.clone(), json!({"path":"fixture.zip"}), null.clone()]));
-        assert!(!skill_picker_has_no_input(&[route.clone(), null, json!({"path":"fixture.zip"})]));
-        assert!(!skill_picker_has_no_input(&[route, Value::Null, Value::Null, Value::Null]));
+        assert!(skill_picker_has_no_input(&[
+            route.clone(),
+            null.clone(),
+            null.clone()
+        ]));
+        assert!(!skill_picker_has_no_input(&[
+            route.clone(),
+            json!({"path":"fixture.zip"}),
+            null.clone()
+        ]));
+        assert!(!skill_picker_has_no_input(&[
+            route.clone(),
+            null,
+            json!({"path":"fixture.zip"})
+        ]));
+        assert!(!skill_picker_has_no_input(&[
+            route,
+            Value::Null,
+            Value::Null,
+            Value::Null
+        ]));
     }
 }
